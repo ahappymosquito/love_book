@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#fbf6f1" />
+    <title>回声本 · 我们之间的小事</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap"
+    />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到主要内容</a>
+
+    <!-- ============== 登录页（无 token 时显示） ============== -->
+    <section id="loginScreen" class="login-screen" aria-label="登录" hidden>
+      <div class="login-decor" aria-hidden="true">
+        <svg viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <radialGradient id="halo" cx="50%" cy="40%" r="60%">
+              <stop offset="0%" stop-color="#f7d8d0" stop-opacity="0.95" />
+              <stop offset="100%" stop-color="#fbf6f1" stop-opacity="0" />
+            </radialGradient>
+            <linearGradient id="ribbon" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#e7c8c0" />
+              <stop offset="100%" stop-color="#b76e79" />
+            </linearGradient>
+          </defs>
+          <circle cx="200" cy="160" r="220" fill="url(#halo)" />
+          <g class="decor-hearts" stroke="url(#ribbon)" stroke-width="1.4" fill="none" opacity="0.55">
+            <path d="M80 120 q14 -22 32 -10 q18 -12 32 10 q0 22 -32 42 q-32 -20 -32 -42 z" />
+            <path d="M280 80 q10 -16 22 -7 q12 -9 22 7 q0 16 -22 30 q-22 -14 -22 -30 z" opacity="0.7" />
+            <path d="M310 280 q12 -18 26 -8 q14 -10 26 8 q0 18 -26 36 q-26 -18 -26 -36 z" opacity="0.5" />
+          </g>
+          <g opacity="0.55" fill="#b76e79">
+            <circle cx="60" cy="300" r="2.5" />
+            <circle cx="340" cy="180" r="2" />
+            <circle cx="120" cy="60" r="1.6" />
+            <circle cx="240" cy="320" r="2.2" />
+            <circle cx="370" cy="60" r="1.8" />
+          </g>
+        </svg>
+      </div>
+
+      <main class="login-card">
+        <div class="login-mark" aria-hidden="true">
+          <svg viewBox="0 0 48 48">
+            <path d="M14 22 q0 -10 10 -10 q10 0 10 10 q0 12 -10 20 q-10 -8 -10 -20 z" fill="#b76e79" opacity="0.9" />
+            <path d="M22 22 q0 -10 10 -10 q10 0 10 10 q0 12 -10 20 q-10 -8 -10 -20 z" fill="#e7c8c0" opacity="0.85" />
+          </svg>
+        </div>
+        <p class="login-eyebrow">两个人的回声</p>
+        <h1 class="login-title">我们之间的小事</h1>
+        <p class="login-sub">输入对方给你的邀请 token，开始记录被珍惜的瞬间。</p>
+
+        <form id="loginForm" class="form-stack" novalidate>
+          <label class="field-label" for="loginToken">邀请 Token</label>
+          <div class="input-affix">
+            <input
+              id="loginToken"
+              name="token"
+              type="password"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              inputmode="text"
+              placeholder="粘贴对方分享给你的 token"
+            />
+            <button id="loginTokenToggle" type="button" class="affix-btn" aria-label="显示 token">
+              <svg class="icon-eye-open" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              <svg class="icon-eye-closed" viewBox="0 0 24 24" aria-hidden="true" hidden>
+                <path d="M3 3l18 18" />
+                <path d="M10.6 6.1A10.6 10.6 0 0 1 12 6c6.5 0 10 7 10 7a17 17 0 0 1-3.1 3.6" />
+                <path d="M6.7 6.7C3.8 8.5 2 12 2 12s3.5 7 10 7c1.7 0 3.2-.4 4.5-1.1" />
+                <path d="M9.5 9.5a3 3 0 0 0 4.2 4.2" />
+              </svg>
+            </button>
+          </div>
+          <button class="btn btn-primary btn-block" type="submit">进入</button>
+        </form>
+
+        <button class="login-admin-link" type="button" data-admin-entry>
+          <span>管理员入口</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>
+        </button>
+      </main>
+    </section>
+
+    <!-- ============== 用户主界面（有 token 时显示） ============== -->
+    <div id="appShell" class="app-shell" hidden>
+      <header class="app-header">
+        <div class="identity">
+          <div class="avatars" aria-hidden="true">
+            <span class="avatar avatar-me" id="avatarMe">·</span>
+            <span class="avatar avatar-you" id="avatarYou">·</span>
+          </div>
+          <div class="identity-text">
+            <span class="identity-names" id="identityNames">连接中…</span>
+            <span class="identity-pair" id="identityPair">—</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button id="refreshBtn" class="icon-btn" type="button" aria-label="刷新">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M3 21v-5h5" /><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M16 8h5V3" /></svg>
+          </button>
+          <button id="adminEntryBtn" class="icon-btn" type="button" aria-label="管理员入口" title="管理员入口">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.73l.15-.09a2 2 0 0 0 .73-2.73l-.22-.39a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z" /><circle cx="12" cy="12" r="3" /></svg>
+          </button>
+          <button id="logoutBtn" class="icon-btn" type="button" aria-label="退出登录" title="退出登录">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></svg>
+          </button>
+        </div>
+      </header>
+
+      <main id="main" class="app-main" tabindex="-1">
+        <!-- 列表页 -->
+        <section id="listScreen" class="screen screen-list">
+          <div class="screen-intro">
+            <p class="screen-eyebrow">Timeline</p>
+            <h1 class="screen-title">我们之间</h1>
+            <p class="screen-sub">所有被两个人共同记下的瞬间。</p>
+          </div>
+          <div id="eventsList" class="events" aria-live="polite"></div>
+        </section>
+
+        <!-- 详情页 -->
+        <section id="detailScreen" class="screen screen-detail" hidden>
+          <button id="detailBack" class="ghost-btn ghost-btn-back" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+            <span>返回</span>
+          </button>
+          <div id="eventDetail" class="event-detail"></div>
+        </section>
+      </main>
+
+      <button id="newEventFab" class="fab" type="button" aria-label="记录新事件">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
+        <span>记一笔</span>
+      </button>
+    </div>
+
+    <!-- ============== 管理界面（独立屏幕） ============== -->
+    <section id="adminScreen" class="admin-screen" aria-label="管理员后台" hidden>
+      <header class="app-header">
+        <button id="adminBackBtn" class="icon-btn" type="button" aria-label="返回用户界面">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+        </button>
+        <div class="identity-text">
+          <span class="identity-names">配对管理</span>
+          <span class="identity-pair">Admin</span>
+        </div>
+        <div class="header-actions"></div>
+      </header>
+
+      <main class="app-main">
+        <div class="screen-intro">
+          <p class="screen-eyebrow">Admin</p>
+          <h1 class="screen-title">配对与 token</h1>
+          <p class="screen-sub">为两个人创建一段共同的记忆通道。</p>
+        </div>
+
+        <section class="card">
+          <header class="card-head">
+            <div>
+              <p class="card-eyebrow">新建</p>
+              <h2 class="card-title">创建配对</h2>
+            </div>
+          </header>
+          <form id="pairForm" class="form-stack" novalidate>
+            <label class="field-label" for="adminKeyInput">Admin Key</label>
+            <input
+              id="adminKeyInput"
+              type="password"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="X-Admin-Key"
+            />
+            <div class="field-row">
+              <div class="form-stack compact">
+                <label class="field-label" for="userAName">用户 A 显示名</label>
+                <input id="userAName" type="text" maxlength="100" required placeholder="例如：阿林" autocomplete="off" />
+              </div>
+              <div class="form-stack compact">
+                <label class="field-label" for="userBName">用户 B 显示名</label>
+                <input id="userBName" type="text" maxlength="100" required placeholder="例如：阿桃" autocomplete="off" />
+              </div>
+            </div>
+            <button class="btn btn-primary btn-block" type="submit">生成配对</button>
+          </form>
+          <div id="pairResult" class="pair-result" hidden></div>
+        </section>
+
+        <section class="card">
+          <header class="card-head">
+            <div>
+              <p class="card-eyebrow">Database</p>
+              <h2 class="card-title">已有配对</h2>
+            </div>
+            <button id="loadPairsBtn" class="btn btn-secondary" type="button">加载配对</button>
+          </header>
+          <div id="pairsList" class="pairs-list" aria-live="polite">
+            <div class="empty-state">输入 Admin Key 后加载数据库中的配对。</div>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <!-- ============== 容器：toast / 抽屉 / 对话框 ============== -->
+    <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+    <div id="dialogRoot" class="dialog-root"></div>
+
+    <script type="module" src="/static/app.js"></script>
+  </body>
+</html>
