@@ -19,14 +19,30 @@ class APIModel(BaseModel):
 class UserOut(APIModel):
     id: int
     display_name: str
+    avatar: str = ""
     created_at: datetime
 
     model_config = {"from_attributes": True}
 
 
+class MeUpdate(APIModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=100)
+    avatar: str | None = Field(default=None, max_length=64)
+
+
+class AdminAuthRequest(APIModel):
+    admin_key: str = Field(min_length=1)
+
+
+class AdminAuthResponse(APIModel):
+    ok: bool = True
+
+
 class PairCreate(APIModel):
     user_a_display_name: str = Field(min_length=1, max_length=100)
     user_b_display_name: str = Field(min_length=1, max_length=100)
+    user_a_avatar: str = Field(default="", max_length=64)
+    user_b_avatar: str = Field(default="", max_length=64)
 
 
 class PairCreated(APIModel):
@@ -109,10 +125,25 @@ class VoiceOut(APIModel):
     model_config = {"from_attributes": True}
 
 
+class ImageOut(APIModel):
+    type: Literal["image"] = "image"
+    id: int
+    event_id: int
+    author_id: int
+    mime_type: str
+    size_bytes: int
+    width: int | None
+    height: int | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class ContentsOut(APIModel):
     submission_state: SubmissionState
     comments: list[CommentOut]
     voices: list[VoiceOut]
+    images: list[ImageOut]
 
 
 class EventDetail(EventSummary):

@@ -8,9 +8,14 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.models import Comment, User, Voice
-from app.schemas import CommentCreate, CommentOut, ContentsOut, VoiceOut
-from app.services import ensure_pair_event, ensure_voice_file_visible, visible_contents
+from app.models import Comment, Image, User, Voice
+from app.schemas import CommentCreate, CommentOut, ContentsOut, ImageOut, VoiceOut
+from app.services import (
+    ensure_image_file_visible,
+    ensure_pair_event,
+    ensure_voice_file_visible,
+    visible_contents,
+)
 
 router = APIRouter(tags=["contents"])
 
@@ -50,7 +55,7 @@ def upload_voice(
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Voice file is too large")
 
     suffix = Path(file.filename or "").suffix
-    pair_dir = settings.upload_dir / f"pair-{pair.id}" / f"event-{event_id}"
+    pair_dir = settings.upload_dir / "voices" / f"pair-{pair.id}" / f"event-{event_id}"
     pair_dir.mkdir(parents=True, exist_ok=True)
     target = pair_dir / f"{uuid4().hex}{suffix}"
     target.write_bytes(body)
@@ -67,6 +72,46 @@ def upload_voice(
     db.flush()
     db.refresh(voice)
     return VoiceOut.model_validate(voice)
+
+
+@router.post("/events/{event_id}/images", response_model=ImageOut, status_code=status.HTTP_201_CREATED)
+def upload_image(
+    event_id: int,
+    file: UploadFile = File(...),
+    width: int | None = Form(default=None),
+    height: int | None = Form(default=None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ImageOut:
+    pair = get_pair_for_user(db, current_user.id)
+    ensure_pair_event(db, event_id, pair)
+    settings = get_settings()
+    if file.content_type not in settings.allowed_image_mime_types:
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Unsupported image mime type")
+
+    body = file.file.read(settings.max_image_bytes + 1)
+    if len(body) > settings.max_image_bytes:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Image file is too large")
+
+    suffix = Path(file.filename or "").suffix
+    pair_dir = settings.upload_dir / "images" / f"pair-{pair.id}" / f"event-{event_id}"
+    pair_dir.mkdir(parents=True, exist_ok=True)
+    target = pair_dir / f"{uuid4().hex}{suffix}"
+    target.write_bytes(body)
+
+    image = Image(
+        event_id=event_id,
+        author_id=current_user.id,
+        file_path=str(target),
+        mime_type=file.content_type,
+        size_bytes=len(body),
+        width=width,
+        height=height,
+    )
+    db.add(image)
+    db.flush()
+    db.refresh(image)
+    return ImageOut.model_validate(image)
 
 
 @router.get("/events/{event_id}/contents", response_model=ContentsOut)
@@ -89,3 +134,14 @@ def get_voice_file(
     pair = get_pair_for_user(db, current_user.id)
     voice = ensure_voice_file_visible(db, voice_id, current_user, pair)
     return FileResponse(path=voice.file_path, media_type=voice.mime_type, filename=Path(voice.file_path).name)
+
+
+@router.get("/images/{image_id}/file")
+def get_image_file(
+    image_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    pair = get_pair_for_user(db, current_user.id)
+    image = ensure_image_file_visible(db, image_id, current_user, pair)
+    return FileResponse(path=image.file_path, media_type=image.mime_type, filename=Path(image.file_path).name)

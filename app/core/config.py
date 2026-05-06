@@ -15,6 +15,7 @@ class Settings(BaseModel):
     admin_key: str = "change-me"
     upload_dir: Path = Path("uploads")
     max_voice_bytes: int = 10 * 1024 * 1024
+    max_image_bytes: int = 10 * 1024 * 1024
     allowed_voice_mime_types: set[str] = {
         "audio/mpeg",
         "audio/mp3",
@@ -24,6 +25,12 @@ class Settings(BaseModel):
         "audio/webm",
         "audio/ogg",
         "audio/aac",
+    }
+    allowed_image_mime_types: set[str] = {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
     }
 
 
@@ -35,4 +42,5 @@ def get_settings() -> Settings:
         admin_key=os.getenv("ADMIN_KEY", Settings().admin_key),
         upload_dir=Path(os.getenv("UPLOAD_DIR", str(Settings().upload_dir))),
         max_voice_bytes=int(os.getenv("MAX_VOICE_BYTES", str(Settings().max_voice_bytes))),
+        max_image_bytes=int(os.getenv("MAX_IMAGE_BYTES", str(Settings().max_image_bytes))),
     )

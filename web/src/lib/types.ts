@@ -1,0 +1,107 @@
+export type VisibilityMode = "public" | "mutual_submit";
+
+export interface UserOut {
+  id: number;
+  display_name: string;
+  avatar: string;
+  created_at: string;
+}
+
+export interface MeOut {
+  user: UserOut;
+  counterpart: UserOut;
+  pair_id: number;
+}
+
+export interface SubmissionState {
+  current_user_submitted: boolean;
+  counterpart_submitted: boolean;
+  unlocked: boolean;
+}
+
+export interface EventSummary {
+  id: number;
+  pair_id: number;
+  creator_id: number;
+  title: string;
+  description: string | null;
+  occurred_at: string | null;
+  visibility_mode: VisibilityMode;
+  created_at: string;
+  submission_state: SubmissionState;
+}
+
+export interface CommentOut {
+  type: "comment";
+  id: number;
+  event_id: number;
+  author_id: number;
+  text: string;
+  created_at: string;
+}
+
+export interface VoiceOut {
+  type: "voice";
+  id: number;
+  event_id: number;
+  author_id: number;
+  duration_ms: number | null;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
+}
+
+export interface ImageOut {
+  type: "image";
+  id: number;
+  event_id: number;
+  author_id: number;
+  mime_type: string;
+  size_bytes: number;
+  width: number | null;
+  height: number | null;
+  created_at: string;
+}
+
+export interface ContentsOut {
+  submission_state: SubmissionState;
+  comments: CommentOut[];
+  voices: VoiceOut[];
+  images: ImageOut[];
+}
+
+export interface EventDetail extends EventSummary {
+  contents: ContentsOut;
+}
+
+export interface PairCreated {
+  pair_id: number;
+  user_a: UserOut;
+  user_b: UserOut;
+  user_a_token: string;
+  user_b_token: string;
+}
+
+export interface PairOut extends PairCreated {
+  created_at: string;
+}
+
+export type ContentItem =
+  | (CommentOut & { _kind: "comment" })
+  | (VoiceOut & { _kind: "voice" })
+  | (ImageOut & { _kind: "image" });
+
+export const AVATAR_PRESETS = [
+  "🐶",
+  "🐱",
+  "🐰",
+  "🦊",
+  "🐼",
+  "🐯",
+  "🐻",
+  "🌸",
+  "🌷",
+  "🌙",
+  "⭐",
+  "💗",
+] as const;

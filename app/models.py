@@ -21,6 +21,7 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    avatar: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
 
@@ -64,6 +65,7 @@ class Event(Base):
     creator: Mapped[User] = relationship()
     comments: Mapped[list["Comment"]] = relationship(cascade="all, delete-orphan")
     voices: Mapped[list["Voice"]] = relationship(cascade="all, delete-orphan")
+    images: Mapped[list["Image"]] = relationship(cascade="all, delete-orphan")
 
 
 class Comment(Base):
@@ -88,6 +90,22 @@ class Voice(Base):
     duration_ms: Mapped[int | None] = mapped_column(Integer)
     mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    author: Mapped[User] = relationship()
+
+
+class Image(Base):
+    __tablename__ = "images"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), nullable=False, index=True)
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    width: Mapped[int | None] = mapped_column(Integer)
+    height: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     author: Mapped[User] = relationship()

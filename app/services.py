@@ -4,12 +4,13 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, exists, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Comment, Event, Pair, User, VisibilityMode, Voice
+from app.models import Comment, Event, Image, Pair, User, VisibilityMode, Voice
 from app.schemas import (
     CommentOut,
     ContentsOut,
     EventDetail,
     EventSummary,
+    ImageOut,
     SubmissionState,
     VoiceOut,
 )
@@ -35,7 +36,8 @@ def ensure_pair_event(db: Session, event_id: int, pair: Pair) -> Event:
 def user_has_submitted_query(event_id: int, user_id: int) -> Select[tuple[bool]]:
     comment_exists = exists().where(Comment.event_id == event_id, Comment.author_id == user_id)
     voice_exists = exists().where(Voice.event_id == event_id, Voice.author_id == user_id)
-    return select(or_(comment_exists, voice_exists))
+    image_exists = exists().where(Image.event_id == event_id, Image.author_id == user_id)
+    return select(or_(comment_exists, voice_exists, image_exists))
 
 
 def user_has_submitted(db: Session, event_id: int, user_id: int) -> bool:
@@ -58,17 +60,21 @@ def visible_contents(db: Session, event: Event, user: User, pair: Pair) -> Conte
     state = submission_state(db, event, user, pair)
     comments_query = select(Comment).where(Comment.event_id == event.id)
     voices_query = select(Voice).where(Voice.event_id == event.id)
+    images_query = select(Image).where(Image.event_id == event.id)
 
     if not state.unlocked:
         comments_query = comments_query.where(Comment.author_id == user.id)
         voices_query = voices_query.where(Voice.author_id == user.id)
+        images_query = images_query.where(Image.author_id == user.id)
 
     comments = db.execute(comments_query.order_by(Comment.created_at, Comment.id)).scalars().all()
     voices = db.execute(voices_query.order_by(Voice.created_at, Voice.id)).scalars().all()
+    images = db.execute(images_query.order_by(Image.created_at, Image.id)).scalars().all()
     return ContentsOut(
         submission_state=state,
         comments=[CommentOut.model_validate(comment) for comment in comments],
         voices=[VoiceOut.model_validate(voice) for voice in voices],
+        images=[ImageOut.model_validate(image) for image in images],
     )
 
 
@@ -102,3 +108,16 @@ def ensure_voice_file_visible(db: Session, voice_id: int, user: User, pair: Pair
     if not Path(voice.file_path).exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voice file not found")
     return voice
+
+
+def ensure_image_file_visible(db: Session, image_id: int, user: User, pair: Pair) -> Image:
+    image = db.get(Image, image_id)
+    if image is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
+    event = ensure_pair_event(db, image.event_id, pair)
+    contents = visible_contents(db, event, user, pair)
+    if all(item.id != image.id for item in contents.images):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Image is not visible yet")
+    if not Path(image.file_path).exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image file not found")
+    return image

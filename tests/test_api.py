@@ -3,12 +3,6 @@ from fastapi.testclient import TestClient
 from tests.conftest import auth
 
 
-def test_ui_page_is_served(client: TestClient) -> None:
-    response = client.get("/ui")
-    assert response.status_code == 200
-    assert "双人事件后台" in response.text
-
-
 def test_admin_pair_creation_requires_admin_key(client: TestClient) -> None:
     payload = {"user_a_display_name": "A", "user_b_display_name": "B"}
     assert client.post("/admin/pairs", json=payload).status_code == 403

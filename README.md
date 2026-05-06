@@ -77,32 +77,32 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
 启动后可以访问：
 
-- 可视化界面：`http://127.0.0.1:8000/ui`
 - Swagger 文档：`http://127.0.0.1:8000/docs`
 - OpenAPI JSON：`http://127.0.0.1:8000/openapi.json`
 
 应用启动时会自动创建数据库表。v1 暂未接入 Alembic 迁移。
 
-## 可视化界面
+## 前端启动（`web/`）
 
-项目内置了一个轻量管理和调试界面，访问 `/ui` 或根路径 `/` 即可打开。
+仓库内 `web/` 目录是一个独立的 Next.js (App Router) + TypeScript + Tailwind 工程，作为这个 API 的官方前端。详见 [`web/README.md`](web/README.md)。
 
-界面包含三个区域：
+```powershell
+cd web
+npm install
+npm run dev
+```
 
-- `配对发放`: 输入 `ADMIN_KEY` 和两位用户名称，调用 `POST /admin/pairs` 创建 pair，并显示两个 token。
-- `事件内容`: 保存任意用户 token 后，可以创建事件、查看事件列表、提交评论、上传语音和查看当前可见内容。
-- `接口状态`: 显示页面发出的请求和响应，方便联调。
+默认访问 http://localhost:3000 。前端通过 `NEXT_PUBLIC_API_BASE`（默认 `http://127.0.0.1:8000`）调用本后端，**需要同时启动后端的 `uvicorn`**。
 
-### token 分发页面
+页面：
 
-生成 pair 后，每个用户会显示两个按钮：
+- `/` 登录页（3D 小狗 + 玻璃登录卡，支持 `?token=` 或 `#token=` 自动登录）
+- `/admin` 管理控制台（先用 `ADMIN_KEY` 验证身份，然后创建配对 / 复制 token / 复制入口链接）
+- `/timeline` 事件列表
+- `/timeline/[id]` 事件详情（评论 / 语音 / 图片混排，底部输入栏支持文字、录音、相册）
+- `/create` 新建事件
 
-- `复制 token`: 复制原始 token，适合手动粘贴到客户端。
-- `复制入口`: 复制形如 `http://127.0.0.1:8000/ui#token=...` 的入口链接。
-
-用户打开入口链接后，页面会自动把 token 保存到浏览器 `localStorage`，并清除地址栏中的 hash。之后刷新页面仍会保留当前 token。
-
-token 分发链接本身携带身份凭据，请只通过可信渠道发送。
+token 分发链接形如 `http://localhost:3000/?token=xxx`，本身携带身份凭据，请只通过可信渠道发送。
 
 ## 鉴权说明
 
@@ -190,11 +190,13 @@ X-Admin-Key: your-admin-key
   "user_a": {
     "id": 1,
     "display_name": "Alice",
+    "avatar": "🐶",
     "created_at": "2026-04-29T12:00:00Z"
   },
   "user_b": {
     "id": 2,
     "display_name": "Bob",
+    "avatar": "🐱",
     "created_at": "2026-04-29T12:00:00Z"
   },
   "user_a_token": "token-for-alice",
@@ -480,12 +482,6 @@ curl -X POST "http://127.0.0.1:8000/events/1/voices" \
 python -m pytest tests -q
 ```
 
-在当前 Codex 环境中已验证通过：
-
-```text
-8 passed
-```
-
 ## 注意事项
 
 - v1 使用永久 token，没有刷新和撤销机制。
@@ -494,6 +490,4 @@ python -m pytest tests -q
 - 上传文件默认保存到本地目录，正式部署时需要考虑对象存储或持久化挂载。
 - `.env` 不应提交到版本库；项目已在 `.gitignore` 中排除 `.env`。
 - `ADMIN_KEY` 默认值是 `change-me`，正式环境必须改掉。
-
-
-1. 重构前端（要求适配手机端，前端要优雅大方）分为用户界面和管理界面，管理界面包含了 "配对"，创建和显示已有配对;用户界面如果没token登录，就要求输入token才能进入用户界面（输入token的界面装饰一下，这是一个用来记录情侣间发生事情记录的网站）。进入后页面可以显示当前身份，然后加载事件列表（点击列表中的事件可以查看双方填写状态 解锁状态，内容等；有删除选项）。有新建事件的选项，标题，描述，时间选择控件现代化优雅一点，最重要的是手机端好用，然后是选择可见方式；
+- 前端代码在 `web/`，不参与后端 Python 测试。`web/node_modules/`、`web/.next/`、`web/.env.local` 已在 `.gitignore` 中排除。

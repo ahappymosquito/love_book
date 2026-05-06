@@ -8,3 +8,10 @@ pair_events.db
 *.log
 pytest-cache-files-*/
 .env
+
+# web/ frontend
+web/node_modules/
+web/.next/
+web/out/
+web/.env.local
+web/*.tsbuildinfo

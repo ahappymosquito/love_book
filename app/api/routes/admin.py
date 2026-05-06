@@ -35,8 +35,8 @@ def list_pairs(db: Session = Depends(get_db)) -> list[PairOut]:
 
 @router.post("/pairs", response_model=PairCreated, dependencies=[Depends(require_admin_key)])
 def create_pair(payload: PairCreate, db: Session = Depends(get_db)) -> PairCreated:
-    user_a = User(display_name=payload.user_a_display_name)
-    user_b = User(display_name=payload.user_b_display_name)
+    user_a = User(display_name=payload.user_a_display_name, avatar=payload.user_a_avatar or "")
+    user_b = User(display_name=payload.user_b_display_name, avatar=payload.user_b_avatar or "")
     db.add_all([user_a, user_b])
     db.flush()
 
