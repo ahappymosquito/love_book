@@ -8,6 +8,7 @@ pair_events.db
 *.log
 pytest-cache-files-*/
 .env
+.idea
 
 # web/ frontend
 web/node_modules/
