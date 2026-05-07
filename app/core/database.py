@@ -33,6 +33,7 @@ def get_db() -> Generator[Session, None, None]:
 # Each entry: (table, column_name, "<DDL fragment>")
 _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, str]] = [
     ("users", "avatar", "VARCHAR(64) NOT NULL DEFAULT ''"),
+    ("device_tokens", "expires_at", "TIMESTAMP WITH TIME ZONE NULL"),
 ]
 
 

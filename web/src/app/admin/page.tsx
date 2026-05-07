@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import {
   ArrowLeft,
   ArrowRight,
+  CalendarClock,
   Check,
   Copy,
   KeyRound,
@@ -20,7 +21,7 @@ import { api, APIError } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import { Avatar } from "@/components/avatar";
 import { AvatarPicker } from "@/components/avatar-picker";
-import { formatAbsolute } from "@/lib/format";
+import { formatAbsolute, fromLocalInputValue, toLocalInputValue } from "@/lib/format";
 import { AVATAR_PRESETS, type PairCreated, type PairOut } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
@@ -38,14 +39,12 @@ export default function AdminPage() {
   const [aAvatar, setAAvatar] = useState<string>(AVATAR_PRESETS[0]);
   const [bAvatar, setBAvatar] = useState<string>(AVATAR_PRESETS[1]);
   const [pickerFor, setPickerFor] = useState<"a" | "b" | null>(null);
+  const [tokenExpiryMode, setTokenExpiryMode] = useState<"never" | "custom">("never");
+  const [tokenExpiresAt, setTokenExpiresAt] = useState("");
   const [creating, setCreating] = useState(false);
+  const minimumTokenExpiresAt = toLocalInputValue(new Date(Date.now() + 60_000));
 
-  useEffect(() => {
-    if (!adminKey) return;
-    void refreshPairs();
-  }, [adminKey]);
-
-  async function refreshPairs() {
+  const refreshPairs = useCallback(async () => {
     setLoadingPairs(true);
     try {
       const list = await api.listPairs();
@@ -57,7 +56,12 @@ export default function AdminPage() {
     } finally {
       setLoadingPairs(false);
     }
-  }
+  }, [logoutAdmin]);
+
+  useEffect(() => {
+    if (!adminKey) return;
+    void refreshPairs();
+  }, [adminKey, refreshPairs]);
 
   async function onVerify(e: React.FormEvent) {
     e.preventDefault();
@@ -83,6 +87,7 @@ export default function AdminPage() {
   async function onCreatePair(e: React.FormEvent) {
     e.preventDefault();
     if (!aName.trim() || !bName.trim()) return;
+    if (tokenExpiryMode === "custom" && !tokenExpiresAt) return;
     setCreating(true);
     try {
       const result = await api.createPair({
@@ -90,10 +95,13 @@ export default function AdminPage() {
         user_b_display_name: bName.trim(),
         user_a_avatar: aAvatar,
         user_b_avatar: bAvatar,
+        token_expires_at: tokenExpiryMode === "custom" ? fromLocalInputValue(tokenExpiresAt) : null,
       });
       setCreated(result);
       setAName("");
       setBName("");
+      setTokenExpiryMode("never");
+      setTokenExpiresAt("");
       toast.success("配对已创建");
       void refreshPairs();
     } catch {
@@ -236,9 +244,70 @@ export default function AdminPage() {
                     />
                   </div>
 
+                  <div className="rounded-2xl bg-surface-raised/65 hairline p-4 space-y-3">
+                    <div className="flex items-center gap-2 text-ink">
+                      <CalendarClock className="h-4 w-4 text-rose-deep" />
+                      <span className="font-sc text-sm font-medium">token 有效期</span>
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <label
+                        className={cn(
+                          "rounded-2xl hairline px-4 py-3 cursor-pointer transition",
+                          tokenExpiryMode === "never" ? "bg-rose/10 text-rose-deep" : "bg-cream-deep/30 text-ink-soft",
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name="token-expiry"
+                          value="never"
+                          checked={tokenExpiryMode === "never"}
+                          onChange={() => setTokenExpiryMode("never")}
+                          className="sr-only"
+                        />
+                        <span className="font-sc text-sm">永久有效</span>
+                        <span className="block font-sc text-xs text-ink-muted mt-1">兼容原有分发方式</span>
+                      </label>
+                      <label
+                        className={cn(
+                          "rounded-2xl hairline px-4 py-3 cursor-pointer transition",
+                          tokenExpiryMode === "custom" ? "bg-rose/10 text-rose-deep" : "bg-cream-deep/30 text-ink-soft",
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name="token-expiry"
+                          value="custom"
+                          checked={tokenExpiryMode === "custom"}
+                          onChange={() => setTokenExpiryMode("custom")}
+                          className="sr-only"
+                        />
+                        <span className="font-sc text-sm">指定过期时间</span>
+                        <span className="block font-sc text-xs text-ink-muted mt-1">到期后入口 token 无法继续使用</span>
+                      </label>
+                    </div>
+                    <AnimatePresence>
+                      {tokenExpiryMode === "custom" && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -4, height: 0 }}
+                          animate={{ opacity: 1, y: 0, height: "auto" }}
+                          exit={{ opacity: 0, y: -4, height: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <input
+                            type="datetime-local"
+                            className="input-field"
+                            min={minimumTokenExpiresAt}
+                            value={tokenExpiresAt}
+                            onChange={(e) => setTokenExpiresAt(e.target.value)}
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
                   <button
                     type="submit"
-                    disabled={creating || !aName.trim() || !bName.trim()}
+                    disabled={creating || !aName.trim() || !bName.trim() || (tokenExpiryMode === "custom" && !tokenExpiresAt)}
                     className="btn-primary w-full sm:w-auto rounded-2xl px-6 py-3.5 font-sc text-[15px] font-medium focus-ring inline-flex items-center justify-center gap-2 min-h-[48px]"
                   >
                     {creating ? (
@@ -268,12 +337,14 @@ export default function AdminPage() {
                           <TokenCard
                             user={created.user_a}
                             token={created.user_a_token}
+                            expiresAt={created.user_a_token_expires_at}
                             link={entryLink(created.user_a_token)}
                             onCopy={copy}
                           />
                           <TokenCard
                             user={created.user_b}
                             token={created.user_b_token}
+                            expiresAt={created.user_b_token_expires_at}
                             link={entryLink(created.user_b_token)}
                             onCopy={copy}
                           />
@@ -328,22 +399,37 @@ export default function AdminPage() {
                               <p className="font-sc text-[11px] text-ink-muted">
                                 pair #{p.pair_id} · {formatAbsolute(p.created_at)}
                               </p>
+                              <p className={cn("font-sc text-[11px]", tokenExpiryClass(p.user_a_token_expires_at))}>
+                                token {formatTokenExpiry(p.user_a_token_expires_at)}
+                              </p>
                             </div>
                           </div>
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              className="btn-ghost rounded-full px-3 py-2 text-xs font-sc inline-flex items-center gap-1.5 focus-ring"
-                              onClick={() => copy(p.user_a_token, `${p.user_a.display_name} 的 token`)}
-                            >
-                              <Copy className="h-3 w-3" /> {p.user_a.display_name}
-                            </button>
-                            <button
-                              className="btn-ghost rounded-full px-3 py-2 text-xs font-sc inline-flex items-center gap-1.5 focus-ring"
-                              onClick={() => copy(p.user_b_token, `${p.user_b.display_name} 的 token`)}
-                            >
-                              <Copy className="h-3 w-3" /> {p.user_b.display_name}
-                            </button>
-                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            className="btn-ghost rounded-full px-3 py-2 text-xs font-sc inline-flex items-center gap-1.5 focus-ring"
+                            onClick={() => copy(p.user_a_token, `${p.user_a.display_name} 的 token`)}
+                          >
+                            <Copy className="h-3 w-3" /> {p.user_a.display_name}
+                          </button>
+                          <button
+                            className="btn-ghost rounded-full px-3 py-2 text-xs font-sc inline-flex items-center gap-1.5 focus-ring"
+                            onClick={() => copy(p.user_b_token, `${p.user_b.display_name} 的 token`)}
+                          >
+                            <Copy className="h-3 w-3" /> {p.user_b.display_name}
+                          </button>
+                          <button
+                            className="btn-ghost rounded-full px-3 py-2 text-xs font-sc inline-flex items-center gap-1.5 focus-ring"
+                            onClick={() => copy(entryLink(p.user_a_token), `${p.user_a.display_name} 的入口链接`)}
+                          >
+                            <ArrowRight className="h-3 w-3" /> {p.user_a.display_name}
+                          </button>
+                          <button
+                            className="btn-ghost rounded-full px-3 py-2 text-xs font-sc inline-flex items-center gap-1.5 focus-ring"
+                            onClick={() => copy(entryLink(p.user_b_token), `${p.user_b.display_name} 的入口链接`)}
+                          >
+                            <ArrowRight className="h-3 w-3" /> {p.user_b.display_name}
+                          </button>
                         </div>
                       </li>
                     ))}
@@ -421,11 +507,13 @@ function UserField({
 function TokenCard({
   user,
   token,
+  expiresAt,
   link,
   onCopy,
 }: {
   user: { display_name: string; avatar: string };
   token: string;
+  expiresAt: string | null;
   link: string;
   onCopy: (text: string, label: string) => void;
 }) {
@@ -439,6 +527,9 @@ function TokenCard({
       </div>
       <p className="font-mono text-[11px] break-all text-ink-soft bg-cream-deep/40 rounded-xl p-2 leading-relaxed">
         {token}
+      </p>
+      <p className={cn("font-sc text-[11px]", tokenExpiryClass(expiresAt))}>
+        token {formatTokenExpiry(expiresAt)}
       </p>
       <div className="flex flex-wrap gap-2">
         <button
@@ -458,4 +549,16 @@ function TokenCard({
       </div>
     </div>
   );
+}
+
+function formatTokenExpiry(expiresAt: string | null): string {
+  if (!expiresAt) return "永久有效";
+  const date = new Date(expiresAt);
+  if (date.getTime() <= Date.now()) return `已于 ${formatAbsolute(date)} 过期`;
+  return `有效至 ${formatAbsolute(date)}`;
+}
+
+function tokenExpiryClass(expiresAt: string | null): string {
+  if (!expiresAt) return "text-emerald-700";
+  return new Date(expiresAt).getTime() <= Date.now() ? "text-red-600" : "text-ink-muted";
 }

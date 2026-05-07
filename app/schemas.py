@@ -43,6 +43,7 @@ class PairCreate(APIModel):
     user_b_display_name: str = Field(min_length=1, max_length=100)
     user_a_avatar: str = Field(default="", max_length=64)
     user_b_avatar: str = Field(default="", max_length=64)
+    token_expires_at: datetime | None = None
 
 
 class PairCreated(APIModel):
@@ -51,6 +52,8 @@ class PairCreated(APIModel):
     user_b: UserOut
     user_a_token: str
     user_b_token: str
+    user_a_token_expires_at: datetime | None = None
+    user_b_token_expires_at: datetime | None = None
 
 
 class PairOut(PairCreated):

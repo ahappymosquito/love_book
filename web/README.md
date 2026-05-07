@@ -43,7 +43,7 @@ npm run start
 | 路由 | 说明 |
 | --- | --- |
 | `/` | 三维小狗 + 玻璃登录卡，支持 `?token=` 或 `#token=` 自动登录 |
-| `/admin` | 管理控制台：先用 admin key 验证，再创建配对、复制 token / 入口链接 |
+| `/admin` | 管理控制台：先用 admin key 验证，再创建配对、选择 token 有效期、复制 token / 入口链接 |
 | `/timeline` | 当前用户的事件流，玻璃卡片瀑布 |
 | `/timeline/[id]` | 事件详情，合并的内容流（评论 / 语音气泡 / 图片缩略），底部输入栏支持文字 / 录音 / 图片 |
 | `/create` | 新建事件 |
@@ -60,4 +60,4 @@ npm run start
 - **3D 小狗**（`src/components/puppy-scene.tsx`）：基础几何体堆叠 + `useFrame` 跟随鼠标 / 触屏；点击触发跳跃 + 摇尾巴；周围漂浮粉色心形粒子 + 星空。
 - **录音**：`MediaRecorder` 采用 `audio/webm;codecs=opus` 优先，停止后直接 `POST /events/{id}/voices`。
 - **图片**：选择后 `URL.createObjectURL` 立即乐观渲染，上传完成后用真实 ID 替换。
-- **凭据**：用户 token 存 `localStorage` (`pair-events-token`)；admin key 仅留在 zustand 内存 + sessionStorage 标记。
+- **凭据**：用户 token 存 `localStorage` (`pair-events-token`)；admin key 仅留在 zustand 内存 + sessionStorage 标记；过期 token 会在登录时提示失效。

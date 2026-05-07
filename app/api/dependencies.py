@@ -5,9 +5,18 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.models import DeviceToken, Pair, User
+from app.models import DeviceToken, Pair, User, utc_now
 
 bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def token_is_expired(token: DeviceToken) -> bool:
+    if token.expires_at is None:
+        return False
+    expires_at = token.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=utc_now().tzinfo)
+    return expires_at <= utc_now()
 
 
 def require_admin_key(x_admin_key: str | None = Header(default=None)) -> None:
@@ -31,6 +40,12 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid bearer token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if token_is_expired(token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Bearer token has expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
     user = db.get(User, token.user_id)

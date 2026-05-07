@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle2,
@@ -79,19 +79,19 @@ function EventDetailInner() {
   const [lightbox, setLightbox] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (Number.isNaN(eventId)) return;
-    void load();
-  }, [eventId]);
-
-  async function load() {
+  const load = useCallback(async () => {
     try {
       const data = await api.getEvent(eventId);
       setEvent(data);
     } catch {
       router.replace("/timeline");
     }
-  }
+  }, [eventId, router]);
+
+  useEffect(() => {
+    if (Number.isNaN(eventId)) return;
+    void load();
+  }, [eventId, load]);
 
   async function refreshContents() {
     try {

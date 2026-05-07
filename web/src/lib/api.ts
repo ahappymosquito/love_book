@@ -141,6 +141,7 @@ export const api = {
     user_b_display_name: string;
     user_a_avatar?: string;
     user_b_avatar?: string;
+    token_expires_at?: string | null;
   }) =>
     apiRequest<PairCreated>("/admin/pairs", {
       method: "POST",

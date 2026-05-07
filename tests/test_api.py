@@ -1,5 +1,9 @@
-from fastapi.testclient import TestClient
+from datetime import datetime, timedelta, timezone
 
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
+from app.models import DeviceToken
 from tests.conftest import auth
 
 
@@ -14,6 +18,8 @@ def test_admin_pair_creation_requires_admin_key(client: TestClient) -> None:
     assert data["pair_id"]
     assert data["user_a_token"]
     assert data["user_b_token"]
+    assert data["user_a_token_expires_at"] is None
+    assert data["user_b_token_expires_at"] is None
 
 
 def test_admin_pairs_can_be_listed_from_database(client: TestClient) -> None:
@@ -32,6 +38,46 @@ def test_admin_pairs_can_be_listed_from_database(client: TestClient) -> None:
     assert pairs[0]["user_b"]["display_name"] == "B"
     assert pairs[0]["user_a_token"] == created["user_a_token"]
     assert pairs[0]["user_b_token"] == created["user_b_token"]
+
+
+def test_admin_pair_creation_accepts_token_expiration(client: TestClient) -> None:
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+
+    response = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={"user_a_display_name": "A", "user_b_display_name": "B", "token_expires_at": expires_at},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["user_a_token_expires_at"].endswith("Z")
+    assert data["user_b_token_expires_at"] == data["user_a_token_expires_at"]
+    assert client.get("/auth/me", headers=auth(data["user_a_token"])).status_code == 200
+
+
+def test_admin_pair_creation_rejects_past_token_expiration(client: TestClient) -> None:
+    expires_at = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+
+    response = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={"user_a_display_name": "A", "user_b_display_name": "B", "token_expires_at": expires_at},
+    )
+
+    assert response.status_code == 422
+
+
+def test_expired_token_is_rejected(client: TestClient, pair_tokens: dict[str, str | int], db_session: Session) -> None:
+    token = db_session.get(DeviceToken, str(pair_tokens["user_a_token"]))
+    assert token is not None
+    token.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    db_session.commit()
+
+    response = client.get("/auth/me", headers=auth(str(pair_tokens["user_a_token"])))
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Bearer token has expired"
 
 
 def test_auth_me_returns_user_counterpart_and_pair(client: TestClient, pair_tokens: dict[str, str | int]) -> None:

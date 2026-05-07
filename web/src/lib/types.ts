@@ -80,6 +80,8 @@ export interface PairCreated {
   user_b: UserOut;
   user_a_token: string;
   user_b_token: string;
+  user_a_token_expires_at: string | null;
+  user_b_token_expires_at: string | null;
 }
 
 export interface PairOut extends PairCreated {

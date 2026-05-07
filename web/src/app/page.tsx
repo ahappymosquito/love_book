@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Eye, EyeOff, Heart, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -22,6 +22,24 @@ export default function LoginPage() {
   const [reveal, setReveal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const autoRan = useRef(false);
+
+  const doLogin = useCallback(async (t: string) => {
+    setSubmitting(true);
+    setToken(t);
+    try {
+      const me = await api.me();
+      setMe(me);
+      toast.success(`欢迎回来，${me.user.display_name}`);
+      router.replace("/timeline");
+    } catch (err) {
+      setToken(null);
+      if (err instanceof APIError && err.status === 401) {
+        toast.error(err.message.includes("expired") ? "这个入口 token 已过期" : "token 不对劲，请确认后再试");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }, [router, setMe, setToken]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -48,25 +66,7 @@ export default function LoginPage() {
     if (token) {
       router.replace("/timeline");
     }
-  }, [hydrated, token, router]);
-
-  async function doLogin(t: string) {
-    setSubmitting(true);
-    setToken(t);
-    try {
-      const me = await api.me();
-      setMe(me);
-      toast.success(`欢迎回来，${me.user.display_name}`);
-      router.replace("/timeline");
-    } catch (err) {
-      setToken(null);
-      if (err instanceof APIError && err.status === 401) {
-        toast.error("token 不对劲，请确认后再试");
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  }
+  }, [doLogin, hydrated, token, router]);
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
