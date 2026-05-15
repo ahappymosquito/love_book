@@ -19,11 +19,16 @@ pytest-cache-files-*/
 # 上传内容通过 volume 挂载，不打进镜像
 uploads/
 
-# 前端构建产物（前端镜像独立）
-web/node_modules
-web/.next
-web/out
-web/*.tsbuildinfo
+# 前端目录与后端镜像无关，整体排除（前端镜像 context 是 ./web，单独处理）
+web/
+
+# GitHub / CI / 部署相关
+.github/
+deploy/
+docker-compose.yml
+DEPLOY.md
+deploy.sh
+deploy.bat
 
 # 环境敏感文件不进镜像（运行期通过 env_file 注入）
 .env

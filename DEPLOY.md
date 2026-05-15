@@ -281,7 +281,59 @@ git checkout <old-sha>
 
 ---
 
-## 9. 关键改动备忘（v0.3 部署版）
+## 9. 用 GitHub Actions 自动构建镜像
+
+仓库内置 `.github/workflows/docker-build.yml`，触发条件：
+
+- `push` 到 `master` / `main` / 任意 `v*` 标签 → 自动构建并推送
+- `pull_request` → 仅构建不推送（验证 Dockerfile 不挂掉）
+- `workflow_dispatch` → 手动触发，可临时覆盖 `NEXT_PUBLIC_API_BASE` / `NEXT_PUBLIC_APP_URL`
+
+镜像默认推送到 GHCR：
+
+```
+ghcr.io/<owner>/<repo>-backend:latest
+ghcr.io/<owner>/<repo>-backend:sha-<short>
+ghcr.io/<owner>/<repo>-frontend:latest
+ghcr.io/<owner>/<repo>-frontend:sha-<short>
+```
+
+可选的仓库变量（Settings → Secrets and variables → Actions → Variables）：
+
+| 变量名 | 作用 |
+| --- | --- |
+| `NEXT_PUBLIC_API_BASE` | 前端 build args，覆盖默认的 `/api` |
+| `NEXT_PUBLIC_APP_URL` | 前端 build args，覆盖默认的 `https://db.example.com` |
+
+> GHCR 默认对仓库 Collaborator 开放，外部拉取需要先在 Package settings 里把可见性改为 Public，或在拉取机器上执行 `docker login ghcr.io`。
+
+### 直接使用 CI 镜像部署
+
+服务器端可以跳过本地 build，直接 pull 用：
+
+```bash
+docker login ghcr.io        # 私有包才需要
+docker compose pull         # 配合下面的 image 覆写
+docker compose up -d
+```
+
+在服务器上创建 `docker-compose.override.yml`（不进仓库）：
+
+```yaml
+services:
+  backend:
+    image: ghcr.io/<owner>/<repo>-backend:latest
+    build: !reset null
+  frontend:
+    image: ghcr.io/<owner>/<repo>-frontend:latest
+    build: !reset null
+```
+
+这样 `docker compose up -d` 就会直接拉 GHCR 镜像，跳过本地构建步骤。
+
+---
+
+## 10. 关键改动备忘（v0.3 部署版）
 
 | 改动 | 文件 |
 | --- | --- |

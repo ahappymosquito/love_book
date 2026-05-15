@@ -1,0 +1,251 @@
+name: docker-build
+
+# 触发条件：
+#   - push 到 master / main / 任何 v* 标签 → 构建并推送
+#   - pull_request → 仅构建不推送（节省 registry 配额）
+#   - workflow_dispatch → 手工触发，可临时覆盖 build args
+on:
+  push:
+    branches: [master, main]
+    tags: ["v*"]
+    paths:
+      - Dockerfile
+      - web/Dockerfile
+      - requirements.txt
+      - "app/**"
+      - "web/**"
+      - "scripts/**"
+      - ".github/workflows/docker-build.yml"
+  pull_request:
+    branches: [master, main]
+    paths:
+      - Dockerfile
+      - web/Dockerfile
+      - requirements.txt
+      - "app/**"
+      - "web/**"
+  workflow_dispatch:
+    inputs:
+      next_public_api_base:
+        description: "前端 NEXT_PUBLIC_API_BASE（默认 /api）"
+        type: string
+        default: "/api"
+      next_public_app_url:
+        description: "前端 NEXT_PUBLIC_APP_URL（建议 https://db.example.com）"
+        type: string
+        default: "https://db.example.com"
+      push_image:
+        description: "是否推送到 registry"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: write          # 推送到 GHCR 需要
+  id-token: write          # 预留：未来如果切到 OIDC 登录 Docker Hub / AWS ECR
+
+env:
+  REGISTRY: ghcr.io
+  # GHCR 要求镜像 namespace 全小写，这里通过下面的 prep 步骤统一转换
+  # 前端 build args 默认值；workflow_dispatch 时可手动覆盖
+  DEFAULT_API_BASE: "/api"
+  DEFAULT_APP_URL: "https://db.example.com"
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # 公共预处理：把 owner / repo 转小写，决定是否推送
+  prep:
+    name: prep
+    runs-on: ubuntu-24.04
+    outputs:
+      image_owner: ${{ steps.lower.outputs.owner }}
+      image_repo:  ${{ steps.lower.outputs.repo }}
+      push:        ${{ steps.gate.outputs.push }}
+    steps:
+      - name: 小写化 owner / repo
+        id: lower
+        run: |
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+          REPO="${GITHUB_REPOSITORY##*/}"
+          echo "repo=${REPO,,}" >> "$GITHUB_OUTPUT"
+
+      - name: 判断是否推送
+        id: gate
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_PUSH: ${{ inputs.push_image }}
+        run: |
+          if [[ "$EVENT" == "pull_request" ]]; then
+            echo "push=false" >> "$GITHUB_OUTPUT"
+          elif [[ "$EVENT" == "workflow_dispatch" ]]; then
+            echo "push=${INPUT_PUSH:-true}" >> "$GITHUB_OUTPUT"
+          else
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 后端镜像
+  backend:
+    name: build · backend
+    runs-on: ubuntu-24.04
+    needs: prep
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: 设置 Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GHCR
+        if: needs.prep.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 计算镜像标签
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ needs.prep.outputs.image_owner }}/${{ needs.prep.outputs.image_repo }}-backend
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=love-book-backend
+            org.opencontainers.image.description=FastAPI 后端（我们之间的小事）
+            org.opencontainers.image.vendor=db.example.com
+
+      - name: 构建并推送后端镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: ${{ needs.prep.outputs.push == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      - name: 摘要
+        if: always()
+        run: |
+          {
+            echo "### backend"
+            echo ""
+            echo "- push: \`${{ needs.prep.outputs.push }}\`"
+            echo "- tags:"
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 前端镜像（NEXT_PUBLIC_* 在 build 阶段被烘焙）
+  frontend:
+    name: build · frontend
+    runs-on: ubuntu-24.04
+    needs: prep
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 整理 build args
+        id: vars
+        # 优先级：workflow_dispatch 输入 > 仓库变量 vars.* > 默认值
+        env:
+          INPUT_API_BASE: ${{ inputs.next_public_api_base }}
+          INPUT_APP_URL: ${{ inputs.next_public_app_url }}
+          VARS_API_BASE: ${{ vars.NEXT_PUBLIC_API_BASE }}
+          VARS_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -e
+          if [[ "$EVENT" == "workflow_dispatch" && -n "$INPUT_API_BASE" ]]; then
+            API_BASE="$INPUT_API_BASE"
+          elif [[ -n "$VARS_API_BASE" ]]; then
+            API_BASE="$VARS_API_BASE"
+          else
+            API_BASE="${{ env.DEFAULT_API_BASE }}"
+          fi
+
+          if [[ "$EVENT" == "workflow_dispatch" && -n "$INPUT_APP_URL" ]]; then
+            APP_URL="$INPUT_APP_URL"
+          elif [[ -n "$VARS_APP_URL" ]]; then
+            APP_URL="$VARS_APP_URL"
+          else
+            APP_URL="${{ env.DEFAULT_APP_URL }}"
+          fi
+
+          echo "api_base=${API_BASE}" >> "$GITHUB_OUTPUT"
+          echo "app_url=${APP_URL}"   >> "$GITHUB_OUTPUT"
+          echo "::notice ::frontend build args -> NEXT_PUBLIC_API_BASE=${API_BASE}, NEXT_PUBLIC_APP_URL=${APP_URL}"
+
+      - name: 设置 QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: 设置 Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GHCR
+        if: needs.prep.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 计算镜像标签
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ needs.prep.outputs.image_owner }}/${{ needs.prep.outputs.image_repo }}-frontend
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=love-book-frontend
+            org.opencontainers.image.description=Next.js 前端（我们之间的小事）
+            org.opencontainers.image.vendor=db.example.com
+
+      - name: 构建并推送前端镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          file: ./web/Dockerfile
+          platforms: linux/amd64
+          push: ${{ needs.prep.outputs.push == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NEXT_PUBLIC_API_BASE=${{ steps.vars.outputs.api_base }}
+            NEXT_PUBLIC_APP_URL=${{ steps.vars.outputs.app_url }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+
+      - name: 摘要
+        if: always()
+        run: |
+          {
+            echo "### frontend"
+            echo ""
+            echo "- push: \`${{ needs.prep.outputs.push }}\`"
+            echo "- build args:"
+            echo "  - NEXT_PUBLIC_API_BASE=\`${{ steps.vars.outputs.api_base }}\`"
+            echo "  - NEXT_PUBLIC_APP_URL=\`${{ steps.vars.outputs.app_url }}\`"
+            echo "- tags:"
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
