@@ -20,6 +20,7 @@ class UserOut(APIModel):
     id: int
     display_name: str
     avatar: str = ""
+    email: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -43,7 +44,14 @@ class PairCreate(APIModel):
     user_b_display_name: str = Field(min_length=1, max_length=100)
     user_a_avatar: str = Field(default="", max_length=64)
     user_b_avatar: str = Field(default="", max_length=64)
+    user_a_email: str | None = Field(default=None, max_length=255)
+    user_b_email: str | None = Field(default=None, max_length=255)
     token_expires_at: datetime | None = None
+
+
+class PairUpdate(APIModel):
+    user_a_email: str | None = Field(default=None, max_length=255)
+    user_b_email: str | None = Field(default=None, max_length=255)
 
 
 class PairCreated(APIModel):
@@ -151,3 +159,31 @@ class ContentsOut(APIModel):
 
 class EventDetail(EventSummary):
     contents: ContentsOut
+
+
+class LoginRecordCreate(APIModel):
+    user_agent: str | None = Field(default=None, max_length=500)
+    locale: str | None = Field(default=None, max_length=64)
+    timezone_name: str | None = Field(default=None, max_length=64)
+    screen: str | None = Field(default=None, max_length=64)
+
+
+class LoginLogOut(APIModel):
+    id: int
+    user_id: int
+    user: UserOut | None = None
+    ip: str | None
+    user_agent: str | None
+    device: str | None
+    os: str | None
+    browser: str | None
+    locale: str | None
+    timezone_name: str | None
+    screen: str | None
+    country: str | None
+    region: str | None
+    city: str | None
+    isp: str | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

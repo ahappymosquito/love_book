@@ -15,6 +15,18 @@ const PuppyScene = dynamic(
   { ssr: false },
 );
 
+function sanitizeNext(value: string | null | undefined): string | null {
+  if (!value) return null;
+  let decoded = value;
+  try {
+    decoded = decodeURIComponent(value);
+  } catch {
+    decoded = value;
+  }
+  if (!decoded.startsWith("/") || decoded.startsWith("//")) return null;
+  return decoded;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const { token, hydrated, setToken, setMe } = useAppStore();
@@ -23,14 +35,16 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const autoRan = useRef(false);
 
-  const doLogin = useCallback(async (t: string) => {
+  const doLogin = useCallback(async (t: string, next?: string | null) => {
     setSubmitting(true);
     setToken(t);
     try {
       const me = await api.me();
       setMe(me);
       toast.success(`欢迎回来，${me.user.display_name}`);
-      router.replace("/timeline");
+      void reportLoginFingerprint();
+      const target = sanitizeNext(next) || "/timeline";
+      router.replace(target);
     } catch (err) {
       setToken(null);
       if (err instanceof APIError && err.status === 401) {
@@ -40,6 +54,22 @@ export default function LoginPage() {
       setSubmitting(false);
     }
   }, [router, setMe, setToken]);
+
+  async function reportLoginFingerprint() {
+    if (typeof window === "undefined") return;
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const screen = `${window.screen.width}x${window.screen.height}@${window.devicePixelRatio || 1}`;
+      await api.recordLogin({
+        user_agent: navigator.userAgent,
+        locale: navigator.language,
+        timezone_name: tz,
+        screen,
+      });
+    } catch {
+      // 静默忽略，登录日志不影响主流程
+    }
+  }
 
   useEffect(() => {
     if (!hydrated) return;
@@ -53,13 +83,23 @@ export default function LoginPage() {
       const queryToken = url.searchParams.get("token");
       const hashToken = hashParams.get("token");
       const incoming = queryToken || hashToken;
+      const nextParam = url.searchParams.get("next") || hashParams.get("next");
       if (incoming) {
         autoRan.current = true;
         url.searchParams.delete("token");
+        url.searchParams.delete("next");
         const cleanUrl = `${url.pathname}${url.search}`;
         window.history.replaceState(null, "", cleanUrl);
-        void doLogin(incoming);
+        void doLogin(incoming, nextParam);
         return;
+      }
+
+      if (token && nextParam) {
+        const target = sanitizeNext(nextParam);
+        if (target) {
+          router.replace(target);
+          return;
+        }
       }
     }
 

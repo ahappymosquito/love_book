@@ -12,8 +12,16 @@ class Base(DeclarativeBase):
 
 
 settings = get_settings()
-connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
-engine = create_engine(settings.database_url, connect_args=connect_args)
+
+
+def _build_engine(database_url: str) -> Engine:
+    if database_url.startswith("sqlite"):
+        return create_engine(database_url, connect_args={"check_same_thread": False})
+    # MySQL / Postgres etc. - keep connections healthy through long-lived idle periods.
+    return create_engine(database_url, pool_pre_ping=True, pool_recycle=3600)
+
+
+engine = _build_engine(settings.database_url)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 
@@ -29,23 +37,43 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
-# Lightweight column-existence migration for SQLite/Postgres without Alembic.
-# Each entry: (table, column_name, "<DDL fragment>")
-_LIGHTWEIGHT_COLUMNS: list[tuple[str, str, str]] = [
-    ("users", "avatar", "VARCHAR(64) NOT NULL DEFAULT ''"),
-    ("device_tokens", "expires_at", "TIMESTAMP WITH TIME ZONE NULL"),
+# Lightweight column-existence migration for environments without Alembic.
+# Each entry: (table, column_name, {dialect_name: "<DDL fragment>"}).
+# "default" is used as a fallback when the dialect-specific fragment is missing.
+_LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
+    (
+        "users",
+        "avatar",
+        {"default": "VARCHAR(64) NOT NULL DEFAULT ''"},
+    ),
+    (
+        "users",
+        "email",
+        {"default": "VARCHAR(255) NULL"},
+    ),
+    (
+        "device_tokens",
+        "expires_at",
+        {
+            "default": "TIMESTAMP WITH TIME ZONE NULL",
+            "mysql": "DATETIME NULL",
+            "mariadb": "DATETIME NULL",
+        },
+    ),
 ]
 
 
 def _ensure_columns(target_engine: Engine) -> None:
     inspector = inspect(target_engine)
     existing_tables = set(inspector.get_table_names())
-    for table_name, column_name, ddl_fragment in _LIGHTWEIGHT_COLUMNS:
+    dialect_name = target_engine.dialect.name
+    for table_name, column_name, ddl_by_dialect in _LIGHTWEIGHT_COLUMNS:
         if table_name not in existing_tables:
             continue
         existing_columns = {column["name"] for column in inspector.get_columns(table_name)}
         if column_name in existing_columns:
             continue
+        ddl_fragment = ddl_by_dialect.get(dialect_name, ddl_by_dialect["default"])
         with target_engine.begin() as connection:
             connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {ddl_fragment}"))
 

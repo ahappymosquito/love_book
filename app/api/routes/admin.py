@@ -7,10 +7,21 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_admin_key
 from app.core.database import get_db
-from app.models import DeviceToken, Pair, User, utc_now
-from app.schemas import PairCreate, PairCreated, PairOut
+from app.models import DeviceToken, LoginLog, Pair, User, utc_now
+from app.schemas import LoginLogOut, PairCreate, PairCreated, PairOut, PairUpdate, UserOut
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+def _clean_email(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    if "@" not in value or len(value) > 255:
+        raise HTTPException(status_code=422, detail="邮箱格式不正确")
+    return value
 
 
 def normalize_token_expires_at(expires_at):
@@ -53,8 +64,16 @@ def list_pairs(db: Session = Depends(get_db)) -> list[PairOut]:
 @router.post("/pairs", response_model=PairCreated, dependencies=[Depends(require_admin_key)])
 def create_pair(payload: PairCreate, db: Session = Depends(get_db)) -> PairCreated:
     token_expires_at = normalize_token_expires_at(payload.token_expires_at)
-    user_a = User(display_name=payload.user_a_display_name, avatar=payload.user_a_avatar or "")
-    user_b = User(display_name=payload.user_b_display_name, avatar=payload.user_b_avatar or "")
+    user_a = User(
+        display_name=payload.user_a_display_name,
+        avatar=payload.user_a_avatar or "",
+        email=_clean_email(payload.user_a_email),
+    )
+    user_b = User(
+        display_name=payload.user_b_display_name,
+        avatar=payload.user_b_avatar or "",
+        email=_clean_email(payload.user_b_email),
+    )
     db.add_all([user_a, user_b])
     db.flush()
 
@@ -79,3 +98,64 @@ def create_pair(payload: PairCreate, db: Session = Depends(get_db)) -> PairCreat
         user_a_token_expires_at=token_expires_at,
         user_b_token_expires_at=token_expires_at,
     )
+
+
+@router.patch("/pairs/{pair_id}", response_model=PairOut, dependencies=[Depends(require_admin_key)])
+def update_pair(pair_id: int, payload: PairUpdate, db: Session = Depends(get_db)) -> PairOut:
+    pair = db.get(Pair, pair_id)
+    if pair is None:
+        raise HTTPException(status_code=404, detail="Pair not found")
+    data = payload.model_dump(exclude_unset=True)
+    if "user_a_email" in data:
+        pair.user_a.email = _clean_email(data["user_a_email"])
+    if "user_b_email" in data:
+        pair.user_b.email = _clean_email(data["user_b_email"])
+    db.flush()
+    db.refresh(pair)
+    return pair_out(db, pair)
+
+
+@router.get(
+    "/login-logs",
+    response_model=list[LoginLogOut],
+    dependencies=[Depends(require_admin_key)],
+)
+def list_login_logs(
+    db: Session = Depends(get_db),
+    limit: int = 200,
+    user_id: int | None = None,
+) -> list[LoginLogOut]:
+    limit = max(1, min(limit, 500))
+    stmt = select(LoginLog).order_by(LoginLog.created_at.desc()).limit(limit)
+    if user_id is not None:
+        stmt = stmt.where(LoginLog.user_id == user_id)
+    logs = db.execute(stmt).scalars().all()
+    user_ids = {log.user_id for log in logs}
+    users = (
+        db.execute(select(User).where(User.id.in_(user_ids))).scalars().all() if user_ids else []
+    )
+    user_by_id = {user.id: user for user in users}
+    out: list[LoginLogOut] = []
+    for log in logs:
+        user = user_by_id.get(log.user_id)
+        out.append(
+            LoginLogOut(
+                id=log.id,
+                user_id=log.user_id,
+                user=UserOut.model_validate(user) if user else None,
+                ip=log.ip,
+                user_agent=log.user_agent,
+                device=log.device,
+                os=log.os,
+                browser=log.browser,
+                locale=log.locale,
+                timezone_name=log.timezone_name,
+                screen=log.screen,
+                country=log.country,
+                region=log.region,
+                city=log.city,
+                isp=log.isp,
+                created_at=log.created_at,
+            )
+        )
+    return out

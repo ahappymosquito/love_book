@@ -4,6 +4,7 @@ export interface UserOut {
   id: number;
   display_name: string;
   avatar: string;
+  email: string | null;
   created_at: string;
 }
 
@@ -92,6 +93,32 @@ export type ContentItem =
   | (CommentOut & { _kind: "comment" })
   | (VoiceOut & { _kind: "voice" })
   | (ImageOut & { _kind: "image" });
+
+export interface LoginLogOut {
+  id: number;
+  user_id: number;
+  user: UserOut | null;
+  ip: string | null;
+  user_agent: string | null;
+  device: string | null;
+  os: string | null;
+  browser: string | null;
+  locale: string | null;
+  timezone_name: string | null;
+  screen: string | null;
+  country: string | null;
+  region: string | null;
+  city: string | null;
+  isp: string | null;
+  created_at: string;
+}
+
+export interface LoginRecordCreate {
+  user_agent?: string | null;
+  locale?: string | null;
+  timezone_name?: string | null;
+  screen?: string | null;
+}
 
 export const AVATAR_PRESETS = [
   "🐶",

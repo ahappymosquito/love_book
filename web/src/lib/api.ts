@@ -8,6 +8,8 @@ import type {
   EventDetail,
   EventSummary,
   ImageOut,
+  LoginLogOut,
+  LoginRecordCreate,
   MeOut,
   PairCreated,
   PairOut,
@@ -141,6 +143,8 @@ export const api = {
     user_b_display_name: string;
     user_a_avatar?: string;
     user_b_avatar?: string;
+    user_a_email?: string | null;
+    user_b_email?: string | null;
     token_expires_at?: string | null;
   }) =>
     apiRequest<PairCreated>("/admin/pairs", {
@@ -149,11 +153,37 @@ export const api = {
       withAdmin: true,
       withAuth: false,
     }),
+  updatePair: (
+    pairId: number,
+    payload: { user_a_email?: string | null; user_b_email?: string | null },
+  ) =>
+    apiRequest<PairOut>(`/admin/pairs/${pairId}`, {
+      method: "PATCH",
+      json: payload,
+      withAdmin: true,
+      withAuth: false,
+    }),
+  listLoginLogs: (params?: { limit?: number; userId?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.limit) search.set("limit", String(params.limit));
+    if (params?.userId != null) search.set("user_id", String(params.userId));
+    const qs = search.toString();
+    return apiRequest<LoginLogOut[]>(`/admin/login-logs${qs ? `?${qs}` : ""}`, {
+      withAdmin: true,
+      withAuth: false,
+    });
+  },
 
   // Auth
   me: () => apiRequest<MeOut>("/auth/me"),
   patchMe: (payload: { display_name?: string; avatar?: string }) =>
     apiRequest<UserOut>("/auth/me", { method: "PATCH", json: payload }),
+  recordLogin: (payload: LoginRecordCreate) =>
+    apiRequest<LoginLogOut>("/auth/login-record", {
+      method: "POST",
+      json: payload,
+      silent: true,
+    }),
 
   // Events
   listEvents: () => apiRequest<EventSummary[]>("/events"),

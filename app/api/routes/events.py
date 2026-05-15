@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.database import get_db
+from app.emailer import notify_event_created
 from app.models import Event, User
 from app.schemas import EventCreate, EventDetail, EventSummary, EventUpdate
-from app.services import ensure_pair_event, event_detail, event_summary
+from app.services import active_token_for_user, counterpart, ensure_pair_event, event_detail, event_summary
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -14,6 +15,7 @@ router = APIRouter(prefix="/events", tags=["events"])
 @router.post("", response_model=EventDetail, status_code=status.HTTP_201_CREATED)
 def create_event(
     payload: EventCreate,
+    background: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> EventDetail:
@@ -29,6 +31,18 @@ def create_event(
     db.add(event)
     db.flush()
     db.refresh(event)
+    other = counterpart(pair, current_user)
+    recipient_token = active_token_for_user(db, other.id)
+    background.add_task(
+        notify_event_created,
+        recipient_email=other.email,
+        recipient_name=other.display_name,
+        recipient_token=recipient_token,
+        actor_name=current_user.display_name,
+        event_id=event.id,
+        event_title=event.title,
+        event_description=event.description,
+    )
     return event_detail(db, event, current_user, pair)
 
 

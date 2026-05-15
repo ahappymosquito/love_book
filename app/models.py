@@ -22,6 +22,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
     avatar: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+    email: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
 
@@ -110,3 +111,25 @@ class Image(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     author: Mapped[User] = relationship()
+
+
+class LoginLog(Base):
+    __tablename__ = "login_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    ip: Mapped[str | None] = mapped_column(String(64))
+    user_agent: Mapped[str | None] = mapped_column(String(500))
+    device: Mapped[str | None] = mapped_column(String(200))
+    os: Mapped[str | None] = mapped_column(String(100))
+    browser: Mapped[str | None] = mapped_column(String(100))
+    locale: Mapped[str | None] = mapped_column(String(64))
+    timezone_name: Mapped[str | None] = mapped_column(String(64))
+    screen: Mapped[str | None] = mapped_column(String(64))
+    country: Mapped[str | None] = mapped_column(String(100))
+    region: Mapped[str | None] = mapped_column(String(100))
+    city: Mapped[str | None] = mapped_column(String(100))
+    isp: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    user: Mapped[User] = relationship()

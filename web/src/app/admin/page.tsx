@@ -13,7 +13,10 @@ import {
   KeyRound,
   Loader2,
   LogOut,
+  Mail,
   Plus,
+  Save,
+  ScrollText,
   Sparkles,
   Users,
 } from "lucide-react";
@@ -38,6 +41,8 @@ export default function AdminPage() {
   const [bName, setBName] = useState("");
   const [aAvatar, setAAvatar] = useState<string>(AVATAR_PRESETS[0]);
   const [bAvatar, setBAvatar] = useState<string>(AVATAR_PRESETS[1]);
+  const [aEmail, setAEmail] = useState("");
+  const [bEmail, setBEmail] = useState("");
   const [pickerFor, setPickerFor] = useState<"a" | "b" | null>(null);
   const [tokenExpiryMode, setTokenExpiryMode] = useState<"never" | "custom">("never");
   const [tokenExpiresAt, setTokenExpiresAt] = useState("");
@@ -95,11 +100,15 @@ export default function AdminPage() {
         user_b_display_name: bName.trim(),
         user_a_avatar: aAvatar,
         user_b_avatar: bAvatar,
+        user_a_email: aEmail.trim() || null,
+        user_b_email: bEmail.trim() || null,
         token_expires_at: tokenExpiryMode === "custom" ? fromLocalInputValue(tokenExpiresAt) : null,
       });
       setCreated(result);
       setAName("");
       setBName("");
+      setAEmail("");
+      setBEmail("");
       setTokenExpiryMode("never");
       setTokenExpiresAt("");
       toast.success("配对已创建");
@@ -144,16 +153,25 @@ export default function AdminPage() {
           </Link>
           <h1 className="font-display text-lg sm:text-xl text-ink">管理控制台</h1>
           {adminKey ? (
-            <button
-              onClick={() => {
-                logoutAdmin();
-                toast.success("已退出管理");
-              }}
-              className="inline-flex items-center gap-1.5 text-sm font-sc text-ink-soft hover:text-rose-deep focus-ring rounded-full px-2 py-1"
-            >
-              <LogOut className="h-4 w-4" />
-              退出
-            </button>
+            <div className="flex items-center gap-1">
+              <Link
+                href="/record"
+                className="inline-flex items-center gap-1.5 text-sm font-sc text-ink-soft hover:text-rose-deep focus-ring rounded-full px-2 py-1"
+              >
+                <ScrollText className="h-4 w-4" />
+                登录记录
+              </Link>
+              <button
+                onClick={() => {
+                  logoutAdmin();
+                  toast.success("已退出管理");
+                }}
+                className="inline-flex items-center gap-1.5 text-sm font-sc text-ink-soft hover:text-rose-deep focus-ring rounded-full px-2 py-1"
+              >
+                <LogOut className="h-4 w-4" />
+                退出
+              </button>
+            </div>
           ) : (
             <span className="w-14" />
           )}
@@ -233,6 +251,8 @@ export default function AdminPage() {
                       avatar={aAvatar}
                       onPickAvatar={() => setPickerFor("a")}
                       placeholder="例如：阿白"
+                      email={aEmail}
+                      onEmailChange={setAEmail}
                     />
                     <UserField
                       label="ta 二"
@@ -241,6 +261,8 @@ export default function AdminPage() {
                       avatar={bAvatar}
                       onPickAvatar={() => setPickerFor("b")}
                       placeholder="例如：小棕"
+                      email={bEmail}
+                      onEmailChange={setBEmail}
                     />
                   </div>
 
@@ -382,56 +404,17 @@ export default function AdminPage() {
                 ) : (
                   <ul className="space-y-3">
                     {pairs.map((p) => (
-                      <li
+                      <PairRow
                         key={p.pair_id}
-                        className="glass-card rounded-3xl p-5 sm:p-6 transition hover:shadow-glow"
-                      >
-                        <div className="flex items-center justify-between gap-4 flex-wrap">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <Avatar emoji={p.user_a.avatar} name={p.user_a.display_name} size="md" />
-                            <div className="font-display text-2xl text-rose">·</div>
-                            <Avatar emoji={p.user_b.avatar} name={p.user_b.display_name} size="md" />
-                            <div className="ml-1 min-w-0">
-                              <p className="font-display text-base text-ink truncate">
-                                {p.user_a.display_name} <span className="text-rose">&</span>{" "}
-                                {p.user_b.display_name}
-                              </p>
-                              <p className="font-sc text-[11px] text-ink-muted">
-                                pair #{p.pair_id} · {formatAbsolute(p.created_at)}
-                              </p>
-                              <p className={cn("font-sc text-[11px]", tokenExpiryClass(p.user_a_token_expires_at))}>
-                                token {formatTokenExpiry(p.user_a_token_expires_at)}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            className="btn-ghost rounded-full px-3 py-2 text-xs font-sc inline-flex items-center gap-1.5 focus-ring"
-                            onClick={() => copy(p.user_a_token, `${p.user_a.display_name} 的 token`)}
-                          >
-                            <Copy className="h-3 w-3" /> {p.user_a.display_name}
-                          </button>
-                          <button
-                            className="btn-ghost rounded-full px-3 py-2 text-xs font-sc inline-flex items-center gap-1.5 focus-ring"
-                            onClick={() => copy(p.user_b_token, `${p.user_b.display_name} 的 token`)}
-                          >
-                            <Copy className="h-3 w-3" /> {p.user_b.display_name}
-                          </button>
-                          <button
-                            className="btn-ghost rounded-full px-3 py-2 text-xs font-sc inline-flex items-center gap-1.5 focus-ring"
-                            onClick={() => copy(entryLink(p.user_a_token), `${p.user_a.display_name} 的入口链接`)}
-                          >
-                            <ArrowRight className="h-3 w-3" /> {p.user_a.display_name}
-                          </button>
-                          <button
-                            className="btn-ghost rounded-full px-3 py-2 text-xs font-sc inline-flex items-center gap-1.5 focus-ring"
-                            onClick={() => copy(entryLink(p.user_b_token), `${p.user_b.display_name} 的入口链接`)}
-                          >
-                            <ArrowRight className="h-3 w-3" /> {p.user_b.display_name}
-                          </button>
-                        </div>
-                      </li>
+                        pair={p}
+                        onCopy={copy}
+                        onEntryLink={entryLink}
+                        onUpdated={(updated) =>
+                          setPairs((cur) =>
+                            cur.map((it) => (it.pair_id === updated.pair_id ? updated : it)),
+                          )
+                        }
+                      />
                     ))}
                   </ul>
                 )}
@@ -466,6 +449,8 @@ function UserField({
   avatar,
   onPickAvatar,
   placeholder,
+  email,
+  onEmailChange,
 }: {
   label: string;
   value: string;
@@ -473,6 +458,8 @@ function UserField({
   avatar: string;
   onPickAvatar: () => void;
   placeholder: string;
+  email?: string;
+  onEmailChange?: (s: string) => void;
 }) {
   return (
     <div className="space-y-2">
@@ -500,6 +487,21 @@ function UserField({
           onChange={(e) => onChange(e.target.value)}
         />
       </div>
+      {onEmailChange && (
+        <div className="relative">
+          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-muted" />
+          <input
+            type="email"
+            className="input-field pl-9"
+            value={email ?? ""}
+            maxLength={255}
+            placeholder="可选 · 邮箱（用于通知）"
+            onChange={(e) => onEmailChange(e.target.value)}
+            spellCheck={false}
+            autoComplete="off"
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -548,6 +550,172 @@ function TokenCard({
         </button>
       </div>
     </div>
+  );
+}
+
+function PairRow({
+  pair,
+  onCopy,
+  onEntryLink,
+  onUpdated,
+}: {
+  pair: PairOut;
+  onCopy: (text: string, label: string) => void;
+  onEntryLink: (token: string) => string;
+  onUpdated: (next: PairOut) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [aEmail, setAEmail] = useState(pair.user_a.email ?? "");
+  const [bEmail, setBEmail] = useState(pair.user_b.email ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function onSave() {
+    setSaving(true);
+    try {
+      const updated = await api.updatePair(pair.pair_id, {
+        user_a_email: aEmail.trim() || null,
+        user_b_email: bEmail.trim() || null,
+      });
+      onUpdated(updated);
+      toast.success("邮箱已更新");
+      setEditing(false);
+    } catch {
+      // toast handled
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <li className="glass-card rounded-3xl p-5 sm:p-6 transition hover:shadow-glow space-y-3">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3 min-w-0">
+          <Avatar emoji={pair.user_a.avatar} name={pair.user_a.display_name} size="md" />
+          <div className="font-display text-2xl text-rose">·</div>
+          <Avatar emoji={pair.user_b.avatar} name={pair.user_b.display_name} size="md" />
+          <div className="ml-1 min-w-0">
+            <p className="font-display text-base text-ink truncate">
+              {pair.user_a.display_name} <span className="text-rose">&</span>{" "}
+              {pair.user_b.display_name}
+            </p>
+            <p className="font-sc text-[11px] text-ink-muted">
+              pair #{pair.pair_id} · {formatAbsolute(pair.created_at)}
+            </p>
+            <p className={cn("font-sc text-[11px]", tokenExpiryClass(pair.user_a_token_expires_at))}>
+              token {formatTokenExpiry(pair.user_a_token_expires_at)}
+            </p>
+          </div>
+        </div>
+        <button
+          className="btn-ghost rounded-full px-3 py-1.5 text-xs font-sc inline-flex items-center gap-1.5 focus-ring"
+          onClick={() => setEditing((v) => !v)}
+        >
+          <Mail className="h-3 w-3" />
+          {editing ? "收起邮箱" : "编辑邮箱"}
+        </button>
+      </div>
+
+      {!editing && (
+        <div className="grid sm:grid-cols-2 gap-2 text-[11px] font-sc text-ink-muted">
+          <span className="truncate">
+            {pair.user_a.display_name}：{pair.user_a.email || <i className="text-ink-muted/70">未设置</i>}
+          </span>
+          <span className="truncate">
+            {pair.user_b.display_name}：{pair.user_b.email || <i className="text-ink-muted/70">未设置</i>}
+          </span>
+        </div>
+      )}
+
+      <AnimatePresence>
+        {editing && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="grid sm:grid-cols-2 gap-3 pt-2">
+              <div className="space-y-1">
+                <label className="font-sc text-[11px] text-ink-muted">
+                  {pair.user_a.display_name} 的邮箱
+                </label>
+                <input
+                  type="email"
+                  className="input-field"
+                  value={aEmail}
+                  maxLength={255}
+                  placeholder="example@mail.com"
+                  onChange={(e) => setAEmail(e.target.value)}
+                  spellCheck={false}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="font-sc text-[11px] text-ink-muted">
+                  {pair.user_b.display_name} 的邮箱
+                </label>
+                <input
+                  type="email"
+                  className="input-field"
+                  value={bEmail}
+                  maxLength={255}
+                  placeholder="example@mail.com"
+                  onChange={(e) => setBEmail(e.target.value)}
+                  spellCheck={false}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-3">
+              <button
+                className="btn-ghost rounded-full px-3 py-2 text-xs font-sc"
+                onClick={() => {
+                  setAEmail(pair.user_a.email ?? "");
+                  setBEmail(pair.user_b.email ?? "");
+                  setEditing(false);
+                }}
+                disabled={saving}
+              >
+                取消
+              </button>
+              <button
+                className="btn-primary rounded-full px-4 py-2 text-xs font-sc inline-flex items-center gap-1.5"
+                onClick={onSave}
+                disabled={saving}
+              >
+                {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                保存
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          className="btn-ghost rounded-full px-3 py-2 text-xs font-sc inline-flex items-center gap-1.5 focus-ring"
+          onClick={() => onCopy(pair.user_a_token, `${pair.user_a.display_name} 的 token`)}
+        >
+          <Copy className="h-3 w-3" /> {pair.user_a.display_name}
+        </button>
+        <button
+          className="btn-ghost rounded-full px-3 py-2 text-xs font-sc inline-flex items-center gap-1.5 focus-ring"
+          onClick={() => onCopy(pair.user_b_token, `${pair.user_b.display_name} 的 token`)}
+        >
+          <Copy className="h-3 w-3" /> {pair.user_b.display_name}
+        </button>
+        <button
+          className="btn-ghost rounded-full px-3 py-2 text-xs font-sc inline-flex items-center gap-1.5 focus-ring"
+          onClick={() => onCopy(onEntryLink(pair.user_a_token), `${pair.user_a.display_name} 的入口链接`)}
+        >
+          <ArrowRight className="h-3 w-3" /> {pair.user_a.display_name}
+        </button>
+        <button
+          className="btn-ghost rounded-full px-3 py-2 text-xs font-sc inline-flex items-center gap-1.5 focus-ring"
+          onClick={() => onCopy(onEntryLink(pair.user_b_token), `${pair.user_b.display_name} 的入口链接`)}
+        >
+          <ArrowRight className="h-3 w-3" /> {pair.user_b.display_name}
+        </button>
+      </div>
+    </li>
   );
 }
 

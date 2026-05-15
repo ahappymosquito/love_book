@@ -4,7 +4,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, exists, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Comment, Event, Image, Pair, User, VisibilityMode, Voice
+from app.models import Comment, DeviceToken, Event, Image, Pair, User, VisibilityMode, Voice, utc_now
 from app.schemas import (
     CommentOut,
     ContentsOut,
@@ -22,6 +22,29 @@ def counterpart(pair: Pair, user: User) -> User:
     if pair.user_b_id == user.id:
         return pair.user_a
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not in pair")
+
+
+def active_token_for_user(db: Session, user_id: int) -> str | None:
+    """返回该用户当前可用（未过期）的任意一条 token，没有则返回 None。"""
+    now = utc_now()
+    tokens = (
+        db.execute(
+            select(DeviceToken)
+            .where(DeviceToken.user_id == user_id)
+            .order_by(DeviceToken.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    for token in tokens:
+        expires_at = token.expires_at
+        if expires_at is None:
+            return token.token
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=now.tzinfo)
+        if expires_at > now:
+            return token.token
+    return None
 
 
 def ensure_pair_event(db: Session, event_id: int, pair: Pair) -> Event:

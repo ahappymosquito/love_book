@@ -1,16 +1,19 @@
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.emailer import notify_comment_created
 from app.models import Comment, Image, User, Voice
 from app.schemas import CommentCreate, CommentOut, ContentsOut, ImageOut, VoiceOut
 from app.services import (
+    active_token_for_user,
+    counterpart,
     ensure_image_file_visible,
     ensure_pair_event,
     ensure_voice_file_visible,
@@ -24,15 +27,28 @@ router = APIRouter(tags=["contents"])
 def create_comment(
     event_id: int,
     payload: CommentCreate,
+    background: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> CommentOut:
     pair = get_pair_for_user(db, current_user.id)
-    ensure_pair_event(db, event_id, pair)
+    event = ensure_pair_event(db, event_id, pair)
     comment = Comment(event_id=event_id, author_id=current_user.id, text=payload.text)
     db.add(comment)
     db.flush()
     db.refresh(comment)
+    other = counterpart(pair, current_user)
+    recipient_token = active_token_for_user(db, other.id)
+    background.add_task(
+        notify_comment_created,
+        recipient_email=other.email,
+        recipient_name=other.display_name,
+        recipient_token=recipient_token,
+        actor_name=current_user.display_name,
+        event_id=event.id,
+        event_title=event.title,
+        comment_text=comment.text,
+    )
     return CommentOut.model_validate(comment)
 
 
