@@ -37,6 +37,9 @@ ENV NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE} \
     NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# public/ 在仓库中可能为空：git 不跟踪空目录、Next.js 又会去 build trace 它，
+# 这里兜底创建一下，避免 runner 阶段 COPY --from=builder /app/public 失败。
+RUN mkdir -p /app/public
 RUN npm run build
 
 FROM base AS runner
