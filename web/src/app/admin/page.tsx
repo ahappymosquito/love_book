@@ -130,9 +130,10 @@ export default function AdminPage() {
   }
 
   function entryLink(token: string): string {
+    const configured = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/+$/, "");
+    if (configured) return `${configured}/?token=${token}`;
     if (typeof window === "undefined") return `/?token=${token}`;
-    const origin = window.location.origin;
-    return `${origin}/?token=${token}`;
+    return `${window.location.origin}/?token=${token}`;
   }
 
   if (!hydrated) {

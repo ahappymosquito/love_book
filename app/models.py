@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 from enum import StrEnum
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy.dialects.mysql import LONGBLOB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -103,9 +104,20 @@ class Image(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), nullable=False, index=True)
     author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
-    mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    # 兼容旧数据：早期版本把图片落到磁盘，路径写在这里。新版改为存 BLOB（data 列）。
+    # 仍保留该列且允许空字符串，避免对老库 NOT NULL 约束做破坏性变更。
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False, default="", server_default="")
+    # 图片二进制内容（MySQL 走 LONGBLOB，其它方言走通用 BLOB）。
+    # 允许 NULL：旧记录通常没有 data，仅有 file_path。
+    data: Mapped[bytes | None] = mapped_column(
+        LargeBinary().with_variant(LONGBLOB(), "mysql").with_variant(LONGBLOB(), "mariadb"),
+        nullable=True,
+    )
+    # 下面三个保留 NOT NULL（提供默认值），手动 INSERT 时即便不填也不会报错。
+    mime_type: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="application/octet-stream", server_default="application/octet-stream"
+    )
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     width: Mapped[int | None] = mapped_column(Integer)
     height: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)

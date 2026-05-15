@@ -1,0 +1,88 @@
+                                            # 我们之间的小事 · 统一部署
+# - 后端 / 前端 / nginx 三个 ubuntu:24.04 容器
+# - MySQL 直连 db.example.com:3306 (由 .env 提供凭据)
+# - nginx 监听 80/443，把 /api/ 反代到后端，其它请求转给 Next.js
+#
+# 用法：cp .env.example .env && 修改 .env && ./deploy.sh up
+# 域名：APP_DOMAIN（默认 db.example.com），用于 nginx 与前端 build args
+name: love-book
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: love-book/backend:latest
+    container_name: love-book-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # uploads 在容器内的目录，volume 挂到宿主机做持久化
+      UPLOAD_DIR: /app/uploads
+      # 让 backend 不受宿主机 .env 中 UPLOAD_DIR 影响
+      PYTHONPATH: /app
+    volumes:
+      - ./uploads:/app/uploads
+    expose:
+      - "8000"
+    networks:
+      - love-book-net
+    # 外部 MySQL 走公网域名 db.example.com：保证容器 DNS 能解析到当前宿主
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    logging: *default-logging
+
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        # 前端是 SSG/SSR 的 Next.js，NEXT_PUBLIC_* 在 build 时就被注入到 bundle
+        # APP_WEB_URL 来自 .env，与邮件中的链接保持一致
+        NEXT_PUBLIC_API_BASE: /api
+        NEXT_PUBLIC_APP_URL: ${APP_WEB_URL:-https://db.example.com}
+    image: love-book/frontend:latest
+    container_name: love-book-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    expose:
+      - "3000"
+    networks:
+      - love-book-net
+    depends_on:
+      - backend
+    logging: *default-logging
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: love-book-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./deploy/nginx/certs:/etc/nginx/certs:ro
+      - ./deploy/nginx/logs:/var/log/nginx
+      # 上传文件直接由 nginx 兜底（可选，目前后端自己 file response）
+      - ./uploads:/var/www/uploads:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - love-book-net
+    logging: *default-logging
+
+networks:
+  love-book-net:
+    name: love-book-net
+    driver: bridge

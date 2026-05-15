@@ -2,7 +2,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_pair_for_user
@@ -99,6 +99,7 @@ def upload_image(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ImageOut:
+    """图片以 BLOB 形式写入数据库 images.data 列；不再落磁盘。"""
     pair = get_pair_for_user(db, current_user.id)
     ensure_pair_event(db, event_id, pair)
     settings = get_settings()
@@ -109,17 +110,12 @@ def upload_image(
     if len(body) > settings.max_image_bytes:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Image file is too large")
 
-    suffix = Path(file.filename or "").suffix
-    pair_dir = settings.upload_dir / "images" / f"pair-{pair.id}" / f"event-{event_id}"
-    pair_dir.mkdir(parents=True, exist_ok=True)
-    target = pair_dir / f"{uuid4().hex}{suffix}"
-    target.write_bytes(body)
-
     image = Image(
         event_id=event_id,
         author_id=current_user.id,
-        file_path=str(target),
-        mime_type=file.content_type,
+        file_path="",  # 旧列保留占位，新数据不写文件
+        data=body,
+        mime_type=file.content_type or "application/octet-stream",
         size_bytes=len(body),
         width=width,
         height=height,
@@ -157,7 +153,16 @@ def get_image_file(
     image_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> FileResponse:
+):
     pair = get_pair_for_user(db, current_user.id)
     image = ensure_image_file_visible(db, image_id, current_user, pair)
-    return FileResponse(path=image.file_path, media_type=image.mime_type, filename=Path(image.file_path).name)
+    media_type = image.mime_type or "application/octet-stream"
+    # 新版数据在 BLOB 中
+    if image.data:
+        return Response(content=bytes(image.data), media_type=media_type)
+    # 兼容旧数据：仍走磁盘文件
+    if image.file_path and Path(image.file_path).exists():
+        return FileResponse(
+            path=image.file_path, media_type=media_type, filename=Path(image.file_path).name
+        )
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image file not found")

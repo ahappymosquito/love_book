@@ -57,8 +57,8 @@ export interface ImageOut {
   id: number;
   event_id: number;
   author_id: number;
-  mime_type: string;
-  size_bytes: number;
+  mime_type: string | null;
+  size_bytes: number | null;
   width: number | null;
   height: number | null;
   created_at: string;

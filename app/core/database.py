@@ -60,6 +60,16 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
             "mariadb": "DATETIME NULL",
         },
     ),
+    # 图片直接存入数据库 BLOB；老库的 images 表只有 file_path，这里补一列 data。
+    (
+        "images",
+        "data",
+        {
+            "default": "BLOB NULL",
+            "mysql": "LONGBLOB NULL",
+            "mariadb": "LONGBLOB NULL",
+        },
+    ),
 ]
 
 

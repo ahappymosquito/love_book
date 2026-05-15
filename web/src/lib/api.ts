@@ -18,9 +18,13 @@ import type {
   VoiceOut,
 } from "./types";
 
+// 生产环境下通过 nginx 反代，前端使用相对路径（NEXT_PUBLIC_API_BASE="/api"）。
+// 开发环境若未设置该变量则回落到本地后端 127.0.0.1:8000。
+// 注意：空字符串视为「同源相对路径」，不再回退到 localhost。
+const RAW_API_BASE =
+  typeof process !== "undefined" ? process.env.NEXT_PUBLIC_API_BASE : undefined;
 const API_BASE =
-  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_BASE) ||
-  "http://127.0.0.1:8000";
+  RAW_API_BASE === undefined ? "http://127.0.0.1:8000" : RAW_API_BASE.replace(/\/+$/, "");
 
 export class APIError extends Error {
   status: number;

@@ -1,0 +1,7 @@
+# 把证书放到这里：
+#   db.example.com.crt   完整证书链 (fullchain)
+#   db.example.com.key   私钥
+# 通过 certbot 申请 (示例)：
+#   docker run --rm -it -v ${PWD}/deploy/nginx/certs:/etc/letsencrypt \
+#     -v ${PWD}/deploy/nginx/webroot:/var/www/certbot \
+#     certbot/certbot certonly --webroot -w /var/www/certbot -d db.example.com -d www.db.example.com

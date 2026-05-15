@@ -141,6 +141,9 @@ def ensure_image_file_visible(db: Session, image_id: int, user: User, pair: Pair
     contents = visible_contents(db, event, user, pair)
     if all(item.id != image.id for item in contents.images):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Image is not visible yet")
-    if not Path(image.file_path).exists():
+    # 内容存在性：BLOB 优先；老数据回退到磁盘路径
+    has_blob = bool(image.data)
+    has_file = bool(image.file_path) and Path(image.file_path).exists()
+    if not has_blob and not has_file:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image file not found")
     return image

@@ -141,10 +141,11 @@ class ImageOut(APIModel):
     id: int
     event_id: int
     author_id: int
-    mime_type: str
-    size_bytes: int
-    width: int | None
-    height: int | None
+    # 手动 INSERT 时这两项可能没填，给个保底值即可
+    mime_type: str | None = "application/octet-stream"
+    size_bytes: int | None = 0
+    width: int | None = None
+    height: int | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

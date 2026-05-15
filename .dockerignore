@@ -1,0 +1,35 @@
+.git
+.gitignore
+.idea
+.vscode
+.cursor
+.pytest_cache
+.test_uploads
+__pycache__
+**/__pycache__
+*.py[cod]
+*.log
+uvicorn.err.log
+uvicorn.out.log
+
+# 旧的 sqlite 落地数据库不应进镜像
+pair_events.db
+pytest-cache-files-*/
+
+# 上传内容通过 volume 挂载，不打进镜像
+uploads/
+
+# 前端构建产物（前端镜像独立）
+web/node_modules
+web/.next
+web/out
+web/*.tsbuildinfo
+
+# 环境敏感文件不进镜像（运行期通过 env_file 注入）
+.env
+
+# 开发脚本
+start_dev.bat
+
+# 文档
+README.md
