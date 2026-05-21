@@ -1,3 +1,5 @@
+"""Database engine setup, session lifecycle, table creation, and lightweight column migrations."""
+
 from collections.abc import Generator
 
 from sqlalchemy import create_engine, inspect, text
@@ -59,6 +61,11 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
             "mysql": "DATETIME NULL",
             "mariadb": "DATETIME NULL",
         },
+    ),
+    (
+        "pairs",
+        "love_started_on",
+        {"default": "DATE NULL"},
     ),
     # 图片直接存入数据库 BLOB；老库的 images 表只有 file_path，这里补一列 data。
     (

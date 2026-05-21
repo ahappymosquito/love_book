@@ -13,3 +13,8 @@
 - 本地开发一键启动脚本为 [start_dev.bat](C:\RPA\code\love_book\start_dev.bat)。
 - `start_dev.bat --install` 会先安装后端 `requirements.txt` 和前端 `web/package.json` 依赖，再启动本地开发服务。
 - 直接执行 `start_dev.bat` 只启动服务，不重复安装依赖。
+
+## 首页提醒约定
+
+- 首页纪念日提醒由后端 `/auth/anniversary` 聚合：情侣日期天数、520/1314/整月纪念、固定恋爱节日、一言情话和 timor.tech 中国节假日信息。
+- 一言和节假日接口失败时必须本地兜底或静默降级，不能影响 `/timeline` 首页加载。

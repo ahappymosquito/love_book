@@ -1,3 +1,5 @@
+"""Admin routes for verifying pair setup, tokens, contact details, and relationship dates."""
+
 import secrets
 from datetime import timezone
 
@@ -9,6 +11,7 @@ from app.api.dependencies import require_admin_key
 from app.core.database import get_db
 from app.models import DeviceToken, LoginLog, Pair, User, utc_now
 from app.schemas import LoginLogOut, PairCreate, PairCreated, PairOut, PairUpdate, UserOut
+from app.services import local_today, pair_love_started_on
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -47,6 +50,7 @@ def pair_out(db: Session, pair: Pair) -> PairOut:
         pair_id=pair.id,
         user_a=pair.user_a,
         user_b=pair.user_b,
+        love_started_on=pair_love_started_on(pair),
         user_a_token=user_a_token.token if user_a_token else "",
         user_b_token=user_b_token.token if user_b_token else "",
         user_a_token_expires_at=user_a_token.expires_at if user_a_token else None,
@@ -77,7 +81,8 @@ def create_pair(payload: PairCreate, db: Session = Depends(get_db)) -> PairCreat
     db.add_all([user_a, user_b])
     db.flush()
 
-    pair = Pair(user_a_id=user_a.id, user_b_id=user_b.id)
+    love_started_on = payload.love_started_on or local_today()
+    pair = Pair(user_a_id=user_a.id, user_b_id=user_b.id, love_started_on=love_started_on)
     user_a_token = secrets.token_urlsafe(32)
     user_b_token = secrets.token_urlsafe(32)
     db.add_all(
@@ -93,6 +98,7 @@ def create_pair(payload: PairCreate, db: Session = Depends(get_db)) -> PairCreat
         pair_id=pair.id,
         user_a=user_a,
         user_b=user_b,
+        love_started_on=love_started_on,
         user_a_token=user_a_token,
         user_b_token=user_b_token,
         user_a_token_expires_at=token_expires_at,
@@ -110,6 +116,8 @@ def update_pair(pair_id: int, payload: PairUpdate, db: Session = Depends(get_db)
         pair.user_a.email = _clean_email(data["user_a_email"])
     if "user_b_email" in data:
         pair.user_b.email = _clean_email(data["user_b_email"])
+    if "love_started_on" in data:
+        pair.love_started_on = data["love_started_on"] or pair.love_started_on
     db.flush()
     db.refresh(pair)
     return pair_out(db, pair)

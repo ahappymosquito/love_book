@@ -1,3 +1,5 @@
+"""Authenticated user routes for profile, pair context, login logs, and home reminders."""
+
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from sqlalchemy.orm import Session
 
@@ -5,8 +7,8 @@ from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.database import get_db
 from app.login_logs import client_ip, enrich_location, record_login
 from app.models import User
-from app.schemas import LoginLogOut, LoginRecordCreate, MeOut, MeUpdate, UserOut
-from app.services import counterpart
+from app.schemas import AnniversaryOut, LoginLogOut, LoginRecordCreate, MeOut, MeUpdate, UserOut
+from app.services import build_anniversary, counterpart, pair_love_started_on
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -14,7 +16,18 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.get("/me", response_model=MeOut)
 def read_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> MeOut:
     pair = get_pair_for_user(db, current_user.id)
-    return MeOut(user=current_user, counterpart=counterpart(pair, current_user), pair_id=pair.id)
+    return MeOut(
+        user=current_user,
+        counterpart=counterpart(pair, current_user),
+        pair_id=pair.id,
+        love_started_on=pair_love_started_on(pair),
+    )
+
+
+@router.get("/anniversary", response_model=AnniversaryOut)
+def read_anniversary(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> AnniversaryOut:
+    pair = get_pair_for_user(db, current_user.id)
+    return build_anniversary(pair)
 
 
 @router.patch("/me", response_model=UserOut)

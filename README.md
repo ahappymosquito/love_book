@@ -690,3 +690,10 @@ python -m pytest tests -q
 - `.env` 不应提交到版本库；项目已在 `.gitignore` 中排除 `.env`。
 - `ADMIN_KEY` 默认值是 `change-me`，正式环境必须改掉。
 - 前端代码在 `web/`，不参与后端 Python 测试。`web/node_modules/`、`web/.next/`、`web/.env.local` 已在 `.gitignore` 中排除。
+
+## 首页纪念日与节日提醒
+
+- 创建 pair 时可设置 `love_started_on` 情侣日期；旧数据未设置时回退到 pair 创建日期。
+- 登录后的 `/timeline` 会调用 `GET /auth/anniversary`，展示“一起第 N 天”、520/1314/整月纪念、固定恋爱节日和中国大陆节假日/调休信息。
+- 非特殊日后端调用一言 `https://v1.hitokoto.cn/?c=e&c=f&max_length=30&encode=json` 获取小情话；失败时随机使用本地情话。
+- 节假日信息使用 `https://timor.tech/api/holiday/info/{YYYY-MM-DD}`；接口失败时静默跳过节假日标签，不影响首页加载。

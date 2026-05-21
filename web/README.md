@@ -61,3 +61,9 @@ npm run start
 - **录音**：`MediaRecorder` 采用 `audio/webm;codecs=opus` 优先，停止后直接 `POST /events/{id}/voices`。
 - **图片**：选择后 `URL.createObjectURL` 立即乐观渲染，上传完成后用真实 ID 替换。
 - **凭据**：用户 token 存 `localStorage` (`pair-events-token`)；admin key 仅留在 zustand 内存 + sessionStorage 标记；过期 token 会在登录时提示失效。
+
+## 首页纪念日与节日提醒
+
+- `/admin` 创建 pair 时可设置情侣日期，pair 列表里可继续编辑。
+- `/timeline` 顶端提醒块展示“一起第 N 天”、520/1314/整月纪念、固定恋爱节日、中国大陆节假日/调休标签和最终文案。
+- 普通日文案由后端优先取一言 API，失败后使用本地随机情话；前端在提醒接口失败时会用 `me.love_started_on` 做基础天数兜底。

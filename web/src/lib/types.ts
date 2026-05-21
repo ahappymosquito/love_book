@@ -1,3 +1,5 @@
+// Shared TypeScript contracts for API payloads, user state, events, pair tokens, and home reminders.
+
 export type VisibilityMode = "public" | "mutual_submit";
 
 export interface UserOut {
@@ -12,6 +14,7 @@ export interface MeOut {
   user: UserOut;
   counterpart: UserOut;
   pair_id: number;
+  love_started_on: string;
 }
 
 export interface SubmissionState {
@@ -79,6 +82,7 @@ export interface PairCreated {
   pair_id: number;
   user_a: UserOut;
   user_b: UserOut;
+  love_started_on: string;
   user_a_token: string;
   user_b_token: string;
   user_a_token_expires_at: string | null;
@@ -118,6 +122,23 @@ export interface LoginRecordCreate {
   locale?: string | null;
   timezone_name?: string | null;
   screen?: string | null;
+}
+
+export interface ReminderItem {
+  type: "anniversary" | "love_festival" | "holiday" | "workday";
+  label: string;
+  message: string | null;
+}
+
+export interface AnniversaryOut {
+  love_started_on: string;
+  today: string;
+  days_together: number;
+  anniversary_items: ReminderItem[];
+  love_festival_items: ReminderItem[];
+  holiday_items: ReminderItem[];
+  message: string;
+  message_source: "anniversary" | "love_festival" | "holiday" | "hitokoto" | "local";
 }
 
 export const AVATAR_PRESETS = [

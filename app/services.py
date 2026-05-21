@@ -1,19 +1,171 @@
+"""Shared business logic for pair access, content visibility, uploads, and home reminders."""
+
+import random
+from datetime import date, timedelta, timezone
 from pathlib import Path
 
+import httpx
 from fastapi import HTTPException, status
 from sqlalchemy import Select, exists, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Comment, DeviceToken, Event, Image, Pair, User, VisibilityMode, Voice, utc_now
 from app.schemas import (
+    AnniversaryOut,
     CommentOut,
     ContentsOut,
     EventDetail,
     EventSummary,
     ImageOut,
+    ReminderItem,
     SubmissionState,
     VoiceOut,
 )
+
+CHINA_TZ = timezone(timedelta(hours=8))
+HITOKOTO_URL = "https://v1.hitokoto.cn/?c=e&c=f&max_length=30&encode=json"
+HOLIDAY_INFO_URL = "https://timor.tech/api/holiday/info/{date}"
+LOCAL_LOVE_QUOTES = [
+    "今天也想把温柔攒起来，慢慢都给你。",
+    "日子往前走，我还是偏心你。",
+    "和你一起的普通一天，也会发一点光。",
+    "把晚风、星星和想念，都悄悄放进今天。",
+    "喜欢不是一阵风，是每天醒来还想见你。",
+]
+LOVE_FESTIVALS: dict[tuple[int, int], tuple[str, str]] = {
+    (2, 14): ("情人节", "今天适合认真说爱，也适合一起把普通日子过甜。"),
+    (3, 14): ("白色情人节", "把收到的喜欢再送回去一点，刚好装满今天。"),
+    (5, 20): ("520 网络情人节", "520 到了，今天的喜欢要明目张胆一点。"),
+    (5, 21): ("521 告白日", "今天也很适合告白，哪怕只是再说一次我喜欢你。"),
+    (12, 25): ("圣诞约会日", "今天适合牵手、散步，也适合把愿望说给彼此听。"),
+}
+
+
+def local_today() -> date:
+    return utc_now().astimezone(CHINA_TZ).date()
+
+
+def pair_love_started_on(pair: Pair) -> date:
+    if pair.love_started_on is not None:
+        return pair.love_started_on
+    created_at = pair.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=CHINA_TZ)
+    return created_at.astimezone(CHINA_TZ).date()
+
+
+def days_together(started_on: date, today: date) -> int:
+    return max(1, (today - started_on).days + 1)
+
+
+def anniversary_items(started_on: date, today: date) -> list[ReminderItem]:
+    days = days_together(started_on, today)
+    items: list[ReminderItem] = []
+    if days == 520:
+        items.append(
+            ReminderItem(type="anniversary", label="520 天", message="一起走到第 520 天，今天要把爱说得更大声。")
+        )
+    if days == 1314:
+        items.append(
+            ReminderItem(type="anniversary", label="1314 天", message="第 1314 天，像一句长长久久的承诺。")
+        )
+
+    month_delta = (today.year - started_on.year) * 12 + today.month - started_on.month
+    if month_delta > 0 and today.day == started_on.day:
+        items.append(
+            ReminderItem(
+                type="anniversary",
+                label=f"{month_delta} 个月",
+                message=f"今天是你们在一起满 {month_delta} 个月的日子。",
+            )
+        )
+    return items
+
+
+def love_festival_items(today: date, holiday_name: str | None = None) -> list[ReminderItem]:
+    items: list[ReminderItem] = []
+    festival = LOVE_FESTIVALS.get((today.month, today.day))
+    if festival:
+        label, message = festival
+        items.append(ReminderItem(type="love_festival", label=label, message=message))
+    if holiday_name and "七夕" in holiday_name:
+        items.append(
+            ReminderItem(type="love_festival", label="七夕", message="七夕到了，今天的星河也偏向你们。")
+        )
+    return items
+
+
+def fetch_holiday_item(today: date) -> tuple[list[ReminderItem], str | None]:
+    try:
+        response = httpx.get(HOLIDAY_INFO_URL.format(date=today.isoformat()), timeout=2.0)
+        response.raise_for_status()
+        payload = response.json()
+    except Exception:
+        return [], None
+
+    holiday = payload.get("holiday") if isinstance(payload, dict) else None
+    if not isinstance(holiday, dict):
+        return [], None
+
+    name = str(holiday.get("name") or "").strip() or None
+    is_holiday = bool(holiday.get("holiday"))
+    is_after = bool(holiday.get("after"))
+    wage = holiday.get("wage")
+    items: list[ReminderItem] = []
+
+    if is_holiday:
+        label = name or "放假日"
+        items.append(ReminderItem(type="holiday", label=label, message=f"今天是{label}，适合把时间留给彼此。"))
+    elif is_after or wage == 1:
+        label = name or "调休补班"
+        items.append(ReminderItem(type="workday", label=label, message=f"今天是{label}，忙完也要记得抱抱。"))
+
+    return items, name
+
+
+def fetch_hitokoto_quote() -> tuple[str, str]:
+    try:
+        response = httpx.get(HITOKOTO_URL, timeout=2.0)
+        response.raise_for_status()
+        payload = response.json()
+        if isinstance(payload, dict):
+            quote = str(payload.get("hitokoto") or "").strip()
+            if quote:
+                return quote, "hitokoto"
+    except Exception:
+        pass
+    return random.choice(LOCAL_LOVE_QUOTES), "local"
+
+
+def build_anniversary(pair: Pair) -> AnniversaryOut:
+    today = local_today()
+    started_on = pair_love_started_on(pair)
+    holiday_items, holiday_name = fetch_holiday_item(today)
+    ann_items = anniversary_items(started_on, today)
+    festival_items = love_festival_items(today, holiday_name)
+
+    if ann_items:
+        message = " ".join(item.message or item.label for item in ann_items)
+        source = "anniversary"
+    elif festival_items:
+        message = " ".join(item.message or item.label for item in festival_items)
+        source = "love_festival"
+    elif holiday_items:
+        message = " ".join(item.message or item.label for item in holiday_items)
+        source = "holiday"
+    else:
+        message, source = fetch_hitokoto_quote()
+
+    return AnniversaryOut(
+        love_started_on=started_on,
+        today=today,
+        days_together=days_together(started_on, today),
+        anniversary_items=ann_items,
+        love_festival_items=festival_items,
+        holiday_items=holiday_items,
+        message=message,
+        message_source=source,
+    )
 
 
 def counterpart(pair: Pair, user: User) -> User:

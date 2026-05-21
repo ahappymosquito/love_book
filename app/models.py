@@ -1,7 +1,9 @@
-from datetime import datetime, timezone
+"""SQLAlchemy models for users, pairs, tokens, timeline events, uploads, and login logs."""
+
+from datetime import date, datetime, timezone
 from enum import StrEnum
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import Date, DateTime, Enum, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.dialects.mysql import LONGBLOB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -33,6 +35,7 @@ class Pair(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_a_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, unique=True)
     user_b_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, unique=True)
+    love_started_on: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     user_a: Mapped[User] = relationship(foreign_keys=[user_a_id])

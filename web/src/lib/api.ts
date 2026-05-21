@@ -1,8 +1,11 @@
 "use client";
 
+// Browser API client for authenticated user, admin, event, upload, and reminder requests.
+
 import { toast } from "sonner";
 import { useAppStore } from "./store";
 import type {
+  AnniversaryOut,
   CommentOut,
   ContentsOut,
   EventDetail,
@@ -149,6 +152,7 @@ export const api = {
     user_b_avatar?: string;
     user_a_email?: string | null;
     user_b_email?: string | null;
+    love_started_on?: string | null;
     token_expires_at?: string | null;
   }) =>
     apiRequest<PairCreated>("/admin/pairs", {
@@ -159,7 +163,7 @@ export const api = {
     }),
   updatePair: (
     pairId: number,
-    payload: { user_a_email?: string | null; user_b_email?: string | null },
+    payload: { user_a_email?: string | null; user_b_email?: string | null; love_started_on?: string | null },
   ) =>
     apiRequest<PairOut>(`/admin/pairs/${pairId}`, {
       method: "PATCH",
@@ -180,6 +184,7 @@ export const api = {
 
   // Auth
   me: () => apiRequest<MeOut>("/auth/me"),
+  getAnniversary: () => apiRequest<AnniversaryOut>("/auth/anniversary", { silent: true }),
   patchMe: (payload: { display_name?: string; avatar?: string }) =>
     apiRequest<UserOut>("/auth/me", { method: "PATCH", json: payload }),
   recordLogin: (payload: LoginRecordCreate) =>

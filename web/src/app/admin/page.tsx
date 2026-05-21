@@ -1,5 +1,7 @@
 "use client";
 
+// Admin console for creating pairs, issuing tokens, editing contact details, and setting relationship dates.
+
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -8,6 +10,7 @@ import {
   ArrowLeft,
   ArrowRight,
   CalendarClock,
+  CalendarHeart,
   Check,
   Copy,
   KeyRound,
@@ -28,6 +31,13 @@ import { formatAbsolute, fromLocalInputValue, toLocalInputValue } from "@/lib/fo
 import { AVATAR_PRESETS, type PairCreated, type PairOut } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
+function toDateInputValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function AdminPage() {
   const { adminKey, setAdminKey, logoutAdmin, hydrated } = useAppStore();
   const [keyInput, setKeyInput] = useState("");
@@ -43,6 +53,7 @@ export default function AdminPage() {
   const [bAvatar, setBAvatar] = useState<string>(AVATAR_PRESETS[1]);
   const [aEmail, setAEmail] = useState("");
   const [bEmail, setBEmail] = useState("");
+  const [loveStartedOn, setLoveStartedOn] = useState(toDateInputValue(new Date()));
   const [pickerFor, setPickerFor] = useState<"a" | "b" | null>(null);
   const [tokenExpiryMode, setTokenExpiryMode] = useState<"never" | "custom">("never");
   const [tokenExpiresAt, setTokenExpiresAt] = useState("");
@@ -102,6 +113,7 @@ export default function AdminPage() {
         user_b_avatar: bAvatar,
         user_a_email: aEmail.trim() || null,
         user_b_email: bEmail.trim() || null,
+        love_started_on: loveStartedOn || null,
         token_expires_at: tokenExpiryMode === "custom" ? fromLocalInputValue(tokenExpiresAt) : null,
       });
       setCreated(result);
@@ -109,6 +121,7 @@ export default function AdminPage() {
       setBName("");
       setAEmail("");
       setBEmail("");
+      setLoveStartedOn(toDateInputValue(new Date()));
       setTokenExpiryMode("never");
       setTokenExpiresAt("");
       toast.success("配对已创建");
@@ -265,6 +278,22 @@ export default function AdminPage() {
                       email={bEmail}
                       onEmailChange={setBEmail}
                     />
+                  </div>
+
+                  <div className="rounded-2xl bg-surface-raised/65 hairline p-4 space-y-2">
+                    <label className="flex items-center gap-2 text-ink font-sc text-sm font-medium">
+                      <CalendarHeart className="h-4 w-4 text-rose-deep" />
+                      情侣日期
+                    </label>
+                    <input
+                      type="date"
+                      className="input-field"
+                      value={loveStartedOn}
+                      onChange={(e) => setLoveStartedOn(e.target.value)}
+                    />
+                    <p className="font-sc text-[11px] text-ink-muted">
+                      首页会从这一天开始计算“一起第几天”和纪念日。
+                    </p>
                   </div>
 
                   <div className="rounded-2xl bg-surface-raised/65 hairline p-4 space-y-3">
@@ -568,6 +597,7 @@ function PairRow({
   const [editing, setEditing] = useState(false);
   const [aEmail, setAEmail] = useState(pair.user_a.email ?? "");
   const [bEmail, setBEmail] = useState(pair.user_b.email ?? "");
+  const [loveStartedOn, setLoveStartedOn] = useState(pair.love_started_on);
   const [saving, setSaving] = useState(false);
 
   async function onSave() {
@@ -576,6 +606,7 @@ function PairRow({
       const updated = await api.updatePair(pair.pair_id, {
         user_a_email: aEmail.trim() || null,
         user_b_email: bEmail.trim() || null,
+        love_started_on: loveStartedOn || null,
       });
       onUpdated(updated);
       toast.success("邮箱已更新");
@@ -604,6 +635,9 @@ function PairRow({
             </p>
             <p className={cn("font-sc text-[11px]", tokenExpiryClass(pair.user_a_token_expires_at))}>
               token {formatTokenExpiry(pair.user_a_token_expires_at)}
+            </p>
+            <p className="font-sc text-[11px] text-ink-muted">
+              情侣日期 {pair.love_started_on}
             </p>
           </div>
         </div>
@@ -665,12 +699,24 @@ function PairRow({
                 />
               </div>
             </div>
+            <div className="space-y-1 pt-3">
+              <label className="font-sc text-[11px] text-ink-muted">
+                情侣日期
+              </label>
+              <input
+                type="date"
+                className="input-field"
+                value={loveStartedOn}
+                onChange={(e) => setLoveStartedOn(e.target.value)}
+              />
+            </div>
             <div className="flex justify-end gap-2 pt-3">
               <button
                 className="btn-ghost rounded-full px-3 py-2 text-xs font-sc"
                 onClick={() => {
                   setAEmail(pair.user_a.email ?? "");
                   setBEmail(pair.user_b.email ?? "");
+                  setLoveStartedOn(pair.love_started_on);
                   setEditing(false);
                 }}
                 disabled={saving}

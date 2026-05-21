@@ -1,9 +1,11 @@
 "use client";
 
+// Timeline home screen showing pair reminders, event list, visibility state, and entry creation shortcuts.
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { BookHeart, Plus } from "lucide-react";
+import { BookHeart, CalendarHeart, Gift, Plus, Sparkles } from "lucide-react";
 import { AuthGate } from "@/components/auth-gate";
 import { TimelineHeader } from "@/components/timeline-header";
 import { Avatar } from "@/components/avatar";
@@ -12,7 +14,20 @@ import { LoadingScreen } from "@/components/loading-screen";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import { formatAbsolute, formatRelative } from "@/lib/format";
-import type { EventSummary } from "@/lib/types";
+import type { AnniversaryOut, EventSummary, ReminderItem } from "@/lib/types";
+
+function todayDateOnly(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function daysTogether(startedOn: string, today: string): number {
+  const start = new Date(`${startedOn}T00:00:00`);
+  const end = new Date(`${today}T00:00:00`);
+  return Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1);
+}
 
 export default function TimelinePage() {
   return (
@@ -25,10 +40,16 @@ export default function TimelinePage() {
 function TimelineInner() {
   const me = useAppStore((s) => s.me);
   const [events, setEvents] = useState<EventSummary[] | null>(null);
+  const [anniversary, setAnniversary] = useState<AnniversaryOut | null>(null);
 
   useEffect(() => {
     void load();
   }, []);
+
+  useEffect(() => {
+    if (!me) return;
+    void loadAnniversary(me.love_started_on);
+  }, [me]);
 
   async function load() {
     try {
@@ -36,6 +57,24 @@ function TimelineInner() {
       setEvents(list);
     } catch {
       setEvents([]);
+    }
+  }
+
+  async function loadAnniversary(startedOn: string) {
+    try {
+      setAnniversary(await api.getAnniversary());
+    } catch {
+      const today = todayDateOnly();
+      setAnniversary({
+        love_started_on: startedOn,
+        today,
+        days_together: daysTogether(startedOn, today),
+        anniversary_items: [],
+        love_festival_items: [],
+        holiday_items: [],
+        message: "今天也想把温柔攒起来，慢慢都给你。",
+        message_source: "local",
+      });
     }
   }
 
@@ -57,6 +96,8 @@ function TimelineInner() {
           </div>
           <BookHeart className="h-7 w-7 text-rose hidden sm:block" />
         </div>
+
+        {anniversary && <AnniversaryCard data={anniversary} />}
 
         {events === null ? (
           <ListSkeleton />
@@ -87,6 +128,58 @@ function TimelineInner() {
         记一笔
       </Link>
     </div>
+  );
+}
+
+function AnniversaryCard({ data }: { data: AnniversaryOut }) {
+  const items = [
+    ...data.anniversary_items,
+    ...data.love_festival_items,
+    ...data.holiday_items,
+  ];
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="glass-card rounded-3xl p-5 sm:p-6 mb-6 overflow-hidden"
+    >
+      <div className="flex items-start gap-4">
+        <div className="h-12 w-12 rounded-2xl bg-rose/12 text-rose-deep grid place-items-center flex-none">
+          <CalendarHeart className="h-6 w-6" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-display text-2xl text-ink leading-tight">
+              一起第 {data.days_together} 天
+            </p>
+            {data.message_source === "hitokoto" && (
+              <span className="pill bg-cream-deep/70 text-ink-soft">一言</span>
+            )}
+          </div>
+          <p className="font-sc text-sm text-ink-soft mt-2 leading-relaxed">
+            {data.message}
+          </p>
+          {items.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {items.map((item, index) => (
+                <ReminderPill key={`${item.type}-${item.label}-${index}`} item={item} />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.section>
+  );
+}
+
+function ReminderPill({ item }: { item: ReminderItem }) {
+  const Icon = item.type === "anniversary" ? Sparkles : item.type === "love_festival" ? Gift : CalendarHeart;
+  return (
+    <span className="pill bg-rose/10 text-rose-deep inline-flex items-center gap-1.5">
+      <Icon className="h-3.5 w-3.5" />
+      {item.label}
+    </span>
   );
 }
 

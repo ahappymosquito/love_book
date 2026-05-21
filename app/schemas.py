@@ -1,4 +1,6 @@
-from datetime import datetime, timezone
+"""Pydantic request and response schemas for auth, admin, pair, event, content, and reminder APIs."""
+
+from datetime import date, datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_serializer
@@ -46,18 +48,21 @@ class PairCreate(APIModel):
     user_b_avatar: str = Field(default="", max_length=64)
     user_a_email: str | None = Field(default=None, max_length=255)
     user_b_email: str | None = Field(default=None, max_length=255)
+    love_started_on: date | None = None
     token_expires_at: datetime | None = None
 
 
 class PairUpdate(APIModel):
     user_a_email: str | None = Field(default=None, max_length=255)
     user_b_email: str | None = Field(default=None, max_length=255)
+    love_started_on: date | None = None
 
 
 class PairCreated(APIModel):
     pair_id: int
     user_a: UserOut
     user_b: UserOut
+    love_started_on: date
     user_a_token: str
     user_b_token: str
     user_a_token_expires_at: datetime | None = None
@@ -72,6 +77,24 @@ class MeOut(APIModel):
     user: UserOut
     counterpart: UserOut
     pair_id: int
+    love_started_on: date
+
+
+class ReminderItem(APIModel):
+    type: Literal["anniversary", "love_festival", "holiday", "workday"]
+    label: str
+    message: str | None = None
+
+
+class AnniversaryOut(APIModel):
+    love_started_on: date
+    today: date
+    days_together: int
+    anniversary_items: list[ReminderItem]
+    love_festival_items: list[ReminderItem]
+    holiday_items: list[ReminderItem]
+    message: str
+    message_source: Literal["anniversary", "love_festival", "holiday", "hitokoto", "local"]
 
 
 class EventCreate(APIModel):
