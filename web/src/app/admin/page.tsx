@@ -1,6 +1,7 @@
 "use client";
 
-// Admin console for creating pairs, issuing tokens, editing contact details, and setting relationship dates.
+// Admin console for creating pairs, issuing tokens, editing contact details, setting relationship dates,
+// and copying tokens or entry links with a clipboard fallback for deployed browsers.
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -135,7 +136,7 @@ export default function AdminPage() {
 
   async function copy(text: string, label: string) {
     try {
-      await navigator.clipboard.writeText(text);
+      await copyToClipboard(text);
       toast.success(`${label} 已复制`);
     } catch {
       toast.error("复制失败，请手动选择");
@@ -776,4 +777,46 @@ function formatTokenExpiry(expiresAt: string | null): string {
 function tokenExpiryClass(expiresAt: string | null): string {
   if (!expiresAt) return "text-emerald-700";
   return new Date(expiresAt).getTime() <= Date.now() ? "text-red-600" : "text-ink-muted";
+}
+
+async function copyToClipboard(text: string): Promise<void> {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Fall through to the textarea fallback for non-secure contexts or denied clipboard permissions.
+    }
+  }
+
+  if (typeof document === "undefined") {
+    throw new Error("Clipboard is unavailable");
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+
+  const selection = document.getSelection();
+  const previousRange = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, text.length);
+
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+
+  if (previousRange && selection) {
+    selection.removeAllRanges();
+    selection.addRange(previousRange);
+  }
+
+  if (!copied) {
+    throw new Error("Copy command failed");
+  }
 }
