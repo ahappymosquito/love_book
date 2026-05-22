@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 import app.api.routes.admin as admin_routes
+import app.cycles as cycles
 import app.services as services
 from app.models import DeviceToken
 from tests.conftest import auth
@@ -525,3 +526,94 @@ def test_voice_upload_rejects_non_audio(client: TestClient, pair_tokens: dict[st
         files={"file": ("bad.txt", b"text", "text/plain")},
     )
     assert response.status_code == 415
+
+
+def test_cycle_dashboard_requires_login(client: TestClient) -> None:
+    response = client.get("/cycles/dashboard?start=2026-05-01&end=2026-05-31")
+
+    assert response.status_code == 401
+
+
+def test_cycle_log_upsert_is_shared_inside_pair_and_immediately_readable(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 5, 22))
+    token_a = str(pair_tokens["user_a_token"])
+    token_b = str(pair_tokens["user_b_token"])
+
+    created = client.put(
+        "/cycles/logs/2026-05-20",
+        headers=auth(token_a),
+        json={
+            "phase": "menstrual",
+            "is_period": True,
+            "flow": "medium",
+            "symptoms": ["腹痛", "疲劳"],
+            "mood": "calm",
+            "bbt": 36.6,
+            "cervical_mucus": "none",
+            "note": "写后立即可读",
+        },
+    )
+
+    assert created.status_code == 200
+    assert created.json()["updated_by_id"] == pair_tokens["user_a"]["id"]
+    dashboard = client.get("/cycles/dashboard?start=2026-05-01&end=2026-05-31", headers=auth(token_b))
+    assert dashboard.status_code == 200
+    logs = dashboard.json()["logs"]
+    shared = next(item for item in logs if item["date"] == "2026-05-20")
+    assert shared["source"] == "recorded"
+    assert shared["note"] == "写后立即可读"
+    assert shared["symptoms"] == ["腹痛", "疲劳"]
+
+
+def test_cycle_logs_are_isolated_between_pairs(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    other_pair = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={"user_a_display_name": "C", "user_b_display_name": "D"},
+    ).json()
+    client.put(
+        "/cycles/logs/2026-05-20",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"phase": "menstrual", "is_period": True, "flow": "light"},
+    )
+
+    response = client.get("/cycles/dashboard?start=2026-05-20&end=2026-05-20", headers=auth(other_pair["user_a_token"]))
+
+    assert response.status_code == 200
+    assert response.json()["is_empty"] is True
+    assert response.json()["logs"][0]["source"] == "predicted"
+
+
+def test_cycle_example_data_stats_and_clear(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 5, 22))
+    token = str(pair_tokens["user_a_token"])
+
+    seeded = client.post("/cycles/example-data", headers=auth(token))
+    assert seeded.status_code == 201
+    assert len(seeded.json()) > 10
+
+    dashboard = client.get("/cycles/dashboard?start=2026-05-01&end=2026-05-31", headers=auth(token)).json()
+    assert dashboard["is_empty"] is False
+    assert dashboard["stats"]["average_cycle_length"] == 28
+    assert dashboard["stats"]["confidence"] == "medium"
+    assert dashboard["stats"]["next_period_start"] == "2026-05-22"
+
+    removed = client.delete("/cycles/logs", headers=auth(token))
+    assert removed.status_code == 204
+    empty = client.get("/cycles/dashboard?start=2026-05-01&end=2026-05-31", headers=auth(token)).json()
+    assert empty["is_empty"] is True
+
+
+def test_cycle_log_delete_removes_single_day(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    token = str(pair_tokens["user_a_token"])
+    client.put(
+        "/cycles/logs/2026-05-20",
+        headers=auth(token),
+        json={"phase": "menstrual", "is_period": True, "flow": "medium"},
+    )
+
+    assert client.delete("/cycles/logs/2026-05-20", headers=auth(token)).status_code == 204
+    dashboard = client.get("/cycles/dashboard?start=2026-05-20&end=2026-05-20", headers=auth(token)).json()
+    assert dashboard["logs"][0]["source"] == "predicted"

@@ -9,29 +9,35 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@react-three/drei": "10.7.7",
+    "@react-three/fiber": "9.6.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "2.1.1",
+    "date-fns": "^4.2.1",
+    "framer-motion": "11.18.2",
+    "lucide-react": "0.471.1",
     "next": "15.5.15",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "three": "0.171.0",
-    "@react-three/fiber": "9.6.1",
-    "@react-three/drei": "10.7.7",
-    "framer-motion": "11.18.2",
-    "lucide-react": "0.471.1",
-    "zustand": "5.0.3",
-    "clsx": "2.1.1",
+    "sonner": "1.7.4",
     "tailwind-merge": "2.6.0",
-    "sonner": "1.7.4"
+    "tailwindcss-animate": "^1.0.7",
+    "three": "0.171.0",
+    "zustand": "5.0.3"
   },
   "devDependencies": {
     "@types/node": "22.10.5",
     "@types/react": "19.1.0",
     "@types/react-dom": "19.1.0",
     "@types/three": "0.171.0",
-    "typescript": "5.7.3",
-    "tailwindcss": "3.4.17",
-    "postcss": "8.5.1",
     "autoprefixer": "10.4.20",
     "eslint": "9.18.0",
-    "eslint-config-next": "15.5.15"
+    "eslint-config-next": "15.5.15",
+    "postcss": "8.5.1",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.7.3"
   }
 }

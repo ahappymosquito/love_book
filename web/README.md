@@ -69,3 +69,11 @@ npm run start
 - `/timeline` 顶端提醒块展示“一起第 N 天”、520/1314/整月纪念、固定恋爱节日、中国大陆节假日/调休标签和最终文案。
 - 普通日文案由后端优先取一言 API，失败后使用本地随机情话；前端在提醒接口失败时会用 `me.love_started_on` 做基础天数兜底。
 - 前端会在 `localStorage` 缓存最近 3 条普通日情话，进入时间线时先展示缓存/本地结果，再用 `/auth/anniversary` 的新结果刷新。
+## 周期日历 Dashboard
+
+- `/cycle` 是登录后的周期日历页面，从 `/timeline` 入口进入，使用现有 token 鉴权。
+- 页面使用 React + TypeScript + Tailwind CSS，配合 shadcn/ui 风格本地组件、lucide-react、framer-motion 和 date-fns。
+- 数据来自后端 `/cycles/dashboard`，保存、删除、清空、示例数据通过 `/cycles/logs` 与 `/cycles/example-data` 完成，不依赖前端 mock 作为真实数据源。
+- 主要组件在 `src/components/cycle-calendar-dashboard.tsx`：顶部概览、月/周/列表视图、筛选、日期详情、快速记录、阶段图例、统计卡片、周期进度条和空状态。
+- 移动端保留全宽日历、底部固定快速记录按钮和日期详情 bottom sheet；桌面端使用右侧详情面板。
+- 所有预测文案仅作个人记录参考，不提供医疗诊断或避孕建议。

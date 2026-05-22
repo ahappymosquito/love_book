@@ -1,11 +1,11 @@
-"""Pydantic request and response schemas for auth, admin, pair, event, content, and reminder APIs."""
+"""Pydantic schemas for auth, admin, pair, event, content, cycle dashboard, and reminder APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_serializer
 
-from app.models import VisibilityMode
+from app.models import CervicalMucus, CycleFlow, CycleMood, CyclePhase, VisibilityMode
 
 
 class APIModel(BaseModel):
@@ -211,3 +211,51 @@ class LoginLogOut(APIModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class CycleDailyLogBase(APIModel):
+    phase: CyclePhase = CyclePhase.unknown
+    is_period: bool = False
+    is_predicted: bool = False
+    flow: CycleFlow | None = None
+    symptoms: list[str] = Field(default_factory=list)
+    mood: CycleMood | None = None
+    bbt: float | None = Field(default=None, ge=34, le=42)
+    cervical_mucus: CervicalMucus | None = None
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class CycleDailyLogUpsert(CycleDailyLogBase):
+    pass
+
+
+class CycleDailyLogOut(CycleDailyLogBase):
+    date: date
+    updated_by_id: int | None = None
+    updated_at: datetime | None = None
+    source: Literal["recorded", "predicted"] = "recorded"
+
+    model_config = {"from_attributes": True}
+
+
+class CycleStats(APIModel):
+    current_cycle_day: int
+    current_phase: CyclePhase
+    average_cycle_length: int
+    average_period_length: int
+    last_period_start: date
+    next_period_start: date
+    next_period_end: date
+    ovulation_date: date
+    fertile_start: date
+    fertile_end: date
+    confidence: Literal["high", "medium", "low"]
+    prediction_start: date
+    prediction_end: date
+    cycle_variation_days: int
+
+
+class CycleDashboardOut(APIModel):
+    logs: list[CycleDailyLogOut]
+    stats: CycleStats
+    is_empty: bool

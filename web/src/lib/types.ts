@@ -1,4 +1,4 @@
-// Shared TypeScript contracts for API payloads, user state, events, pair tokens, and home reminders.
+// Shared TypeScript contracts for API payloads, user state, events, cycle dashboard, pair tokens, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
 
@@ -139,6 +139,70 @@ export interface AnniversaryOut {
   holiday_items: ReminderItem[];
   message: string;
   message_source: "anniversary" | "love_festival" | "holiday" | "hitokoto" | "local";
+}
+
+export type CyclePhase =
+  | "menstrual"
+  | "predicted_period"
+  | "follicular"
+  | "fertile"
+  | "ovulation"
+  | "luteal"
+  | "unknown";
+
+export type CycleFlow = "none" | "spotting" | "light" | "medium" | "heavy";
+export type CycleMood = "happy" | "calm" | "anxious" | "sad" | "tired";
+export type CervicalMucus = "none" | "dry" | "moist" | "creamy" | "eggwhite";
+
+export interface DailyLog {
+  date: string;
+  phase: CyclePhase;
+  is_period: boolean;
+  is_predicted: boolean;
+  flow: CycleFlow | null;
+  symptoms: string[];
+  mood: CycleMood | null;
+  bbt: number | null;
+  cervical_mucus: CervicalMucus | null;
+  note: string | null;
+  updated_by_id: number | null;
+  updated_at: string | null;
+  source: "recorded" | "predicted";
+}
+
+export interface DailyLogInput {
+  phase: CyclePhase;
+  is_period: boolean;
+  is_predicted?: boolean;
+  flow?: CycleFlow | null;
+  symptoms?: string[];
+  mood?: CycleMood | null;
+  bbt?: number | null;
+  cervical_mucus?: CervicalMucus | null;
+  note?: string | null;
+}
+
+export interface CycleStats {
+  current_cycle_day: number;
+  current_phase: CyclePhase;
+  average_cycle_length: number;
+  average_period_length: number;
+  last_period_start: string;
+  next_period_start: string;
+  next_period_end: string;
+  ovulation_date: string;
+  fertile_start: string;
+  fertile_end: string;
+  confidence: "high" | "medium" | "low";
+  prediction_start: string;
+  prediction_end: string;
+  cycle_variation_days: number;
+}
+
+export interface CycleDashboardOut {
+  logs: DailyLog[];
+  stats: CycleStats;
+  is_empty: boolean;
 }
 
 export const AVATAR_PRESETS = [

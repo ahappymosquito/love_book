@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated user, admin, event, upload, and reminder requests.
+// Browser API client for authenticated user, admin, event, cycle dashboard, upload, and reminder requests.
 
 import { toast } from "sonner";
 import { useAppStore } from "./store";
@@ -8,6 +8,9 @@ import type {
   AnniversaryOut,
   CommentOut,
   ContentsOut,
+  CycleDashboardOut,
+  DailyLog,
+  DailyLogInput,
   EventDetail,
   EventSummary,
   ImageOut,
@@ -192,6 +195,23 @@ export const api = {
       method: "POST",
       json: payload,
       silent: true,
+    }),
+
+  // Cycle dashboard
+  getCycleDashboard: (params: { start: string; end: string }) => {
+    const search = new URLSearchParams({ start: params.start, end: params.end });
+    return apiRequest<CycleDashboardOut>(`/cycles/dashboard?${search.toString()}`);
+  },
+  upsertCycleLog: (date: string, payload: DailyLogInput) =>
+    apiRequest<DailyLog>(`/cycles/logs/${date}`, {
+      method: "PUT",
+      json: payload,
+    }),
+  deleteCycleLog: (date: string) => apiRequest<void>(`/cycles/logs/${date}`, { method: "DELETE" }),
+  clearCycleLogs: () => apiRequest<void>("/cycles/logs", { method: "DELETE" }),
+  seedCycleExampleData: () =>
+    apiRequest<DailyLog[]>("/cycles/example-data", {
+      method: "POST",
     }),
 
   // Events

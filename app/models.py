@@ -1,11 +1,12 @@
-"""SQLAlchemy models for users, pairs, tokens, timeline events, uploads, and login logs."""
+"""SQLAlchemy models for users, pairs, tokens, timeline events, cycle logs, uploads, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
 
-from sqlalchemy import Date, DateTime, Enum, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, JSON, LargeBinary, String, Text
 from sqlalchemy.dialects.mysql import LONGBLOB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.schema import UniqueConstraint
 
 from app.core.database import Base
 
@@ -17,6 +18,40 @@ def utc_now() -> datetime:
 class VisibilityMode(StrEnum):
     public = "public"
     mutual_submit = "mutual_submit"
+
+
+class CyclePhase(StrEnum):
+    menstrual = "menstrual"
+    predicted_period = "predicted_period"
+    follicular = "follicular"
+    fertile = "fertile"
+    ovulation = "ovulation"
+    luteal = "luteal"
+    unknown = "unknown"
+
+
+class CycleFlow(StrEnum):
+    none = "none"
+    spotting = "spotting"
+    light = "light"
+    medium = "medium"
+    heavy = "heavy"
+
+
+class CycleMood(StrEnum):
+    happy = "happy"
+    calm = "calm"
+    anxious = "anxious"
+    sad = "sad"
+    tired = "tired"
+
+
+class CervicalMucus(StrEnum):
+    none = "none"
+    dry = "dry"
+    moist = "moist"
+    creamy = "creamy"
+    eggwhite = "eggwhite"
 
 
 class User(Base):
@@ -72,6 +107,32 @@ class Event(Base):
     comments: Mapped[list["Comment"]] = relationship(cascade="all, delete-orphan")
     voices: Mapped[list["Voice"]] = relationship(cascade="all, delete-orphan")
     images: Mapped[list["Image"]] = relationship(cascade="all, delete-orphan")
+
+
+class CycleDailyLog(Base):
+    __tablename__ = "cycle_daily_logs"
+    __table_args__ = (UniqueConstraint("pair_id", "date", name="uq_cycle_daily_logs_pair_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pair_id: Mapped[int] = mapped_column(ForeignKey("pairs.id"), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    phase: Mapped[CyclePhase] = mapped_column(Enum(CyclePhase), default=CyclePhase.unknown, nullable=False)
+    is_period: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_predicted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    flow: Mapped[CycleFlow | None] = mapped_column(Enum(CycleFlow))
+    symptoms: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    mood: Mapped[CycleMood | None] = mapped_column(Enum(CycleMood))
+    bbt: Mapped[float | None] = mapped_column(Float)
+    cervical_mucus: Mapped[CervicalMucus | None] = mapped_column(Enum(CervicalMucus))
+    note: Mapped[str | None] = mapped_column(Text)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    updated_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+    pair: Mapped[Pair] = relationship()
+    created_by: Mapped[User] = relationship(foreign_keys=[created_by_id])
+    updated_by: Mapped[User] = relationship(foreign_keys=[updated_by_id])
 
 
 class Comment(Base):

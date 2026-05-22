@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { BookHeart, CalendarHeart, Gift, Plus, Sparkles } from "lucide-react";
+import { BookHeart, CalendarHeart, Gift, HeartPulse, Plus, Sparkles } from "lucide-react";
 import { AuthGate } from "@/components/auth-gate";
 import { TimelineHeader } from "@/components/timeline-header";
 import { Avatar } from "@/components/avatar";
@@ -137,6 +137,26 @@ function TimelineInner() {
         </div>
 
         {anniversary && <AnniversaryCard data={anniversary} />}
+
+        <Link
+          href="/cycle"
+          className="glass-card mb-6 flex items-center justify-between gap-4 rounded-3xl p-5 transition-transform hover:-translate-y-0.5 focus-ring"
+        >
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="grid h-12 w-12 flex-none place-items-center rounded-2xl bg-rose/12 text-rose-deep">
+              <HeartPulse className="h-6 w-6" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-display text-xl leading-tight text-ink">周期日历</p>
+              <p className="mt-1 font-sc text-sm leading-relaxed text-ink-soft">
+                查看周期阶段、预测区间，并快速记录每日状态。
+              </p>
+            </div>
+          </div>
+          <span className="hidden rounded-full bg-cream-deep/70 px-3 py-1 font-sc text-xs text-ink-soft sm:inline">
+            进入
+          </span>
+        </Link>
 
         {events === null ? (
           <ListSkeleton />

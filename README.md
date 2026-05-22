@@ -701,3 +701,12 @@ python -m pytest tests -q
 - 非特殊日后端调用一言 `https://v1.hitokoto.cn/?c=e&c=f&max_length=30&encode=json` 获取小情话；失败时随机使用本地情话。
 - 后端维护 3 条一言情话缓存，普通日先返回缓存或本地情话，再后台请求一言补新缓存，避免首页提醒等待外部接口。
 - 节假日信息使用 `https://timor.tech/api/holiday/info/{YYYY-MM-DD}`；接口失败时静默跳过节假日标签，不影响首页加载。
+## 周期日历 Dashboard
+
+- 前端新增 `/cycle` 页面，登录后可从 `/timeline` 的“周期日历”入口进入。
+- 后端新增 `/cycles` API，所有接口复用现有 Bearer token 鉴权，并按当前 pair 共享周期记录。
+- 新增 `cycle_daily_logs` 表，使用 `pair_id + date` 唯一约束保存单日记录；字段包括周期阶段、是否经期、流量、症状、心情、BBT、宫颈黏液、备注、创建/更新用户与时间。
+- `GET /cycles/dashboard?start=YYYY-MM-DD&end=YYYY-MM-DD` 返回区间内记录、预测填充记录、统计信息和空状态。
+- `PUT /cycles/logs/{date}`、`DELETE /cycles/logs/{date}`、`DELETE /cycles/logs`、`POST /cycles/example-data` 用于保存、删除、清空和生成演示数据；写接口在返回前完成提交。
+- 预测逻辑只基于历史经期开始日和平均周期做参考展示，数据不足时使用 28 天周期、5 天经期默认值；周期波动大时展示预测区间。
+- 页面文案保持“记录和预测仅供参考”，不提供医疗诊断或避孕建议。
