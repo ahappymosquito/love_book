@@ -1,6 +1,7 @@
 """Shared business logic for pair access, content visibility, uploads, and home reminders."""
 
 import random
+from collections.abc import Callable
 from datetime import date, timedelta, timezone
 from pathlib import Path
 
@@ -32,6 +33,8 @@ LOCAL_LOVE_QUOTES = [
     "把晚风、星星和想念，都悄悄放进今天。",
     "喜欢不是一阵风，是每天醒来还想见你。",
 ]
+QUOTE_CACHE_LIMIT = 3
+QUOTE_CACHE: list[str] = []
 LOVE_FESTIVALS: dict[tuple[int, int], tuple[str, str]] = {
     (2, 14): ("情人节", "今天适合认真说爱，也适合一起把普通日子过甜。"),
     (3, 14): ("白色情人节", "把收到的喜欢再送回去一点，刚好装满今天。"),
@@ -123,7 +126,7 @@ def fetch_holiday_item(today: date) -> tuple[list[ReminderItem], str | None]:
     return items, name
 
 
-def fetch_hitokoto_quote() -> tuple[str, str]:
+def fetch_hitokoto_remote() -> str | None:
     try:
         response = httpx.get(HITOKOTO_URL, timeout=2.0)
         response.raise_for_status()
@@ -131,13 +134,35 @@ def fetch_hitokoto_quote() -> tuple[str, str]:
         if isinstance(payload, dict):
             quote = str(payload.get("hitokoto") or "").strip()
             if quote:
-                return quote, "hitokoto"
+                return quote
     except Exception:
-        pass
+        return None
+    return None
+
+
+def remember_quote(quote: str) -> None:
+    quote = quote.strip()
+    if not quote:
+        return
+    if quote in QUOTE_CACHE:
+        QUOTE_CACHE.remove(quote)
+    QUOTE_CACHE.insert(0, quote)
+    del QUOTE_CACHE[QUOTE_CACHE_LIMIT:]
+
+
+def refresh_hitokoto_cache() -> None:
+    quote = fetch_hitokoto_remote()
+    if quote:
+        remember_quote(quote)
+
+
+def cached_or_local_quote() -> tuple[str, str]:
+    if QUOTE_CACHE:
+        return QUOTE_CACHE[0], "hitokoto"
     return random.choice(LOCAL_LOVE_QUOTES), "local"
 
 
-def build_anniversary(pair: Pair) -> AnniversaryOut:
+def build_anniversary(pair: Pair, schedule_quote_refresh: Callable[[Callable[[], None]], None] | None = None) -> AnniversaryOut:
     today = local_today()
     started_on = pair_love_started_on(pair)
     holiday_items, holiday_name = fetch_holiday_item(today)
@@ -154,7 +179,9 @@ def build_anniversary(pair: Pair) -> AnniversaryOut:
         message = " ".join(item.message or item.label for item in holiday_items)
         source = "holiday"
     else:
-        message, source = fetch_hitokoto_quote()
+        message, source = cached_or_local_quote()
+        if schedule_quote_refresh is not None:
+            schedule_quote_refresh(refresh_hitokoto_cache)
 
     return AnniversaryOut(
         love_started_on=started_on,

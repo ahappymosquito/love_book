@@ -16,6 +16,13 @@ import { useAppStore } from "@/lib/store";
 import { formatAbsolute, formatRelative } from "@/lib/format";
 import type { AnniversaryOut, EventSummary, ReminderItem } from "@/lib/types";
 
+const QUOTE_CACHE_KEY = "love-book-reminder-quotes";
+const LOCAL_REMINDER_QUOTES = [
+  "今天也想把温柔攒起来，慢慢都给你。",
+  "日子往前走，我还是偏心你。",
+  "和你一起的普通一天，也会发一点光。",
+];
+
 function todayDateOnly(): string {
   const now = new Date();
   const month = String(now.getMonth() + 1).padStart(2, "0");
@@ -27,6 +34,39 @@ function daysTogether(startedOn: string, today: string): number {
   const start = new Date(`${startedOn}T00:00:00`);
   const end = new Date(`${today}T00:00:00`);
   return Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1);
+}
+
+function readQuoteCache(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(QUOTE_CACHE_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberQuote(quote: string) {
+  if (typeof window === "undefined") return;
+  const trimmed = quote.trim();
+  if (!trimmed) return;
+  const next = [trimmed, ...readQuoteCache().filter((item) => item !== trimmed)].slice(0, 3);
+  window.localStorage.setItem(QUOTE_CACHE_KEY, JSON.stringify(next));
+}
+
+function immediateAnniversary(startedOn: string): AnniversaryOut {
+  const today = todayDateOnly();
+  const cached = readQuoteCache();
+  return {
+    love_started_on: startedOn,
+    today,
+    days_together: daysTogether(startedOn, today),
+    anniversary_items: [],
+    love_festival_items: [],
+    holiday_items: [],
+    message: cached[0] || LOCAL_REMINDER_QUOTES[0],
+    message_source: cached[0] ? "hitokoto" : "local",
+  };
 }
 
 export default function TimelinePage() {
@@ -48,6 +88,7 @@ function TimelineInner() {
 
   useEffect(() => {
     if (!me) return;
+    setAnniversary(immediateAnniversary(me.love_started_on));
     void loadAnniversary(me.love_started_on);
   }, [me]);
 
@@ -62,19 +103,17 @@ function TimelineInner() {
 
   async function loadAnniversary(startedOn: string) {
     try {
-      setAnniversary(await api.getAnniversary());
+      const next = await api.getAnniversary();
+      if (
+        next.anniversary_items.length === 0 &&
+        next.love_festival_items.length === 0 &&
+        next.holiday_items.length === 0
+      ) {
+        rememberQuote(next.message);
+      }
+      setAnniversary(next);
     } catch {
-      const today = todayDateOnly();
-      setAnniversary({
-        love_started_on: startedOn,
-        today,
-        days_together: daysTogether(startedOn, today),
-        anniversary_items: [],
-        love_festival_items: [],
-        holiday_items: [],
-        message: "今天也想把温柔攒起来，慢慢都给你。",
-        message_source: "local",
-      });
+      setAnniversary(immediateAnniversary(startedOn));
     }
   }
 

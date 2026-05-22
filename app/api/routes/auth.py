@@ -25,9 +25,13 @@ def read_me(current_user: User = Depends(get_current_user), db: Session = Depend
 
 
 @router.get("/anniversary", response_model=AnniversaryOut)
-def read_anniversary(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> AnniversaryOut:
+def read_anniversary(
+    background: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AnniversaryOut:
     pair = get_pair_for_user(db, current_user.id)
-    return build_anniversary(pair)
+    return build_anniversary(pair, background.add_task)
 
 
 @router.patch("/me", response_model=UserOut)

@@ -17,6 +17,25 @@ class RaisingHTTPClient:
         raise RuntimeError("network disabled in test")
 
 
+class FakeResponse:
+    def __init__(self, payload: dict):
+        self.payload = payload
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict:
+        return self.payload
+
+
+class QuoteHTTPClient:
+    @staticmethod
+    def get(url: str, *args, **kwargs):
+        if "holiday" in url:
+            return FakeResponse({"holiday": {"holiday": False, "name": ""}})
+        return FakeResponse({"hitokoto": "缓存里的喜欢先到。"})
+
+
 def test_admin_pair_creation_requires_admin_key(client: TestClient) -> None:
     payload = {"user_a_display_name": "A", "user_b_display_name": "B"}
     assert client.post("/admin/pairs", json=payload).status_code == 403
@@ -235,6 +254,7 @@ def test_anniversary_endpoint_returns_love_festival(client: TestClient, monkeypa
 def test_anniversary_endpoint_uses_local_quote_when_hitokoto_fails(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    services.QUOTE_CACHE.clear()
     monkeypatch.setattr(services, "local_today", lambda: date(2026, 3, 2))
     monkeypatch.setattr(services, "httpx", RaisingHTTPClient)
     created = client.post(
@@ -251,6 +271,30 @@ def test_anniversary_endpoint_uses_local_quote_when_hitokoto_fails(
 
     assert data["message_source"] == "local"
     assert data["message"]
+
+
+def test_anniversary_endpoint_uses_cached_quote_before_refreshing(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    services.QUOTE_CACHE.clear()
+    monkeypatch.setattr(services, "local_today", lambda: date(2026, 3, 2))
+    monkeypatch.setattr(services, "httpx", QuoteHTTPClient)
+    created = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={
+            "user_a_display_name": "A",
+            "user_b_display_name": "B",
+            "love_started_on": "2026-01-01",
+        },
+    ).json()
+
+    first = client.get("/auth/anniversary", headers=auth(created["user_a_token"])).json()
+    second = client.get("/auth/anniversary", headers=auth(created["user_a_token"])).json()
+
+    assert first["message_source"] == "local"
+    assert second["message_source"] == "hitokoto"
+    assert second["message"] == "缓存里的喜欢先到。"
 
 
 def test_public_event_contents_are_immediately_visible(client: TestClient, pair_tokens: dict[str, str | int]) -> None:

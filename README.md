@@ -696,4 +696,5 @@ python -m pytest tests -q
 - 创建 pair 时可设置 `love_started_on` 情侣日期；旧数据未设置时回退到 pair 创建日期。
 - 登录后的 `/timeline` 会调用 `GET /auth/anniversary`，展示“一起第 N 天”、520/1314/整月纪念、固定恋爱节日和中国大陆节假日/调休信息。
 - 非特殊日后端调用一言 `https://v1.hitokoto.cn/?c=e&c=f&max_length=30&encode=json` 获取小情话；失败时随机使用本地情话。
+- 后端维护 3 条一言情话缓存，普通日先返回缓存或本地情话，再后台请求一言补新缓存，避免首页提醒等待外部接口。
 - 节假日信息使用 `https://timor.tech/api/holiday/info/{YYYY-MM-DD}`；接口失败时静默跳过节假日标签，不影响首页加载。
