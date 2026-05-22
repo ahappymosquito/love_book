@@ -1,3 +1,8 @@
+"""Content route handlers for comments, voice uploads, image uploads, and filtered media downloads.
+
+Creation endpoints commit before returning so detail pages can refresh content immediately after a submit.
+"""
+
 from pathlib import Path
 from uuid import uuid4
 
@@ -17,6 +22,7 @@ from app.services import (
     ensure_image_file_visible,
     ensure_pair_event,
     ensure_voice_file_visible,
+    submission_state,
     visible_contents,
 )
 
@@ -39,6 +45,9 @@ def create_comment(
     db.refresh(comment)
     other = counterpart(pair, current_user)
     recipient_token = active_token_for_user(db, other.id)
+    content_unlocked = submission_state(db, event, other, pair).unlocked
+    db.commit()
+    db.refresh(comment)
     background.add_task(
         notify_comment_created,
         recipient_email=other.email,
@@ -48,6 +57,7 @@ def create_comment(
         event_id=event.id,
         event_title=event.title,
         comment_text=comment.text,
+        content_unlocked=content_unlocked,
     )
     return CommentOut.model_validate(comment)
 
@@ -86,6 +96,7 @@ def upload_voice(
     )
     db.add(voice)
     db.flush()
+    db.commit()
     db.refresh(voice)
     return VoiceOut.model_validate(voice)
 
@@ -122,6 +133,7 @@ def upload_image(
     )
     db.add(image)
     db.flush()
+    db.commit()
     db.refresh(image)
     return ImageOut.model_validate(image)
 

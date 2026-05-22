@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, timedelta, timezone
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -374,6 +375,89 @@ def test_mutual_submit_unlocks_after_each_side_submits_any_content(
     assert [item["text"] for item in after_a["comments"]] == ["a-comment"]
     assert after_a["voices"][0]["id"] == voice_id
     assert client.get(f"/voices/{voice_id}/file", headers=auth(token_a)).status_code == 200
+
+
+def test_locked_event_email_hides_event_content(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[dict[str, str]] = []
+
+    def fake_send_email(to: str, subject: str, text_body: str, html_body: str | None = None) -> bool:
+        sent.append({"to": to, "subject": subject, "text": text_body, "html": html_body or ""})
+        return True
+
+    monkeypatch.setattr("app.emailer.send_email", fake_send_email)
+    pair = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={
+            "user_a_display_name": "A",
+            "user_b_display_name": "B",
+            "user_a_email": "a@example.com",
+            "user_b_email": "b@example.com",
+        },
+    ).json()
+
+    response = client.post(
+        "/events",
+        headers=auth(pair["user_a_token"]),
+        json={"title": "秘密标题", "description": "秘密摘要", "visibility_mode": "mutual_submit"},
+    )
+
+    assert response.status_code == 201
+    assert sent
+    message = sent[-1]
+    combined = f"{message['subject']}\n{message['text']}\n{message['html']}"
+    assert "待解锁" in combined
+    assert "秘密标题" not in combined
+    assert "秘密摘要" not in combined
+
+
+def test_comment_email_respects_unlock_state(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[dict[str, str]] = []
+
+    def fake_send_email(to: str, subject: str, text_body: str, html_body: str | None = None) -> bool:
+        sent.append({"to": to, "subject": subject, "text": text_body, "html": html_body or ""})
+        return True
+
+    monkeypatch.setattr("app.emailer.send_email", fake_send_email)
+    pair = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={
+            "user_a_display_name": "A",
+            "user_b_display_name": "B",
+            "user_a_email": "a@example.com",
+            "user_b_email": "b@example.com",
+        },
+    ).json()
+    event = client.post(
+        "/events",
+        headers=auth(pair["user_a_token"]),
+        json={"title": "秘密事件", "visibility_mode": "mutual_submit"},
+    ).json()
+    sent.clear()
+
+    first = client.post(
+        f"/events/{event['id']}/comments",
+        headers=auth(pair["user_a_token"]),
+        json={"text": "第一条秘密评论"},
+    )
+    assert first.status_code == 201
+    locked_message = sent[-1]
+    locked_combined = f"{locked_message['subject']}\n{locked_message['text']}\n{locked_message['html']}"
+    assert "待解锁" in locked_combined
+    assert "秘密事件" not in locked_combined
+    assert "第一条秘密评论" not in locked_combined
+
+    second = client.post(
+        f"/events/{event['id']}/comments",
+        headers=auth(pair["user_b_token"]),
+        json={"text": "第二条解锁评论"},
+    )
+    assert second.status_code == 201
+    unlocked_message = sent[-1]
+    unlocked_combined = f"{unlocked_message['subject']}\n{unlocked_message['text']}\n{unlocked_message['html']}"
+    assert "秘密事件" in unlocked_combined
+    assert "第二条解锁评论" in unlocked_combined
 
 
 def test_mutual_submit_blocks_voice_download_until_unlocked(

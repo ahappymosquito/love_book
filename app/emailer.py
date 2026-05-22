@@ -1,10 +1,12 @@
 """轻量 SMTP 邮件发送封装。
 
 提供 send_email() 同步函数和适合放进 FastAPI BackgroundTasks 的
-notify_event_created / notify_comment_created 帮助函数。
+notify_event_created / notify_comment_created 帮助函数；事件未解锁时通知邮件只给入口，
+不显示标题、摘要或评论正文。
 """
 from __future__ import annotations
 
+from html import escape
 import logging
 import smtplib
 import ssl
@@ -97,10 +99,39 @@ def notify_event_created(
     event_id: int,
     event_title: str,
     event_description: str | None,
+    content_unlocked: bool = True,
 ) -> None:
     if not recipient_email:
         return
     link = _event_link(event_id, recipient_token)
+    safe_recipient_name = escape(recipient_name)
+    safe_actor_name = escape(actor_name)
+    safe_event_title = escape(event_title)
+    safe_event_description = escape(_excerpt(event_description, 160) or "(暂无描述)")
+    safe_link = escape(link, quote=True)
+    if not content_unlocked:
+        subject = f"【我们之间的小事】{actor_name} 新建了一条待解锁事件"
+        text_body = (
+            f"{recipient_name}，你好：\n\n"
+            f"{actor_name} 在你们的小本子里新建了一条待解锁事件。\n"
+            f"为了保留神秘感，标题和摘要暂时不在邮件里显示。\n\n"
+            f"查看详情：{link}\n\n"
+            f"—— 我们之间的小事"
+        )
+        html_body = f"""
+        <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;line-height:1.6;color:#2b2522;max-width:560px;margin:0 auto;padding:24px;">
+          <p>{safe_recipient_name}，你好：</p>
+          <p><strong>{safe_actor_name}</strong> 在你们的小本子里新建了一条待解锁事件。</p>
+          <div style="background:#fdf6f1;border:1px solid #e9ddd3;border-radius:12px;padding:16px 18px;margin:12px 0;color:#6b605a;">
+            为了保留神秘感，标题和摘要暂时不在邮件里显示。
+          </div>
+          <p><a href="{safe_link}" style="display:inline-block;background:#d76679;color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;">查看详情</a></p>
+          <p style="color:#a09489;font-size:12px;margin-top:24px;">—— 我们之间的小事</p>
+        </div>
+        """
+        send_email(recipient_email, subject, text_body, html_body)
+        return
+
     subject = f"【我们之间的小事】{actor_name} 新建了事件「{_excerpt(event_title, 24)}」"
     text_body = (
         f"{recipient_name}，你好：\n\n"
@@ -112,13 +143,13 @@ def notify_event_created(
     )
     html_body = f"""
     <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;line-height:1.6;color:#2b2522;max-width:560px;margin:0 auto;padding:24px;">
-      <p>{recipient_name}，你好：</p>
-      <p><strong>{actor_name}</strong> 在你们的小本子里新建了一个事件：</p>
+      <p>{safe_recipient_name}，你好：</p>
+      <p><strong>{safe_actor_name}</strong> 在你们的小本子里新建了一个事件：</p>
       <div style="background:#fdf6f1;border:1px solid #e9ddd3;border-radius:12px;padding:16px 18px;margin:12px 0;">
-        <p style="margin:0 0 6px;"><strong>标题：</strong>{event_title}</p>
-        <p style="margin:0;color:#6b605a;"><strong>摘要：</strong>{_excerpt(event_description, 160) or '(暂无描述)'}</p>
+        <p style="margin:0 0 6px;"><strong>标题：</strong>{safe_event_title}</p>
+        <p style="margin:0;color:#6b605a;"><strong>摘要：</strong>{safe_event_description}</p>
       </div>
-      <p><a href="{link}" style="display:inline-block;background:#d76679;color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;">查看详情</a></p>
+      <p><a href="{safe_link}" style="display:inline-block;background:#d76679;color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;">查看详情</a></p>
       <p style="color:#a09489;font-size:12px;margin-top:24px;">—— 我们之间的小事</p>
     </div>
     """
@@ -134,10 +165,39 @@ def notify_comment_created(
     event_id: int,
     event_title: str,
     comment_text: str,
+    content_unlocked: bool = True,
 ) -> None:
     if not recipient_email:
         return
     link = _event_link(event_id, recipient_token)
+    safe_recipient_name = escape(recipient_name)
+    safe_actor_name = escape(actor_name)
+    safe_event_title = escape(event_title)
+    safe_comment_text = escape(_excerpt(comment_text, 240))
+    safe_link = escape(link, quote=True)
+    if not content_unlocked:
+        subject = f"【我们之间的小事】{actor_name} 留下了一条待解锁评论"
+        text_body = (
+            f"{recipient_name}，你好：\n\n"
+            f"{actor_name} 在一条还未解锁的事件里留下了评论。\n"
+            f"为了保留神秘感，事件标题和评论内容暂时不在邮件里显示。\n\n"
+            f"查看详情：{link}\n\n"
+            f"—— 我们之间的小事"
+        )
+        html_body = f"""
+        <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;line-height:1.6;color:#2b2522;max-width:560px;margin:0 auto;padding:24px;">
+          <p>{safe_recipient_name}，你好：</p>
+          <p><strong>{safe_actor_name}</strong> 在一条还未解锁的事件里留下了评论。</p>
+          <div style="background:#fdf6f1;border:1px solid #e9ddd3;border-radius:12px;padding:16px 18px;margin:12px 0;color:#6b605a;">
+            为了保留神秘感，事件标题和评论内容暂时不在邮件里显示。
+          </div>
+          <p><a href="{safe_link}" style="display:inline-block;background:#d76679;color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;">查看详情</a></p>
+          <p style="color:#a09489;font-size:12px;margin-top:24px;">—— 我们之间的小事</p>
+        </div>
+        """
+        send_email(recipient_email, subject, text_body, html_body)
+        return
+
     subject = f"【我们之间的小事】{actor_name} 在「{_excerpt(event_title, 20)}」留下了一条评论"
     text_body = (
         f"{recipient_name}，你好：\n\n"
@@ -148,12 +208,12 @@ def notify_comment_created(
     )
     html_body = f"""
     <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;line-height:1.6;color:#2b2522;max-width:560px;margin:0 auto;padding:24px;">
-      <p>{recipient_name}，你好：</p>
-      <p><strong>{actor_name}</strong> 在事件「{event_title}」中留下了一条评论：</p>
+      <p>{safe_recipient_name}，你好：</p>
+      <p><strong>{safe_actor_name}</strong> 在事件「{safe_event_title}」中留下了一条评论：</p>
       <blockquote style="background:#fdf6f1;border-left:4px solid #d76679;margin:12px 0;padding:12px 16px;border-radius:8px;color:#4a4239;">
-        {_excerpt(comment_text, 240)}
+        {safe_comment_text}
       </blockquote>
-      <p><a href="{link}" style="display:inline-block;background:#d76679;color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;">查看详情</a></p>
+      <p><a href="{safe_link}" style="display:inline-block;background:#d76679;color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;">查看详情</a></p>
       <p style="color:#a09489;font-size:12px;margin-top:24px;">—— 我们之间的小事</p>
     </div>
     """

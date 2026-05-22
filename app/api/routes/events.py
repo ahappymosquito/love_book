@@ -1,3 +1,8 @@
+"""Event route handlers for creating, listing, updating, deleting, and notifying timeline events.
+
+Mutation endpoints commit before returning so the frontend can immediately reload the new or changed event.
+"""
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -33,6 +38,9 @@ def create_event(
     db.refresh(event)
     other = counterpart(pair, current_user)
     recipient_token = active_token_for_user(db, other.id)
+    db.commit()
+    db.refresh(event)
+    detail = event_detail(db, event, current_user, pair)
     background.add_task(
         notify_event_created,
         recipient_email=other.email,
@@ -42,8 +50,9 @@ def create_event(
         event_id=event.id,
         event_title=event.title,
         event_description=event.description,
+        content_unlocked=detail.submission_state.unlocked,
     )
-    return event_detail(db, event, current_user, pair)
+    return detail
 
 
 @router.get("", response_model=list[EventSummary])
@@ -78,7 +87,7 @@ def update_event(
 
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(event, field, value)
-    db.flush()
+    db.commit()
     db.refresh(event)
     return event_detail(db, event, current_user, pair)
 
@@ -94,4 +103,5 @@ def delete_event(
     if event.creator_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the creator can delete this event")
     db.delete(event)
+    db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
