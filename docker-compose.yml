@@ -1,10 +1,10 @@
                                             # 我们之间的小事 · 统一部署
-# - 后端 / 前端 / nginx 三个 ubuntu:24.04 容器
-# - MySQL 直连 db.example.com:3306 (由 .env 提供凭据)
-# - nginx 监听 80/443，把 /api/ 反代到后端，其它请求转给 Next.js
+# - 后端 / 前端 / Caddy 三个容器
+# - MySQL 直连 qrqto.club:3306 (由 .env 提供凭据)
+# - Caddy 监听 80/443，自动签发 HTTPS，把 /api/ 反代到后端，其它请求转给 Next.js
 #
 # 用法：cp .env.example .env && 修改 .env && ./deploy.sh up
-# 域名：APP_DOMAIN（默认 db.example.com），用于 nginx 与前端 build args
+# 域名：qrqto.club / www.qrqto.club，由 deploy/caddy/Caddyfile 管理
 name: love-book
 
 x-logging: &default-logging
@@ -34,7 +34,7 @@ services:
       - "8000"
     networks:
       - love-book-net
-    # 外部 MySQL 走公网域名 db.example.com：保证容器 DNS 能解析到当前宿主
+    # 外部 MySQL 走公网域名 qrqto.club：保证容器 DNS 能解析到当前宿主
     extra_hosts:
       - "host.docker.internal:host-gateway"
     logging: *default-logging
@@ -44,10 +44,8 @@ services:
       context: ./web
       dockerfile: Dockerfile
       args:
-        # 前端是 SSG/SSR 的 Next.js，NEXT_PUBLIC_* 在 build 时就被注入到 bundle
-        # APP_WEB_URL 来自 .env，与邮件中的链接保持一致
+        # 生产环境通过 Caddy 同源反代 /api，管理端入口链接运行时读取浏览器 origin。
         NEXT_PUBLIC_API_BASE: /api
-        NEXT_PUBLIC_APP_URL: ${APP_WEB_URL:-https://db.example.com}
     image: love-book/frontend:latest
     container_name: love-book-frontend
     restart: unless-stopped
@@ -61,20 +59,17 @@ services:
       - backend
     logging: *default-logging
 
-  nginx:
-    image: nginx:1.27-alpine
-    container_name: love-book-nginx
+  caddy:
+    image: caddy:2-alpine
+    container_name: love-book-caddy
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./deploy/nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./deploy/nginx/certs:/etc/nginx/certs:ro
-      - ./deploy/nginx/logs:/var/log/nginx
-      # 上传文件直接由 nginx 兜底（可选，目前后端自己 file response）
-      - ./uploads:/var/www/uploads:ro
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
     depends_on:
       - backend
       - frontend
@@ -86,3 +81,7 @@ networks:
   love-book-net:
     name: love-book-net
     driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

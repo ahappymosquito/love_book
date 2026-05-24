@@ -1,0 +1,25 @@
+# Caddy public entrypoint for qrqto.club.
+# It automatically provisions and renews HTTPS certificates, strips /api before proxying
+# backend API calls, and sends all other routes to the Next.js frontend.
+
+qrqto.club, www.qrqto.club {
+	encode zstd gzip
+
+	@api path /api /api/*
+	handle @api {
+		uri strip_prefix /api
+		reverse_proxy backend:8000
+	}
+
+	handle /docs {
+		reverse_proxy backend:8000
+	}
+
+	handle /openapi.json {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

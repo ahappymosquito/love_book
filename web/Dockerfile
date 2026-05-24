@@ -1,3 +1,6 @@
+# Frontend production image for the Next.js app; build-time API routing points to /api
+# so Caddy can serve the UI and reverse-proxy backend requests from the same origin.
+
 ARG NODE_MAJOR=20
 
 FROM ubuntu:24.04 AS base
@@ -31,9 +34,7 @@ RUN npm ci --no-audit --no-fund
 FROM base AS builder
 WORKDIR /app
 ARG NEXT_PUBLIC_API_BASE=/api
-ARG NEXT_PUBLIC_APP_URL=
 ENV NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE} \
-    NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL} \
     NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

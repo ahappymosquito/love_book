@@ -1,7 +1,7 @@
 "use client";
 
 // Admin console for creating pairs, issuing tokens, editing contact details, setting relationship dates,
-// and copying tokens or entry links with a clipboard fallback for deployed browsers.
+// and copying tokens or runtime-origin entry links with a clipboard fallback for deployed browsers.
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -144,10 +144,9 @@ export default function AdminPage() {
   }
 
   function entryLink(token: string): string {
-    const configured = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/+$/, "");
-    if (configured) return `${configured}/?token=${token}`;
-    if (typeof window === "undefined") return `/?token=${token}`;
-    return `${window.location.origin}/?token=${token}`;
+    const encodedToken = encodeURIComponent(token);
+    if (typeof window === "undefined") return `/?token=${encodedToken}`;
+    return `${window.location.origin}/?token=${encodedToken}`;
   }
 
   if (!hydrated) {

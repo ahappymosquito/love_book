@@ -2,7 +2,7 @@
 
 这是一个基于 FastAPI 的后端接口项目，围绕“两位固定伴侣用户共同参与事件”的场景设计。每个事件只属于一对用户，双方都可以创建事件、发表评论、上传语音。事件创建者可以选择公开可见，或者选择“双方都提交过任意内容后再互相可见”。
 
-> ⚙️ **生产部署**：docker-compose + nginx + ubuntu:24.04 一键部署到 `db.example.com` 的完整说明见 [`DEPLOY.md`](DEPLOY.md)。
+> ⚙️ **生产部署**：docker-compose + Caddy 自动 HTTPS 一键部署到 `qrqto.club` 的完整说明见 [`DEPLOY.md`](DEPLOY.md)。
 >
 > 🖼️ **图片存储**：从 v0.3 起图片直接存入 `images.data`（MySQL `LONGBLOB` / SQLite `BLOB`），不再依赖磁盘文件。手工通过 SQL `INSERT` 入库的写法见 `DEPLOY.md §6.2`。
 
@@ -105,12 +105,12 @@ npm run dev
 页面：
 
 - `/` 登录页（3D 小狗 + 玻璃登录卡，支持 `?token=` 或 `#token=` 自动登录）
-- `/admin` 管理控制台（先用 `ADMIN_KEY` 验证身份，然后创建配对 / 复制 token / 复制入口链接；部署环境下复制失败会自动降级到隐藏文本框复制）
+- `/admin` 管理控制台（先用 `ADMIN_KEY` 验证身份，然后创建配对 / 复制 token / 复制入口链接；入口链接按当前浏览器 origin 动态生成，复制失败会自动降级到隐藏文本框复制）
 - `/timeline` 事件列表
 - `/timeline/[id]` 事件详情（评论 / 语音 / 图片混排，底部输入栏支持文字、录音、相册）
 - `/create` 新建事件
 
-token 分发链接形如 `http://localhost:3000/?token=xxx`，本身携带身份凭据，请只通过可信渠道发送。
+token 分发链接形如 `http://localhost:3000/?token=xxx` 或 `https://qrqto.club/?token=xxx`；管理端会按当前访问域名和协议动态生成，链接本身携带身份凭据，请只通过可信渠道发送。
 
 ## 鉴权说明
 

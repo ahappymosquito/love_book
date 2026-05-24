@@ -16,6 +16,8 @@
 - 事件、评论、语音、图片等写接口必须在响应返回前完成数据库提交，避免前端立即刷新时读到未提交数据。
 - 邮件通知必须遵守事件解锁状态：`mutual_submit` 未解锁时，只通知有新事件或新评论，不展示事件标题、描述或评论正文。
 - 管理端复制 token / 入口链接需要保留 Clipboard API 失败后的降级复制，兼容服务器 HTTP、权限策略或浏览器剪贴板限制。
+- 管理端复制入口链接由浏览器当前 `window.location.origin` 动态生成：HTTP 环境复制 HTTP，HTTPS 环境复制 HTTPS。
+- 生产 Docker 公网入口使用 Caddy 自动申请和续期 `qrqto.club` / `www.qrqto.club` HTTPS 证书；邮件链接仍由后端 `APP_WEB_URL` 生成，生产应设为 `https://qrqto.club`。
 
 ## 首页提醒约定
 

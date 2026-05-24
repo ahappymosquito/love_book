@@ -66,7 +66,7 @@ preflight() {
     # APP_WEB_URL 校验：不能是 localhost
     case "${APP_WEB_URL}" in
         http://localhost*|http://127.0.0.1*|*localhost*)
-            fail "APP_WEB_URL=${APP_WEB_URL} 仍指向本地，邮件链接会无法打开。请改成 https://db.example.com"
+            fail "APP_WEB_URL=${APP_WEB_URL} 仍指向本地，邮件链接会无法打开。请改成 https://qrqto.club"
             ;;
     esac
     ok "APP_WEB_URL=${APP_WEB_URL}"
@@ -88,8 +88,7 @@ preflight() {
         Dockerfile
         web/Dockerfile
         docker-compose.yml
-        deploy/nginx/nginx.conf
-        deploy/nginx/conf.d/db.example.com.conf
+        deploy/caddy/Caddyfile
         requirements.txt
         web/package.json
     )
@@ -100,7 +99,7 @@ preflight() {
 
     # 检查前端代码里是否还残留 localhost 入口链接（旧代码 / 调试输出）
     if grep -Rn "window.location.origin" web/src/app/admin >/dev/null 2>&1; then
-        ok "admin 入口链接：已切换至 NEXT_PUBLIC_APP_URL 优先 + origin 兜底"
+        ok "admin 入口链接：已切换至浏览器当前 origin 动态生成"
     fi
     if grep -Rn "http://localhost:3000" web/src 2>/dev/null | grep -v ".env" >/dev/null; then
         warn "在 web/src 中检测到 http://localhost:3000 字面量，请确认是否是无害的注释/示例"
@@ -135,15 +134,13 @@ cmd_up() {
     cat <<EOF
 
 ${BOLD}下一步：${RESET}
-  - 站点入口：     http://${APP_PUBLIC_DOMAIN:-db.example.com}/
-  - 管理控制台：   http://${APP_PUBLIC_DOMAIN:-db.example.com}/admin
-  - 后端文档：     http://${APP_PUBLIC_DOMAIN:-db.example.com}/docs
+  - 站点入口：     https://${APP_PUBLIC_DOMAIN:-qrqto.club}/
+  - 管理控制台：   https://${APP_PUBLIC_DOMAIN:-qrqto.club}/admin
+  - 后端文档：     https://${APP_PUBLIC_DOMAIN:-qrqto.club}/docs
   - 跟随日志：     ./deploy.sh logs
 
-如需 HTTPS：
-  1. 把证书放在 deploy/nginx/certs/db.example.com.{crt,key}
-  2. 编辑 deploy/nginx/conf.d/db.example.com.conf，启用 443 段并打开 80→443 重定向
-  3. ./deploy.sh restart
+Caddy 会自动申请并续期 HTTPS 证书。请确认 qrqto.club / www.qrqto.club 已解析到本机，
+且宿主机 80/443 端口可从公网访问。
 EOF
 }
 
