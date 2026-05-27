@@ -1,7 +1,10 @@
 "use client";
 
+// One-tap chat voice player that fetches authenticated database-backed audio blobs on demand.
+
 import { Pause, Play, Volume2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { fetchFileBlob } from "@/lib/api";
 import { formatDuration } from "@/lib/format";
 
@@ -45,6 +48,7 @@ export function VoicePlayer({
       setUrl(blobUrl);
       return blobUrl;
     } catch {
+      toast.error("语音加载失败");
       return null;
     } finally {
       setLoading(false);
@@ -52,32 +56,39 @@ export function VoicePlayer({
   }
 
   async function toggle() {
-    const u = await ensureUrl();
-    if (!u) return;
+    const nextUrl = await ensureUrl();
+    if (!nextUrl) return;
     if (!audioRef.current) {
-      const a = new Audio(u);
-      a.onended = () => {
+      const audio = new Audio(nextUrl);
+      audio.onended = () => {
         setPlaying(false);
         setProgress(0);
       };
-      a.ontimeupdate = () => {
-        if (a.duration && Number.isFinite(a.duration)) {
-          setProgress(a.currentTime / a.duration);
+      audio.ontimeupdate = () => {
+        if (audio.duration && Number.isFinite(audio.duration)) {
+          setProgress(audio.currentTime / audio.duration);
         }
       };
-      audioRef.current = a;
+      audio.onerror = () => {
+        setPlaying(false);
+        toast.error("语音播放失败");
+      };
+      audioRef.current = audio;
     }
+
     const audio = audioRef.current;
     if (playing) {
       audio.pause();
       setPlaying(false);
-    } else {
-      try {
-        await audio.play();
-        setPlaying(true);
-      } catch {
-        setPlaying(false);
-      }
+      return;
+    }
+
+    try {
+      await audio.play();
+      setPlaying(true);
+    } catch {
+      setPlaying(false);
+      toast.error("语音播放失败");
     }
   }
 
@@ -124,7 +135,7 @@ export function VoicePlayer({
           <div className="mt-1.5 flex items-center gap-1.5 text-[11px] opacity-90">
             <Volume2 className="h-3 w-3" />
             <span className="tabular-nums">{formatDuration(durationMs)}</span>
-            {pending && <span>· 上传中…</span>}
+            {pending && <span> · 上传中...</span>}
           </div>
         </div>
       </div>

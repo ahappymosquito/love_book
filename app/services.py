@@ -1,4 +1,4 @@
-"""Shared business logic for pair access, content visibility, uploads, and home reminders."""
+"""Shared business logic for pair access, content visibility, database media, and home reminders."""
 
 import random
 from collections.abc import Callable
@@ -307,8 +307,8 @@ def ensure_voice_file_visible(db: Session, voice_id: int, user: User, pair: Pair
     contents = visible_contents(db, event, user, pair)
     if all(item.id != voice.id for item in contents.voices):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Voice is not visible yet")
-    if not Path(voice.file_path).exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voice file not found")
+    if not voice.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voice data not found")
     return voice
 
 

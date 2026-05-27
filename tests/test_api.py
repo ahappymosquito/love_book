@@ -1,4 +1,4 @@
-"""API regression tests for admin pair setup, auth, reminders, event visibility, and uploads."""
+"""API regression tests for admin pair setup, auth, reminders, event visibility, and database media uploads."""
 
 from datetime import date, datetime, timedelta, timezone
 
@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 import app.api.routes.admin as admin_routes
 import app.cycles as cycles
 import app.services as services
-from app.models import DeviceToken
+from app.models import DeviceToken, Voice
 from tests.conftest import auth
 
 
@@ -340,7 +340,7 @@ def test_event_datetimes_are_returned_as_utc_instants(client: TestClient, pair_t
 
 
 def test_mutual_submit_unlocks_after_each_side_submits_any_content(
-    client: TestClient, pair_tokens: dict[str, str | int]
+    client: TestClient, pair_tokens: dict[str, str | int], db_session: Session
 ) -> None:
     token_a = str(pair_tokens["user_a_token"])
     token_b = str(pair_tokens["user_b_token"])
@@ -363,11 +363,16 @@ def test_mutual_submit_unlocks_after_each_side_submits_any_content(
     upload = client.post(
         f"/events/{event['id']}/voices",
         headers=auth(token_b),
-        files={"file": ("note.webm", b"voice-bytes", "audio/webm")},
+        files={"file": ("note.webm", b"voice-bytes", "audio/webm;codecs=opus")},
         data={"duration_ms": "1000"},
     )
     assert upload.status_code == 201
     voice_id = upload.json()["id"]
+    stored_voice = db_session.get(Voice, voice_id)
+    assert stored_voice is not None
+    assert stored_voice.file_path == ""
+    assert stored_voice.data == b"voice-bytes"
+    assert stored_voice.mime_type == "audio/webm"
 
     after_a = client.get(f"/events/{event['id']}/contents", headers=auth(token_a)).json()
     after_b = client.get(f"/events/{event['id']}/contents", headers=auth(token_b)).json()
@@ -375,7 +380,10 @@ def test_mutual_submit_unlocks_after_each_side_submits_any_content(
     assert after_b["submission_state"]["unlocked"] is True
     assert [item["text"] for item in after_a["comments"]] == ["a-comment"]
     assert after_a["voices"][0]["id"] == voice_id
-    assert client.get(f"/voices/{voice_id}/file", headers=auth(token_a)).status_code == 200
+    downloaded = client.get(f"/voices/{voice_id}/file", headers=auth(token_a))
+    assert downloaded.status_code == 200
+    assert downloaded.content == b"voice-bytes"
+    assert downloaded.headers["content-type"].startswith("audio/webm")
 
 
 def test_locked_event_email_hides_event_content(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -481,6 +489,33 @@ def test_mutual_submit_blocks_voice_download_until_unlocked(
 
     blocked = client.get(f"/voices/{voice_id}/file", headers=auth(token_b))
     assert blocked.status_code == 403
+
+
+def test_legacy_voice_without_database_data_is_not_downloaded(
+    client: TestClient, pair_tokens: dict[str, str | int], db_session: Session
+) -> None:
+    token = str(pair_tokens["user_a_token"])
+    event = client.post(
+        "/events",
+        headers=auth(token),
+        json={"title": "Legacy voice", "visibility_mode": "public"},
+    ).json()
+    legacy_voice = Voice(
+        event_id=event["id"],
+        author_id=int(pair_tokens["user_a"]["id"]),
+        file_path="uploads/legacy.webm",
+        data=None,
+        duration_ms=1000,
+        mime_type="audio/webm",
+        size_bytes=11,
+    )
+    db_session.add(legacy_voice)
+    db_session.commit()
+    db_session.refresh(legacy_voice)
+
+    response = client.get(f"/voices/{legacy_voice.id}/file", headers=auth(token))
+
+    assert response.status_code == 404
 
 
 def test_third_pair_cannot_access_events(client: TestClient, pair_tokens: dict[str, str | int]) -> None:

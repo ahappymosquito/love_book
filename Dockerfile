@@ -1,3 +1,5 @@
+# Backend runtime image for the FastAPI API; media bytes are stored in the database.
+
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -34,8 +36,6 @@ RUN pip install --break-system-packages --no-cache-dir -r requirements.txt
 
 COPY app ./app
 COPY scripts ./scripts
-
-RUN mkdir -p /app/uploads
 
 EXPOSE 8000
 

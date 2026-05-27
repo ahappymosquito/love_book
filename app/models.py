@@ -1,4 +1,4 @@
-"""SQLAlchemy models for users, pairs, tokens, timeline events, cycle logs, uploads, and login logs."""
+"""SQLAlchemy models for users, pairs, tokens, timeline events, cycle logs, database media, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -153,7 +153,12 @@ class Voice(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), nullable=False, index=True)
     author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    # Legacy column kept as an empty placeholder for new rows; voice bytes are stored in data.
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False, default="", server_default="")
+    data: Mapped[bytes | None] = mapped_column(
+        LargeBinary().with_variant(LONGBLOB(), "mysql").with_variant(LONGBLOB(), "mariadb"),
+        nullable=True,
+    )
     duration_ms: Mapped[int | None] = mapped_column(Integer)
     mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)

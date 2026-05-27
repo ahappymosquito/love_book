@@ -1,8 +1,11 @@
+"""Pytest fixtures for isolated database sessions, TestClient overrides, and auth headers."""
+
 from collections.abc import Generator
-from pathlib import Path
+from contextlib import asynccontextmanager
 
 import pytest
 from fastapi.testclient import TestClient
+from fastapi import FastAPI
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -32,7 +35,6 @@ def db_session() -> Generator[Session, None, None]:
 @pytest.fixture
 def client(db_session: Session) -> Generator[TestClient, None, None]:
     settings = get_settings()
-    settings.upload_dir = Path(".test_uploads")
     settings.admin_key = "test-admin-key"
 
     def override_get_db() -> Generator[Session, None, None]:
@@ -44,9 +46,19 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
             raise
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as test_client:
-        yield test_client
-    app.dependency_overrides.clear()
+    original_lifespan_context = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def noop_lifespan(_: FastAPI):
+        yield
+
+    app.router.lifespan_context = noop_lifespan
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        app.router.lifespan_context = original_lifespan_context
+        app.dependency_overrides.clear()
 
 
 @pytest.fixture

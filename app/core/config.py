@@ -1,3 +1,5 @@
+"""Environment-backed application settings for database, media limits, SMTP, and public URLs."""
+
 from functools import lru_cache
 from pathlib import Path
 import os
@@ -13,7 +15,6 @@ class Settings(BaseModel):
     app_name: str = "Pair Events API"
     database_url: str = "sqlite:///./pair_events.db"
     admin_key: str = "change-me"
-    upload_dir: Path = Path("uploads")
     max_voice_bytes: int = 10 * 1024 * 1024
     max_image_bytes: int = 10 * 1024 * 1024
     allowed_voice_mime_types: set[str] = {
@@ -51,7 +52,6 @@ def get_settings() -> Settings:
     return Settings(
         database_url=os.getenv("DATABASE_URL", defaults.database_url),
         admin_key=os.getenv("ADMIN_KEY", defaults.admin_key),
-        upload_dir=Path(os.getenv("UPLOAD_DIR", str(defaults.upload_dir))),
         max_voice_bytes=int(os.getenv("MAX_VOICE_BYTES", str(defaults.max_voice_bytes))),
         max_image_bytes=int(os.getenv("MAX_IMAGE_BYTES", str(defaults.max_image_bytes))),
         smtp_host=os.getenv("SMTP_HOST", defaults.smtp_host),

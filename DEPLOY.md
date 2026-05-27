@@ -21,7 +21,6 @@
 │       └── Caddyfile             # qrqto.club 自动 HTTPS 和反向代理配置
 ├── web/
 │   └── Dockerfile                # 前端镜像
-├── uploads/                      # 语音持久化目录
 ├── .env                          # 实际运行配置
 └── .env.example                  # 配置模板
 ```
@@ -56,8 +55,6 @@ vim .env
 | `DATABASE_URL` | `mysql+pymysql://user:pass@qrqto.club:3306/love_book?charset=utf8mb4` | 数据库连接，密码特殊字符需 URL 编码 |
 | `APP_WEB_URL` | `https://qrqto.club` | 邮件通知中的前端入口链接 |
 | `SMTP_*` | 邮件服务配置 | 用于事件 / 评论通知 |
-| `UPLOAD_DIR` | `uploads` | Compose 内部会覆盖为 `/app/uploads` |
-
 前端生产请求通过 `NEXT_PUBLIC_API_BASE=/api` 走同源 Caddy 反代。管理端复制入口链接不再依赖 `NEXT_PUBLIC_APP_URL`，因此换域名或 HTTP/HTTPS 协议时不需要为了复制链接重建前端。
 
 ## 4. 部署命令
@@ -106,9 +103,9 @@ vim .env
 ./deploy.sh restart
 ```
 
-## 7. 数据库与上传
+## 7. 数据库与媒体
 
-应用启动时 `app.core.database.init_db()` 会自动建表，并对老库做轻量补列。图片当前直接存入数据库 `images.data`（MySQL / MariaDB 为 `LONGBLOB`，SQLite 为 `BLOB`）；语音文件保存在 `uploads/`，由 Compose 挂载到后端容器 `/app/uploads`。
+应用启动时 `app.core.database.init_db()` 会自动建表，并对老库做轻量补列。图片直接存入数据库 `images.data`，语音直接存入数据库 `voices.data`（MySQL / MariaDB 为 `LONGBLOB`，SQLite 为 `BLOB`）；生产部署不再需要 `uploads/` 目录、`UPLOAD_DIR` 或上传目录 volume。旧语音记录如果没有 `voices.data`，下载接口会返回 `404`。
 
 ## 8. 故障排查
 

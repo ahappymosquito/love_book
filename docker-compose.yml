@@ -24,12 +24,7 @@ services:
     env_file:
       - .env
     environment:
-      # uploads 在容器内的目录，volume 挂到宿主机做持久化
-      UPLOAD_DIR: /app/uploads
-      # 让 backend 不受宿主机 .env 中 UPLOAD_DIR 影响
       PYTHONPATH: /app
-    volumes:
-      - ./uploads:/app/uploads
     expose:
       - "8000"
     networks:

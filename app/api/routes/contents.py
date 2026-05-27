@@ -1,10 +1,9 @@
-"""Content route handlers for comments, voice uploads, image uploads, and filtered media downloads.
+"""Content route handlers for comments, database-backed voice/image uploads, and filtered media downloads.
 
 Creation endpoints commit before returning so detail pages can refresh content immediately after a submit.
 """
 
 from pathlib import Path
-from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, Response
@@ -73,25 +72,21 @@ def upload_voice(
     pair = get_pair_for_user(db, current_user.id)
     ensure_pair_event(db, event_id, pair)
     settings = get_settings()
-    if file.content_type not in settings.allowed_voice_mime_types:
+    content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
+    if content_type not in settings.allowed_voice_mime_types:
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Unsupported audio mime type")
 
     body = file.file.read(settings.max_voice_bytes + 1)
     if len(body) > settings.max_voice_bytes:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Voice file is too large")
 
-    suffix = Path(file.filename or "").suffix
-    pair_dir = settings.upload_dir / "voices" / f"pair-{pair.id}" / f"event-{event_id}"
-    pair_dir.mkdir(parents=True, exist_ok=True)
-    target = pair_dir / f"{uuid4().hex}{suffix}"
-    target.write_bytes(body)
-
     voice = Voice(
         event_id=event_id,
         author_id=current_user.id,
-        file_path=str(target),
+        file_path="",
+        data=body,
         duration_ms=duration_ms,
-        mime_type=file.content_type,
+        mime_type=content_type,
         size_bytes=len(body),
     )
     db.add(voice)
@@ -154,10 +149,10 @@ def get_voice_file(
     voice_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> FileResponse:
+):
     pair = get_pair_for_user(db, current_user.id)
     voice = ensure_voice_file_visible(db, voice_id, current_user, pair)
-    return FileResponse(path=voice.file_path, media_type=voice.mime_type, filename=Path(voice.file_path).name)
+    return Response(content=bytes(voice.data or b""), media_type=voice.mime_type)
 
 
 @router.get("/images/{image_id}/file")

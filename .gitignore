@@ -2,8 +2,6 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .pytest_tmp/
-.test_uploads/
-uploads/
 pair_events.db
 *.log
 pytest-cache-files-*/

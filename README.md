@@ -4,7 +4,7 @@
 
 > ⚙️ **生产部署**：docker-compose + Caddy 自动 HTTPS 一键部署到 `qrqto.club` 的完整说明见 [`DEPLOY.md`](DEPLOY.md)。
 >
-> 🖼️ **图片存储**：从 v0.3 起图片直接存入 `images.data`（MySQL `LONGBLOB` / SQLite `BLOB`），不再依赖磁盘文件。手工通过 SQL `INSERT` 入库的写法见 `DEPLOY.md §6.2`。
+> 🗄️ **媒体存储**：图片直接存入 `images.data`，语音直接存入 `voices.data`（MySQL / MariaDB 为 `LONGBLOB`，SQLite 为 `BLOB`），不再依赖磁盘文件或 upload 路径。手工通过 SQL `INSERT` 入库的写法见 `DEPLOY.md §6.2`。
 
 ## 功能概览
 
@@ -57,7 +57,6 @@ pip install -r requirements.txt
 | --- | --- | --- |
 | `DATABASE_URL` | `sqlite:///./pair_events.db` | 数据库连接地址。默认使用当前目录下的 SQLite 文件。 |
 | `ADMIN_KEY` | `change-me` | 管理接口密钥，请求管理接口时放在 `X-Admin-Key` 请求头中。 |
-| `UPLOAD_DIR` | `uploads` | 语音文件保存目录。 |
 | `MAX_VOICE_BYTES` | `10485760` | 单个语音文件最大字节数，默认 10MB。 |
 | `MAX_IMAGE_BYTES` | `10485760` | 单张图片文件最大字节数，默认 10MB。 |
 
@@ -72,7 +71,6 @@ Copy-Item .env.example .env
 ```env
 ADMIN_KEY=your-admin-key
 DATABASE_URL=sqlite:///./pair_events.db
-UPLOAD_DIR=uploads
 MAX_VOICE_BYTES=10485760
 MAX_IMAGE_BYTES=10485760
 ```
@@ -502,7 +500,9 @@ Authorization: Bearer token-for-alice
 - `audio/wav`
 - `audio/x-wav`
 - `audio/webm`
+- `audio/webm;codecs=opus`（服务端会按基础 MIME `audio/webm` 校验和保存）
 - `audio/ogg`
+- `audio/ogg;codecs=opus`（服务端会按基础 MIME `audio/ogg` 校验和保存）
 - `audio/aac`
 
 curl 示例：
@@ -637,7 +637,7 @@ curl -X POST "http://127.0.0.1:8000/events/1/images" \
 
 `GET /voices/{voice_id}/file`
 
-返回原始音频文件流。如果当前用户无权访问该语音，或 `mutual_submit` 事件还未解锁，会返回 `403`；语音不存在返回 `404`。
+返回数据库中保存的原始音频流。如果当前用户无权访问该语音，或 `mutual_submit` 事件还未解锁，会返回 `403`；语音不存在或旧记录没有 `voices.data` 时返回 `404`。
 
 ### 16. 下载图片文件
 
@@ -675,6 +675,7 @@ curl -X POST "http://127.0.0.1:8000/events/1/images" \
 - 公开事件立即可见。
 - 互锁事件任意内容提交后解锁。
 - 未解锁时阻止下载对方语音。
+- 语音上传后直接写入 `voices.data`，不依赖 upload 路径；旧无数据语音返回 `404`。
 - 只有事件创建者可以修改和删除事件。
 - 非音频文件上传被拒绝。
 

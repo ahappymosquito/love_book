@@ -4,7 +4,6 @@
 .vscode
 .cursor
 .pytest_cache
-.test_uploads
 __pycache__
 **/__pycache__
 *.py[cod]
@@ -17,7 +16,6 @@ pair_events.db
 pytest-cache-files-*/
 
 # 上传内容通过 volume 挂载，不打进镜像
-uploads/
 
 # 前端目录与后端镜像无关，整体排除（前端镜像 context 是 ./web，单独处理）
 web/

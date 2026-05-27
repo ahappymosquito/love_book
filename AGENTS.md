@@ -14,6 +14,7 @@
 - `start_dev.bat --install` 会先安装后端 `requirements.txt` 和前端 `web/package.json` 依赖，再启动本地开发服务。
 - 直接执行 `start_dev.bat` 只启动服务，不重复安装依赖。
 - 事件、评论、语音、图片等写接口必须在响应返回前完成数据库提交，避免前端立即刷新时读到未提交数据。
+- 语音文件必须直接存入 `voices.data` 数据库字段，不得写入 upload 路径；旧语音记录没有数据库数据时按不可播放处理。
 - 邮件通知必须遵守事件解锁状态：`mutual_submit` 未解锁时，只通知有新事件或新评论，不展示事件标题、描述或评论正文。
 - 管理端复制 token / 入口链接需要保留 Clipboard API 失败后的降级复制，兼容服务器 HTTP、权限策略或浏览器剪贴板限制。
 - 管理端复制入口链接由浏览器当前 `window.location.origin` 动态生成：HTTP 环境复制 HTTP，HTTPS 环境复制 HTTPS。
