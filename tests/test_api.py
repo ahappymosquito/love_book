@@ -1,15 +1,17 @@
 """API regression tests for admin pair setup, auth, reminders, event visibility, and database media uploads."""
 
 from datetime import date, datetime, timedelta, timezone
+from io import BytesIO
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image as PILImage
 from sqlalchemy.orm import Session
 
 import app.api.routes.admin as admin_routes
 import app.cycles as cycles
 import app.services as services
-from app.models import DeviceToken, Voice
+from app.models import DeviceToken, Image as DBImage, Voice
 from tests.conftest import auth
 
 
@@ -36,6 +38,13 @@ class QuoteHTTPClient:
         if "holiday" in url:
             return FakeResponse({"holiday": {"holiday": False, "name": ""}})
         return FakeResponse({"hitokoto": "缓存里的喜欢先到。"})
+
+
+def sample_png_bytes() -> bytes:
+    output = BytesIO()
+    image = PILImage.new("RGB", (40, 28), color=(220, 80, 120))
+    image.save(output, format="PNG")
+    return output.getvalue()
 
 
 def test_admin_pair_creation_requires_admin_key(client: TestClient) -> None:
@@ -340,8 +349,9 @@ def test_event_datetimes_are_returned_as_utc_instants(client: TestClient, pair_t
 
 
 def test_mutual_submit_unlocks_after_each_side_submits_any_content(
-    client: TestClient, pair_tokens: dict[str, str | int], db_session: Session
+    client: TestClient, pair_tokens: dict[str, str | int], db_session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr("app.api.routes.contents.normalize_voice_to_mp3", lambda data, mime_type: b"mp3-bytes")
     token_a = str(pair_tokens["user_a_token"])
     token_b = str(pair_tokens["user_b_token"])
     event = client.post(
@@ -371,8 +381,8 @@ def test_mutual_submit_unlocks_after_each_side_submits_any_content(
     stored_voice = db_session.get(Voice, voice_id)
     assert stored_voice is not None
     assert stored_voice.file_path == ""
-    assert stored_voice.data == b"voice-bytes"
-    assert stored_voice.mime_type == "audio/webm"
+    assert stored_voice.data == b"mp3-bytes"
+    assert stored_voice.mime_type == "audio/mpeg"
 
     after_a = client.get(f"/events/{event['id']}/contents", headers=auth(token_a)).json()
     after_b = client.get(f"/events/{event['id']}/contents", headers=auth(token_b)).json()
@@ -382,8 +392,8 @@ def test_mutual_submit_unlocks_after_each_side_submits_any_content(
     assert after_a["voices"][0]["id"] == voice_id
     downloaded = client.get(f"/voices/{voice_id}/file", headers=auth(token_a))
     assert downloaded.status_code == 200
-    assert downloaded.content == b"voice-bytes"
-    assert downloaded.headers["content-type"].startswith("audio/webm")
+    assert downloaded.content == b"mp3-bytes"
+    assert downloaded.headers["content-type"].startswith("audio/mpeg")
 
 
 def test_locked_event_email_hides_event_content(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -470,8 +480,9 @@ def test_comment_email_respects_unlock_state(client: TestClient, monkeypatch: py
 
 
 def test_mutual_submit_blocks_voice_download_until_unlocked(
-    client: TestClient, pair_tokens: dict[str, str | int]
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr("app.api.routes.contents.normalize_voice_to_mp3", lambda data, mime_type: b"mp3-bytes")
     token_a = str(pair_tokens["user_a_token"])
     token_b = str(pair_tokens["user_b_token"])
     event = client.post(
@@ -561,6 +572,92 @@ def test_voice_upload_rejects_non_audio(client: TestClient, pair_tokens: dict[st
         files={"file": ("bad.txt", b"text", "text/plain")},
     )
     assert response.status_code == 415
+
+
+def test_voice_upload_rejects_audio_that_cannot_be_converted(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    from app.media import MediaProcessingError
+
+    def raise_media_error(data: bytes, mime_type: str) -> bytes:
+        raise MediaProcessingError("bad audio")
+
+    monkeypatch.setattr("app.api.routes.contents.normalize_voice_to_mp3", raise_media_error)
+    event = client.post(
+        "/events",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"title": "Bad audio", "visibility_mode": "public"},
+    ).json()
+
+    response = client.post(
+        f"/events/{event['id']}/voices",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        files={"file": ("bad.webm", b"bad-audio", "audio/webm")},
+    )
+
+    assert response.status_code == 422
+    assert db_session.query(Voice).filter(Voice.event_id == event["id"]).count() == 0
+
+
+def test_image_upload_generates_and_serves_thumbnail(
+    client: TestClient, pair_tokens: dict[str, str | int], db_session: Session
+) -> None:
+    event = client.post(
+        "/events",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"title": "Photo", "visibility_mode": "public"},
+    ).json()
+
+    upload = client.post(
+        f"/events/{event['id']}/images",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        files={"file": ("photo.png", sample_png_bytes(), "image/png")},
+    )
+    assert upload.status_code == 201
+    image_id = upload.json()["id"]
+    stored_image = db_session.get(DBImage, image_id)
+    assert stored_image is not None
+    assert stored_image.data
+    assert stored_image.thumb_data
+    assert stored_image.thumb_mime_type == "image/jpeg"
+    assert stored_image.thumb_size_bytes == len(stored_image.thumb_data)
+
+    thumb = client.get(f"/images/{image_id}/thumb", headers=auth(str(pair_tokens["user_a_token"])))
+    assert thumb.status_code == 200
+    assert thumb.headers["content-type"].startswith("image/jpeg")
+    assert thumb.content == stored_image.thumb_data
+
+
+def test_legacy_image_thumbnail_is_generated_lazily(
+    client: TestClient, pair_tokens: dict[str, str | int], db_session: Session
+) -> None:
+    token = str(pair_tokens["user_a_token"])
+    event = client.post(
+        "/events",
+        headers=auth(token),
+        json={"title": "Old photo", "visibility_mode": "public"},
+    ).json()
+    legacy_image = DBImage(
+        event_id=event["id"],
+        author_id=int(pair_tokens["user_a"]["id"]),
+        file_path="",
+        data=sample_png_bytes(),
+        thumb_data=None,
+        thumb_mime_type="image/jpeg",
+        thumb_size_bytes=0,
+        mime_type="image/png",
+        size_bytes=100,
+    )
+    db_session.add(legacy_image)
+    db_session.commit()
+    db_session.refresh(legacy_image)
+
+    response = client.get(f"/images/{legacy_image.id}/thumb", headers=auth(token))
+
+    assert response.status_code == 200
+    db_session.refresh(legacy_image)
+    assert legacy_image.thumb_data
+    assert response.content == legacy_image.thumb_data
 
 
 def test_cycle_dashboard_requires_login(client: TestClient) -> None:

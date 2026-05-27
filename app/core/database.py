@@ -86,6 +86,25 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
             "mariadb": "LONGBLOB NULL",
         },
     ),
+    (
+        "images",
+        "thumb_data",
+        {
+            "default": "BLOB NULL",
+            "mysql": "LONGBLOB NULL",
+            "mariadb": "LONGBLOB NULL",
+        },
+    ),
+    (
+        "images",
+        "thumb_mime_type",
+        {"default": "VARCHAR(100) NOT NULL DEFAULT 'image/jpeg'"},
+    ),
+    (
+        "images",
+        "thumb_size_bytes",
+        {"default": "INTEGER NOT NULL DEFAULT 0", "mysql": "INT NOT NULL DEFAULT 0", "mariadb": "INT NOT NULL DEFAULT 0"},
+    ),
 ]
 
 

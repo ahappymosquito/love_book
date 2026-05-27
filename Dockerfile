@@ -1,4 +1,4 @@
-# Backend runtime image for the FastAPI API; media bytes are stored in the database.
+# Backend runtime image for the FastAPI API; ffmpeg normalizes voice audio and media bytes stay in the database.
 
 FROM ubuntu:24.04
 
@@ -21,6 +21,7 @@ RUN set -eux; \
         ca-certificates \
         tzdata \
         curl \
+        ffmpeg \
         build-essential \
         libssl-dev \
         libffi-dev \

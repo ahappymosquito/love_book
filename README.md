@@ -4,7 +4,7 @@
 
 > ⚙️ **生产部署**：docker-compose + Caddy 自动 HTTPS 一键部署到 `qrqto.club` 的完整说明见 [`DEPLOY.md`](DEPLOY.md)。
 >
-> 🗄️ **媒体存储**：图片直接存入 `images.data`，语音直接存入 `voices.data`（MySQL / MariaDB 为 `LONGBLOB`，SQLite 为 `BLOB`），不再依赖磁盘文件或 upload 路径。手工通过 SQL `INSERT` 入库的写法见 `DEPLOY.md §6.2`。
+> 🗄️ **媒体存储**：图片直接存入 `images.data` 并生成 `images.thumb_data` 缩略图，语音转为 MP3 后存入 `voices.data`（MySQL / MariaDB 为 `LONGBLOB`，SQLite 为 `BLOB`），不再依赖磁盘文件或 upload 路径。手工通过 SQL `INSERT` 入库的写法见 `DEPLOY.md §6.2`。
 
 ## 功能概览
 
@@ -59,6 +59,8 @@ pip install -r requirements.txt
 | `ADMIN_KEY` | `change-me` | 管理接口密钥，请求管理接口时放在 `X-Admin-Key` 请求头中。 |
 | `MAX_VOICE_BYTES` | `10485760` | 单个语音文件最大字节数，默认 10MB。 |
 | `MAX_IMAGE_BYTES` | `10485760` | 单张图片文件最大字节数，默认 10MB。 |
+
+语音上传需要本机或容器内可执行 `ffmpeg`，用于把浏览器录音统一转为 iPhone / Android 都可播放的 MP3。图片缩略图由 Pillow 生成。
 
 开发环境可以先复制示例文件：
 
@@ -193,6 +195,7 @@ token 由管理接口生成，默认永久有效；创建 pair 时也可以指�
 | contents | GET | `/events/{event_id}/contents` | `Bearer` | 按可见规则过滤后的内容列表 |
 | contents | GET | `/voices/{voice_id}/file` | `Bearer` | 下载语音文件 |
 | contents | GET | `/images/{image_id}/file` | `Bearer` | 下载图片文件 |
+| contents | GET | `/images/{image_id}/thumb` | `Bearer` | 下载图片缩略图 |
 
 ### 1. 校验管理密钥
 
@@ -485,6 +488,8 @@ Authorization: Bearer token-for-alice
 
 请求类型：`multipart/form-data`
 
+服务端会使用 `ffmpeg` 将上传音频统一转为 `audio/mpeg` MP3 后保存，避免 Android 录制的 `webm/opus` 在 iPhone 上无法播放。转码失败时返回 `422`，不会保存不可播放语音。
+
 字段：
 
 | 字段 | 必填 | 说明 |
@@ -552,7 +557,7 @@ curl -X POST "http://127.0.0.1:8000/events/1/voices" \
 - `image/webp`
 - `image/gif`
 
-单张图片最大字节数由环境变量 `MAX_IMAGE_BYTES` 控制，默认 10MB。超出返回 `413`，不支持的 MIME 类型返回 `415`。
+单张图片最大字节数由环境变量 `MAX_IMAGE_BYTES` 控制，默认 10MB。超出返回 `413`，不支持的 MIME 类型返回 `415`。上传成功后会生成约 360px JPEG 缩略图，详情页优先加载缩略图，点开大图时再加载原图。
 
 curl 示例：
 
@@ -645,6 +650,12 @@ curl -X POST "http://127.0.0.1:8000/events/1/images" \
 
 返回原始图片文件流。如果当前用户无权访问该图片，或 `mutual_submit` 事件还未解锁，会返回 `403`；图片不存在返回 `404`。
 
+### 17. 下载图片缩略图
+
+`GET /images/{image_id}/thumb`
+
+返回数据库中保存的 JPEG 缩略图。旧图片如果还没有缩略图，首次请求会从 `images.data` 懒生成并写回数据库。
+
 ## 典型流程
 
 ### 公开事件
@@ -675,7 +686,8 @@ curl -X POST "http://127.0.0.1:8000/events/1/images" \
 - 公开事件立即可见。
 - 互锁事件任意内容提交后解锁。
 - 未解锁时阻止下载对方语音。
-- 语音上传后直接写入 `voices.data`，不依赖 upload 路径；旧无数据语音返回 `404`。
+- 语音上传后转 MP3 并写入 `voices.data`，不依赖 upload 路径；旧无数据语音返回 `404`。
+- 图片上传后生成缩略图，详情页缩略图接口不拉取原图。
 - 只有事件创建者可以修改和删除事件。
 - 非音频文件上传被拒绝。
 

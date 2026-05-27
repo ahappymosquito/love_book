@@ -105,7 +105,9 @@ vim .env
 
 ## 7. 数据库与媒体
 
-应用启动时 `app.core.database.init_db()` 会自动建表，并对老库做轻量补列。图片直接存入数据库 `images.data`，语音直接存入数据库 `voices.data`（MySQL / MariaDB 为 `LONGBLOB`，SQLite 为 `BLOB`）；生产部署不再需要 `uploads/` 目录、`UPLOAD_DIR` 或上传目录 volume。旧语音记录如果没有 `voices.data`，下载接口会返回 `404`。
+应用启动时 `app.core.database.init_db()` 会自动建表，并对老库做轻量补列。图片直接存入数据库 `images.data` 并生成 `images.thumb_data` 缩略图，语音通过 `ffmpeg` 转为 MP3 后存入 `voices.data`（MySQL / MariaDB 为 `LONGBLOB`，SQLite 为 `BLOB`）；生产部署不再需要 `uploads/` 目录、`UPLOAD_DIR` 或上传目录 volume。旧语音记录如果没有 `voices.data`，下载接口会返回 `404`。
+
+后端镜像已安装 `ffmpeg`；本地不跑 Docker 时也需要自行安装 `ffmpeg`。图片缩略图依赖 Python 包 `Pillow`。
 
 ## 8. 故障排查
 

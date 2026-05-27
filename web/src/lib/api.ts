@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated user, admin, event, cycle dashboard, upload, and reminder requests.
+// Browser API client for authenticated user, admin, event, cycle dashboard, media upload, and thumbnail requests.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -260,13 +260,14 @@ export const api = {
   },
 };
 
-export function fileUrl(kind: "voices" | "images", id: number): string {
+export function fileUrl(kind: "voices" | "images" | "image-thumbs", id: number): string {
+  if (kind === "image-thumbs") return `${API_BASE}/images/${id}/thumb`;
   return `${API_BASE}/${kind}/${id}/file`;
 }
 
-export async function fetchFileBlob(kind: "voices" | "images", id: number): Promise<string> {
+export async function fetchFileBlob(kind: "voices" | "images" | "image-thumbs", id: number): Promise<string> {
   const token = useAppStore.getState().token;
-  const resp = await fetch(`${API_BASE}/${kind}/${id}/file`, {
+  const resp = await fetch(fileUrl(kind, id), {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!resp.ok) throw new APIError(resp.status, await resp.text());

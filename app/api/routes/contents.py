@@ -1,4 +1,4 @@
-"""Content route handlers for comments, database-backed voice/image uploads, and filtered media downloads.
+"""Content route handlers for comments, MP3 voice uploads, image thumbnails, and filtered media downloads.
 
 Creation endpoints commit before returning so detail pages can refresh content immediately after a submit.
 """
@@ -13,6 +13,7 @@ from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.emailer import notify_comment_created
+from app.media import MediaProcessingError, make_image_thumbnail, normalize_voice_to_mp3
 from app.models import Comment, Image, User, Voice
 from app.schemas import CommentCreate, CommentOut, ContentsOut, ImageOut, VoiceOut
 from app.services import (
@@ -79,6 +80,13 @@ def upload_voice(
     body = file.file.read(settings.max_voice_bytes + 1)
     if len(body) > settings.max_voice_bytes:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Voice file is too large")
+    try:
+        body = normalize_voice_to_mp3(body, content_type)
+    except MediaProcessingError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Voice audio could not be converted to MP3: {exc}",
+        ) from exc
 
     voice = Voice(
         event_id=event_id,
@@ -86,7 +94,7 @@ def upload_voice(
         file_path="",
         data=body,
         duration_ms=duration_ms,
-        mime_type=content_type,
+        mime_type="audio/mpeg",
         size_bytes=len(body),
     )
     db.add(voice)
@@ -115,12 +123,22 @@ def upload_image(
     body = file.file.read(settings.max_image_bytes + 1)
     if len(body) > settings.max_image_bytes:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Image file is too large")
+    try:
+        thumb = make_image_thumbnail(body)
+    except MediaProcessingError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Image thumbnail could not be generated: {exc}",
+        ) from exc
 
     image = Image(
         event_id=event_id,
         author_id=current_user.id,
         file_path="",  # 旧列保留占位，新数据不写文件
         data=body,
+        thumb_data=thumb,
+        thumb_mime_type="image/jpeg",
+        thumb_size_bytes=len(thumb),
         mime_type=file.content_type or "application/octet-stream",
         size_bytes=len(body),
         width=width,
@@ -173,3 +191,27 @@ def get_image_file(
             path=image.file_path, media_type=media_type, filename=Path(image.file_path).name
         )
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image file not found")
+
+
+@router.get("/images/{image_id}/thumb")
+def get_image_thumb(
+    image_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    pair = get_pair_for_user(db, current_user.id)
+    image = ensure_image_file_visible(db, image_id, current_user, pair)
+    if not image.thumb_data and image.data:
+        try:
+            thumb = make_image_thumbnail(bytes(image.data))
+        except MediaProcessingError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image thumbnail not found") from exc
+        image.thumb_data = thumb
+        image.thumb_mime_type = "image/jpeg"
+        image.thumb_size_bytes = len(thumb)
+        db.add(image)
+        db.commit()
+        db.refresh(image)
+    if image.thumb_data:
+        return Response(content=bytes(image.thumb_data), media_type=image.thumb_mime_type or "image/jpeg")
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image thumbnail not found")

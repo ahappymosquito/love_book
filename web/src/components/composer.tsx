@@ -1,6 +1,6 @@
 "use client";
 
-// Chat composer for text, system image picking, and press-and-hold database-backed voice recording.
+// Chat composer for text, compressed system image picking, and protected press-and-hold voice recording.
 
 import { Image as ImageIcon, Mic, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -119,13 +119,16 @@ export function Composer({
   function pickMimeType(): string | null {
     if (typeof MediaRecorder === "undefined") return null;
     const candidates = [
+      "audio/mp4",
       "audio/webm;codecs=opus",
       "audio/webm",
       "audio/ogg;codecs=opus",
-      "audio/mp4",
     ];
+    const audio = typeof document !== "undefined" ? document.createElement("audio") : null;
     for (const c of candidates) {
-      if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c)) return c;
+      if (!MediaRecorder.isTypeSupported || !MediaRecorder.isTypeSupported(c)) continue;
+      const playableType = c.split(";", 1)[0];
+      if (!audio || audio.canPlayType(playableType)) return c;
     }
     return null;
   }
@@ -196,6 +199,11 @@ export function Composer({
   function handleVoicePointerDown(event: React.PointerEvent<HTMLButtonElement>) {
     if (disabled || uploadingVoice || recording || text.trim()) return;
     event.preventDefault();
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Some embedded mobile browsers do not support pointer capture on buttons.
+    }
     pointerActiveRef.current = true;
     pointerStartYRef.current = event.clientY;
     pendingStopRef.current = null;
@@ -203,6 +211,18 @@ export function Composer({
     setWillCancelVoice(false);
     addVoicePointerListeners();
     void startRecording();
+  }
+
+  async function handleImageInputChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || []);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (files.length === 0) return;
+    try {
+      onPickImages(await compressPickedImages(files));
+    } catch {
+      toast.error("图片压缩失败，已按原图上传");
+      onPickImages(files);
+    }
   }
 
   async function send() {
@@ -244,11 +264,7 @@ export function Composer({
               accept="image/*"
               multiple
               hidden
-              onChange={(e) => {
-                const files = Array.from(e.target.files || []);
-                if (files.length > 0) onPickImages(files);
-                if (fileInputRef.current) fileInputRef.current.value = "";
-              }}
+              onChange={(e) => void handleImageInputChange(e)}
             />
 
             {recording ? (
@@ -289,11 +305,18 @@ export function Composer({
                   <button
                     type="button"
                     onPointerDown={handleVoicePointerDown}
+                    onContextMenu={(e) => e.preventDefault()}
+                    onDragStart={(e) => e.preventDefault()}
                     disabled={disabled || uploadingVoice}
                     className={cn(
-                      "h-11 w-11 flex-none grid place-items-center rounded-2xl focus-ring disabled:opacity-40 select-none touch-none",
+                      "h-11 w-11 flex-none grid place-items-center rounded-2xl focus-ring disabled:opacity-40 select-none touch-none cursor-pointer",
                       "bg-rose text-white hover:bg-rose-deep transition shadow-soft",
                     )}
+                    style={{
+                      WebkitTouchCallout: "none",
+                      WebkitUserSelect: "none",
+                      userSelect: "none",
+                    }}
                     aria-label="按住说话"
                   >
                     {uploadingVoice ? (
@@ -325,7 +348,13 @@ function RecordingBar({
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex-1 flex items-center gap-2 px-2 py-2"
+      onContextMenu={(e) => e.preventDefault()}
+      className="flex-1 flex items-center gap-2 px-2 py-2 select-none touch-none"
+      style={{
+        WebkitTouchCallout: "none",
+        WebkitUserSelect: "none",
+        userSelect: "none",
+      }}
     >
       <div
         className={cn(
@@ -360,4 +389,60 @@ function RecordingBar({
       </div>
     </motion.div>
   );
+}
+
+const MAX_COMPRESSED_IMAGE_EDGE = 1600;
+const COMPRESSED_IMAGE_QUALITY = 0.82;
+
+async function compressPickedImages(files: File[]): Promise<File[]> {
+  const compressed: File[] = [];
+  for (const file of files) {
+    compressed.push(await compressImageFile(file));
+  }
+  return compressed;
+}
+
+async function compressImageFile(file: File): Promise<File> {
+  if (!file.type.startsWith("image/") || file.type === "image/gif" || file.type === "image/svg+xml") {
+    return file;
+  }
+  const image = await loadImage(file);
+  const scale = Math.min(1, MAX_COMPRESSED_IMAGE_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
+  if (scale >= 1 && file.size < 700 * 1024) return file;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const context = canvas.getContext("2d");
+  if (!context) return file;
+  const outputType = file.type === "image/webp" ? "image/webp" : "image/jpeg";
+  if (outputType === "image/jpeg") {
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const blob = await canvasToBlob(canvas, outputType, COMPRESSED_IMAGE_QUALITY);
+  if (!blob || blob.size >= file.size) return file;
+  const name = outputType === "image/jpeg" ? file.name.replace(/\.[^.]+$/, ".jpg") : file.name;
+  return new File([blob], name, { type: outputType, lastModified: file.lastModified });
+}
+
+function loadImage(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Image decode failed"));
+    };
+    image.src = url;
+  });
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob | null> {
+  return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
 }

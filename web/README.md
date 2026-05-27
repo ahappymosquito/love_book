@@ -58,8 +58,8 @@ npm run start
 ## 主要实现点
 
 - **3D 小狗**（`src/components/puppy-scene.tsx`）：基础几何体堆叠 + `useFrame` 跟随鼠标 / 触屏；点击触发跳跃 + 摇尾巴；周围漂浮粉色心形粒子 + 星空。
-- **录音**：按住麦克风开始录音，松开发送，上滑取消；`MediaRecorder` 采用 `audio/webm;codecs=opus` 优先，停止后直接 `POST /events/{id}/voices`，后端把语音写入 `voices.data`。
-- **图片**：通过系统图片选择器进入相册 / 拍照来源，不强制调用相机；选择后 `URL.createObjectURL` 立即乐观渲染，上传完成后用真实 ID 替换。
+- **录音**：按住麦克风开始录音，松开发送，上滑取消；录音控件禁用浏览器长按菜单和文本选择，停止后直接 `POST /events/{id}/voices`，后端转 MP3 后写入 `voices.data`。
+- **图片**：通过系统图片选择器进入相册 / 拍照来源，不强制调用相机；选择后前端先压缩大图并乐观渲染，详情页优先加载 `/images/{id}/thumb` 缩略图，点开才加载原图。
 - **凭据**：用户 token 存 `localStorage` (`pair-events-token`)；admin key 仅留在 zustand 内存 + sessionStorage 标记；过期 token 会在登录时提示失效。
 - **复制兼容**：管理员复制 token / 入口链接时优先使用 `navigator.clipboard.writeText`，生产浏览器拒绝剪贴板权限或非安全上下文时降级为隐藏 `textarea` + `execCommand("copy")`。
 

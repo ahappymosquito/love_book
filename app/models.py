@@ -182,6 +182,15 @@ class Image(Base):
         LargeBinary().with_variant(LONGBLOB(), "mysql").with_variant(LONGBLOB(), "mariadb"),
         nullable=True,
     )
+    # Precomputed small preview used by timeline thumbnails so detail pages do not fetch full images first.
+    thumb_data: Mapped[bytes | None] = mapped_column(
+        LargeBinary().with_variant(LONGBLOB(), "mysql").with_variant(LONGBLOB(), "mariadb"),
+        nullable=True,
+    )
+    thumb_mime_type: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="image/jpeg", server_default="image/jpeg"
+    )
+    thumb_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     # 下面三个保留 NOT NULL（提供默认值），手动 INSERT 时即便不填也不会报错。
     mime_type: Mapped[str] = mapped_column(
         String(100), nullable=False, default="application/octet-stream", server_default="application/octet-stream"

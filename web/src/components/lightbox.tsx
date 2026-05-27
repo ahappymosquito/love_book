@@ -1,5 +1,7 @@
 "use client";
 
+// Fullscreen image preview that closes on backdrop/Escape while preserving caller-owned object URLs.
+
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { useEffect } from "react";
