@@ -1,6 +1,6 @@
 "use client";
 
-// Chat composer for text, image picking, and press-and-hold database-backed voice recording.
+// Chat composer for text, system image picking, and press-and-hold database-backed voice recording.
 
 import { Image as ImageIcon, Mic, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -243,7 +243,6 @@ export function Composer({
               type="file"
               accept="image/*"
               multiple
-              capture="environment"
               hidden
               onChange={(e) => {
                 const files = Array.from(e.target.files || []);
