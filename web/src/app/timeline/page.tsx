@@ -1,11 +1,12 @@
 "use client";
 
-// Timeline home screen showing pair reminders, event list, visibility state, and entry creation shortcuts.
+// Timeline home screen showing pair reminders, shared quotes, event list, visibility state, and entry creation shortcuts.
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { BookHeart, CalendarHeart, Gift, HeartPulse, Plus, Sparkles } from "lucide-react";
+import { BookHeart, CalendarHeart, Gift, HeartPulse, Plus, Send, Sparkles, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { AuthGate } from "@/components/auth-gate";
 import { TimelineHeader } from "@/components/timeline-header";
 import { Avatar } from "@/components/avatar";
@@ -14,13 +15,10 @@ import { LoadingScreen } from "@/components/loading-screen";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import { formatAbsolute, formatRelative } from "@/lib/format";
-import type { AnniversaryOut, EventSummary, ReminderItem } from "@/lib/types";
+import type { AnniversaryOut, EventSummary, QuoteOut, ReminderItem } from "@/lib/types";
 
-const QUOTE_CACHE_KEY = "love-book-reminder-quotes";
 const LOCAL_REMINDER_QUOTES = [
-  "今天也想把温柔攒起来，慢慢都给你。",
-  "日子往前走，我还是偏心你。",
-  "和你一起的普通一天，也会发一点光。",
+  "我说伤心了怎么办 小狗说忘忘忘忘忘忘",
 ];
 
 function todayDateOnly(): string {
@@ -36,27 +34,8 @@ function daysTogether(startedOn: string, today: string): number {
   return Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1);
 }
 
-function readQuoteCache(): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(QUOTE_CACHE_KEY) || "[]");
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-function rememberQuote(quote: string) {
-  if (typeof window === "undefined") return;
-  const trimmed = quote.trim();
-  if (!trimmed) return;
-  const next = [trimmed, ...readQuoteCache().filter((item) => item !== trimmed)].slice(0, 3);
-  window.localStorage.setItem(QUOTE_CACHE_KEY, JSON.stringify(next));
-}
-
 function immediateAnniversary(startedOn: string): AnniversaryOut {
   const today = todayDateOnly();
-  const cached = readQuoteCache();
   return {
     love_started_on: startedOn,
     today,
@@ -64,8 +43,8 @@ function immediateAnniversary(startedOn: string): AnniversaryOut {
     anniversary_items: [],
     love_festival_items: [],
     holiday_items: [],
-    message: cached[0] || LOCAL_REMINDER_QUOTES[0],
-    message_source: cached[0] ? "hitokoto" : "local",
+    message: LOCAL_REMINDER_QUOTES[0],
+    message_source: "local",
   };
 }
 
@@ -81,6 +60,9 @@ function TimelineInner() {
   const me = useAppStore((s) => s.me);
   const [events, setEvents] = useState<EventSummary[] | null>(null);
   const [anniversary, setAnniversary] = useState<AnniversaryOut | null>(null);
+  const [quotes, setQuotes] = useState<QuoteOut[] | null>(null);
+  const [quoteText, setQuoteText] = useState("");
+  const [quoteSaving, setQuoteSaving] = useState(false);
 
   useEffect(() => {
     void load();
@@ -90,6 +72,7 @@ function TimelineInner() {
     if (!me) return;
     setAnniversary(immediateAnniversary(me.love_started_on));
     void loadAnniversary(me.love_started_on);
+    void loadQuotes();
   }, [me]);
 
   async function load() {
@@ -104,17 +87,41 @@ function TimelineInner() {
   async function loadAnniversary(startedOn: string) {
     try {
       const next = await api.getAnniversary();
-      if (
-        next.anniversary_items.length === 0 &&
-        next.love_festival_items.length === 0 &&
-        next.holiday_items.length === 0
-      ) {
-        rememberQuote(next.message);
-      }
       setAnniversary(next);
     } catch {
       setAnniversary(immediateAnniversary(startedOn));
     }
+  }
+
+  async function loadQuotes() {
+    try {
+      setQuotes(await api.listQuotes());
+    } catch {
+      setQuotes([]);
+    }
+  }
+
+  async function createQuote(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const text = quoteText.trim();
+    if (!text) return;
+    setQuoteSaving(true);
+    try {
+      await api.createQuote(text);
+      setQuoteText("");
+      toast.success("语录已添加");
+      await loadQuotes();
+      await loadAnniversary(me!.love_started_on);
+    } finally {
+      setQuoteSaving(false);
+    }
+  }
+
+  async function deleteQuote(id: number) {
+    await api.deleteQuote(id);
+    toast.success("语录已删除");
+    await loadQuotes();
+    await loadAnniversary(me!.love_started_on);
   }
 
   if (!me) return <LoadingScreen />;
@@ -137,6 +144,15 @@ function TimelineInner() {
         </div>
 
         {anniversary && <AnniversaryCard data={anniversary} />}
+
+        <QuoteManager
+          quotes={quotes}
+          quoteText={quoteText}
+          quoteSaving={quoteSaving}
+          onQuoteTextChange={setQuoteText}
+          onCreateQuote={createQuote}
+          onDeleteQuote={deleteQuote}
+        />
 
         <Link
           href="/cycle"
@@ -212,9 +228,6 @@ function AnniversaryCard({ data }: { data: AnniversaryOut }) {
             <p className="font-display text-2xl text-ink leading-tight">
               一起第 {data.days_together} 天
             </p>
-            {data.message_source === "hitokoto" && (
-              <span className="pill bg-cream-deep/70 text-ink-soft">一言</span>
-            )}
           </div>
           <p className="font-sc text-sm text-ink-soft mt-2 leading-relaxed">
             {data.message}
@@ -229,6 +242,78 @@ function AnniversaryCard({ data }: { data: AnniversaryOut }) {
         </div>
       </div>
     </motion.section>
+  );
+}
+
+function QuoteManager({
+  quotes,
+  quoteText,
+  quoteSaving,
+  onQuoteTextChange,
+  onCreateQuote,
+  onDeleteQuote,
+}: {
+  quotes: QuoteOut[] | null;
+  quoteText: string;
+  quoteSaving: boolean;
+  onQuoteTextChange: (text: string) => void;
+  onCreateQuote: (event: FormEvent<HTMLFormElement>) => void;
+  onDeleteQuote: (id: number) => void;
+}) {
+  return (
+    <section className="glass-card rounded-3xl p-5 sm:p-6 mb-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="font-display text-xl text-ink leading-tight">本地语录库</p>
+          <p className="font-sc text-sm text-ink-soft mt-1">普通日会从你们自己的语录里随机挑一句。</p>
+        </div>
+        <Sparkles className="h-5 w-5 text-rose flex-none" />
+      </div>
+
+      <form onSubmit={onCreateQuote} className="mt-4 flex gap-2">
+        <input
+          value={quoteText}
+          onChange={(event) => onQuoteTextChange(event.target.value)}
+          maxLength={500}
+          placeholder="写一句想随机出现的话"
+          className="min-w-0 flex-1 rounded-2xl border border-line/80 bg-white/70 px-4 py-3 font-sc text-sm text-ink outline-none transition focus:border-rose/50"
+        />
+        <button
+          type="submit"
+          disabled={quoteSaving || !quoteText.trim()}
+          className="grid h-12 w-12 flex-none place-items-center rounded-2xl bg-rose text-white shadow-soft transition hover:bg-rose-deep disabled:cursor-not-allowed disabled:opacity-50 focus-ring"
+          aria-label="添加语录"
+        >
+          <Send className="h-4 w-4" />
+        </button>
+      </form>
+
+      <div className="mt-4 space-y-2">
+        {quotes === null ? (
+          <p className="font-sc text-sm text-ink-muted">正在读取语录...</p>
+        ) : quotes.length === 0 ? (
+          <p className="font-sc text-sm text-ink-muted">还没有自定义语录，普通日会先使用默认语录。</p>
+        ) : (
+          quotes.map((quote) => (
+            <div
+              key={quote.id}
+              className="flex items-start gap-3 rounded-2xl bg-cream-deep/45 px-4 py-3"
+            >
+              <p className="min-w-0 flex-1 break-words font-sc text-sm leading-relaxed text-ink-soft">
+                {quote.text}
+              </p>
+              <button
+                onClick={() => onDeleteQuote(quote.id)}
+                className="grid h-8 w-8 flex-none place-items-center rounded-full text-ink-muted transition hover:bg-white/70 hover:text-rose-deep focus-ring"
+                aria-label="删除语录"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
   );
 }
 

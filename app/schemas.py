@@ -1,9 +1,9 @@
-"""Pydantic schemas for auth, admin, pair, event, content, cycle dashboard, and reminder APIs."""
+"""Pydantic schemas for auth, admin, pair, event, quote, content, cycle dashboard, and reminder APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, Field, field_serializer, field_validator
 
 from app.models import CervicalMucus, CycleFlow, CycleMood, CyclePhase, VisibilityMode
 
@@ -94,7 +94,29 @@ class AnniversaryOut(APIModel):
     love_festival_items: list[ReminderItem]
     holiday_items: list[ReminderItem]
     message: str
-    message_source: Literal["anniversary", "love_festival", "holiday", "hitokoto", "local"]
+    message_source: Literal["anniversary", "love_festival", "holiday", "local"]
+
+
+class QuoteCreate(APIModel):
+    text: str = Field(min_length=1, max_length=500)
+
+    @field_validator("text")
+    @classmethod
+    def strip_and_require_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Quote text cannot be empty")
+        return value
+
+
+class QuoteOut(APIModel):
+    id: int
+    pair_id: int
+    author_id: int
+    text: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class EventCreate(APIModel):

@@ -1,7 +1,6 @@
-"""Shared business logic for pair access, content visibility, database media, and home reminders."""
+"""Shared business logic for pair access, content visibility, database media, quote selection, and home reminders."""
 
 import random
-from collections.abc import Callable
 from datetime import date, timedelta, timezone
 from pathlib import Path
 
@@ -10,7 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, exists, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Comment, DeviceToken, Event, Image, Pair, User, VisibilityMode, Voice, utc_now
+from app.models import Comment, DeviceToken, Event, Image, Pair, Quote, User, VisibilityMode, Voice, utc_now
 from app.schemas import (
     AnniversaryOut,
     CommentOut,
@@ -24,17 +23,17 @@ from app.schemas import (
 )
 
 CHINA_TZ = timezone(timedelta(hours=8))
-HITOKOTO_URL = "https://v1.hitokoto.cn/?c=e&c=f&max_length=30&encode=json"
 HOLIDAY_INFO_URL = "https://timor.tech/api/holiday/info/{date}"
 LOCAL_LOVE_QUOTES = [
-    "今天也想把温柔攒起来，慢慢都给你。",
-    "日子往前走，我还是偏心你。",
-    "和你一起的普通一天，也会发一点光。",
-    "把晚风、星星和想念，都悄悄放进今天。",
-    "喜欢不是一阵风，是每天醒来还想见你。",
+    "我说伤心了怎么办 小狗说忘忘忘忘忘忘",
+    "见人说人话，见鬼说鬼话，见你说黄话",
+    "你不用变得多厉害，只要每天开开心心，乖乖听话，我就很满足了",
+    "小狗（直男）哭泣是非基悲",
+    "小狗爱我如养花什么屎尿都往我嘴里",
+    "日行一善积大德，日行两善积积大大德",
+    "日行一恶必失德，日行两恶比比失失德",
+    "如果碰不到你的双唇，你的笑容就是我的吻痕",
 ]
-QUOTE_CACHE_LIMIT = 3
-QUOTE_CACHE: list[str] = []
 LOVE_FESTIVALS: dict[tuple[int, int], tuple[str, str]] = {
     (2, 14): ("情人节", "今天适合认真说爱，也适合一起把普通日子过甜。"),
     (3, 14): ("白色情人节", "把收到的喜欢再送回去一点，刚好装满今天。"),
@@ -126,43 +125,14 @@ def fetch_holiday_item(today: date) -> tuple[list[ReminderItem], str | None]:
     return items, name
 
 
-def fetch_hitokoto_remote() -> str | None:
-    try:
-        response = httpx.get(HITOKOTO_URL, timeout=2.0)
-        response.raise_for_status()
-        payload = response.json()
-        if isinstance(payload, dict):
-            quote = str(payload.get("hitokoto") or "").strip()
-            if quote:
-                return quote
-    except Exception:
-        return None
-    return None
+def local_quote_for_pair(db: Session, pair: Pair) -> str:
+    quotes = db.execute(select(Quote.text).where(Quote.pair_id == pair.id)).scalars().all()
+    if quotes:
+        return random.choice(quotes)
+    return random.choice(LOCAL_LOVE_QUOTES)
 
 
-def remember_quote(quote: str) -> None:
-    quote = quote.strip()
-    if not quote:
-        return
-    if quote in QUOTE_CACHE:
-        QUOTE_CACHE.remove(quote)
-    QUOTE_CACHE.insert(0, quote)
-    del QUOTE_CACHE[QUOTE_CACHE_LIMIT:]
-
-
-def refresh_hitokoto_cache() -> None:
-    quote = fetch_hitokoto_remote()
-    if quote:
-        remember_quote(quote)
-
-
-def cached_or_local_quote() -> tuple[str, str]:
-    if QUOTE_CACHE:
-        return QUOTE_CACHE[0], "hitokoto"
-    return random.choice(LOCAL_LOVE_QUOTES), "local"
-
-
-def build_anniversary(pair: Pair, schedule_quote_refresh: Callable[[Callable[[], None]], None] | None = None) -> AnniversaryOut:
+def build_anniversary(db: Session, pair: Pair) -> AnniversaryOut:
     today = local_today()
     started_on = pair_love_started_on(pair)
     holiday_items, holiday_name = fetch_holiday_item(today)
@@ -179,9 +149,8 @@ def build_anniversary(pair: Pair, schedule_quote_refresh: Callable[[Callable[[],
         message = " ".join(item.message or item.label for item in holiday_items)
         source = "holiday"
     else:
-        message, source = cached_or_local_quote()
-        if schedule_quote_refresh is not None:
-            schedule_quote_refresh(refresh_hitokoto_cache)
+        message = local_quote_for_pair(db, pair)
+        source = "local"
 
     return AnniversaryOut(
         love_started_on=started_on,

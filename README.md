@@ -35,6 +35,7 @@ app/
       admin_auth.py       管理密钥校验接口
       admin.py            管理接口入口（创建、列出 pair）
       auth.py             当前用户接口
+      quotes.py           情侣共享本地语录库接口
       events.py           事件接口
       contents.py         评论、语音、图片和内容接口
 tests/
@@ -184,6 +185,9 @@ token 由管理接口生成，默认永久有效；创建 pair 时也可以指�
 | admin | GET | `/admin/pairs` | `X-Admin-Key` | 列出全部配对及其 token |
 | auth | GET | `/auth/me` | `Bearer` | 获取当前用户、对方、pair_id |
 | auth | PATCH | `/auth/me` | `Bearer` | 修改自己的昵称或头像 |
+| quotes | GET | `/quotes` | `Bearer` | 当前 pair 的共享语录列表 |
+| quotes | POST | `/quotes` | `Bearer` | 添加一条共享语录 |
+| quotes | DELETE | `/quotes/{quote_id}` | `Bearer` | 删除当前 pair 的共享语录 |
 | events | POST | `/events` | `Bearer` | 创建事件 |
 | events | GET | `/events` | `Bearer` | 当前 pair 的事件列表 |
 | events | GET | `/events/{event_id}` | `Bearer` | 事件详情（含已可见内容） |
@@ -370,6 +374,32 @@ Authorization: Bearer token-for-alice
 | `avatar` | 否 | 新头像（emoji 或短字符串），最长 64。 |
 
 成功响应是更新后的用户对象，与 `GET /auth/me` 中 `user` 字段结构相同。
+
+### 5.1 共享语录库
+
+`GET /quotes`、`POST /quotes`、`DELETE /quotes/{quote_id}`
+
+语录库按 pair 共享，双方都可以查看、添加和删除。首页 `/auth/anniversary` 在普通日会优先从当前 pair 的数据库语录随机取一句；如果没有自定义语录，则使用服务端内置的全站默认兜底语录。新增和删除接口都会在响应返回前提交数据库，前端保存后可以立即刷新读到最新内容。
+
+新增请求体：
+
+```json
+{
+  "text": "如果碰不到你的双唇，你的笑容就是我的吻痕"
+}
+```
+
+成功响应：
+
+```json
+{
+  "id": 1,
+  "pair_id": 1,
+  "author_id": 1,
+  "text": "如果碰不到你的双唇，你的笑容就是我的吻痕",
+  "created_at": "2026-04-29T12:00:00Z"
+}
+```
 
 ### 6. 创建事件
 
@@ -689,6 +719,7 @@ curl -X POST "http://127.0.0.1:8000/events/1/images" \
 - 语音上传后转 MP3 并写入 `voices.data`，不依赖 upload 路径；旧无数据语音返回 `404`。
 - 图片上传后生成缩略图，详情页缩略图接口不拉取原图。
 - 只有事件创建者可以修改和删除事件。
+- 情侣共享语录库的添加、列表、删除和 pair 隔离权限。
 - 非音频文件上传被拒绝。
 
 运行测试：
@@ -710,9 +741,9 @@ python -m pytest tests -q
 ## 首页纪念日与节日提醒
 
 - 创建 pair 时可设置 `love_started_on` 情侣日期；旧数据未设置时回退到 pair 创建日期。
-- 登录后的 `/timeline` 会调用 `GET /auth/anniversary`，展示“一起第 N 天”、520/1314/整月纪念、固定恋爱节日和中国大陆节假日/调休信息。
-- 非特殊日后端调用一言 `https://v1.hitokoto.cn/?c=e&c=f&max_length=30&encode=json` 获取小情话；失败时随机使用本地情话。
-- 后端维护 3 条一言情话缓存，普通日先返回缓存或本地情话，再后台请求一言补新缓存，避免首页提醒等待外部接口。
+- 登录后的 `/timeline` 会调用 `GET /auth/anniversary`，展示“一起第 N 天”、520/1314/整月纪念、固定恋爱节日、中国大陆节假日/调休信息和普通日本地语录。
+- 一言模块已弃用；非特殊日后端优先从当前 pair 的 `quotes` 数据库语录库随机取一句，没有自定义语录时随机使用全站默认兜底语录。
+- 前端在 `/timeline` 提供本地语录库管理入口，可添加、查看和删除当前 pair 的共享语录。
 - 节假日信息使用 `https://timor.tech/api/holiday/info/{YYYY-MM-DD}`；接口失败时静默跳过节假日标签，不影响首页加载。
 ## 周期日历 Dashboard
 

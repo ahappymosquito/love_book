@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated user, admin, event, cycle dashboard, media upload, and thumbnail requests.
+// Browser API client for authenticated user, admin, event, quote, cycle dashboard, media upload, and thumbnail requests.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -20,6 +20,7 @@ import type {
   MeOut,
   PairCreated,
   PairOut,
+  QuoteOut,
   UserOut,
   VisibilityMode,
   VoiceOut,
@@ -197,6 +198,15 @@ export const api = {
       json: payload,
       silent: true,
     }),
+
+  // Quotes
+  listQuotes: () => apiRequest<QuoteOut[]>("/quotes"),
+  createQuote: (text: string) =>
+    apiRequest<QuoteOut>("/quotes", {
+      method: "POST",
+      json: { text },
+    }),
+  deleteQuote: (id: number) => apiRequest<void>(`/quotes/${id}`, { method: "DELETE" }),
 
   // Cycle dashboard
   getCycleDashboard: (params: { start: string; end: string }) => {

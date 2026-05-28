@@ -1,4 +1,4 @@
-"""SQLAlchemy models for users, pairs, tokens, timeline events, cycle logs, database media, and login logs."""
+"""SQLAlchemy models for users, pairs, tokens, timeline events, quotes, cycle logs, database media, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -107,6 +107,19 @@ class Event(Base):
     comments: Mapped[list["Comment"]] = relationship(cascade="all, delete-orphan")
     voices: Mapped[list["Voice"]] = relationship(cascade="all, delete-orphan")
     images: Mapped[list["Image"]] = relationship(cascade="all, delete-orphan")
+
+
+class Quote(Base):
+    __tablename__ = "quotes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pair_id: Mapped[int] = mapped_column(ForeignKey("pairs.id"), nullable=False, index=True)
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    pair: Mapped[Pair] = relationship()
+    author: Mapped[User] = relationship()
 
 
 class CycleDailyLog(Base):

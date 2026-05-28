@@ -21,25 +21,6 @@ class RaisingHTTPClient:
         raise RuntimeError("network disabled in test")
 
 
-class FakeResponse:
-    def __init__(self, payload: dict):
-        self.payload = payload
-
-    def raise_for_status(self) -> None:
-        return None
-
-    def json(self) -> dict:
-        return self.payload
-
-
-class QuoteHTTPClient:
-    @staticmethod
-    def get(url: str, *args, **kwargs):
-        if "holiday" in url:
-            return FakeResponse({"holiday": {"holiday": False, "name": ""}})
-        return FakeResponse({"hitokoto": "缓存里的喜欢先到。"})
-
-
 def sample_png_bytes() -> bytes:
     output = BytesIO()
     image = PILImage.new("RGB", (40, 28), color=(220, 80, 120))
@@ -262,10 +243,9 @@ def test_anniversary_endpoint_returns_love_festival(client: TestClient, monkeypa
     assert data["love_festival_items"][0]["label"] == "情人节"
 
 
-def test_anniversary_endpoint_uses_local_quote_when_hitokoto_fails(
+def test_anniversary_endpoint_uses_default_local_quote_when_quote_library_is_empty(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    services.QUOTE_CACHE.clear()
     monkeypatch.setattr(services, "local_today", lambda: date(2026, 3, 2))
     monkeypatch.setattr(services, "httpx", RaisingHTTPClient)
     created = client.post(
@@ -281,15 +261,14 @@ def test_anniversary_endpoint_uses_local_quote_when_hitokoto_fails(
     data = client.get("/auth/anniversary", headers=auth(created["user_a_token"])).json()
 
     assert data["message_source"] == "local"
-    assert data["message"]
+    assert data["message"] in services.LOCAL_LOVE_QUOTES
 
 
-def test_anniversary_endpoint_uses_cached_quote_before_refreshing(
+def test_anniversary_endpoint_uses_pair_quote_before_default_quote(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    services.QUOTE_CACHE.clear()
     monkeypatch.setattr(services, "local_today", lambda: date(2026, 3, 2))
-    monkeypatch.setattr(services, "httpx", QuoteHTTPClient)
+    monkeypatch.setattr(services, "httpx", RaisingHTTPClient)
     created = client.post(
         "/admin/pairs",
         headers={"X-Admin-Key": "test-admin-key"},
@@ -300,12 +279,56 @@ def test_anniversary_endpoint_uses_cached_quote_before_refreshing(
         },
     ).json()
 
-    first = client.get("/auth/anniversary", headers=auth(created["user_a_token"])).json()
-    second = client.get("/auth/anniversary", headers=auth(created["user_a_token"])).json()
+    quote = client.post("/quotes", headers=auth(created["user_a_token"]), json={"text": "数据库里的喜欢先到。"})
+    data = client.get("/auth/anniversary", headers=auth(created["user_b_token"])).json()
 
-    assert first["message_source"] == "local"
-    assert second["message_source"] == "hitokoto"
-    assert second["message"] == "缓存里的喜欢先到。"
+    assert quote.status_code == 201
+    assert data["message_source"] == "local"
+    assert data["message"] == "数据库里的喜欢先到。"
+
+
+def test_quotes_require_login(client: TestClient) -> None:
+    assert client.get("/quotes").status_code == 401
+    assert client.post("/quotes", json={"text": "hello"}).status_code == 401
+
+
+def test_quote_text_must_not_be_blank(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    response = client.post("/quotes", headers=auth(str(pair_tokens["user_a_token"])), json={"text": "   "})
+
+    assert response.status_code == 422
+
+
+def test_quotes_are_shared_inside_pair_and_can_be_deleted(
+    client: TestClient, pair_tokens: dict[str, str | int]
+) -> None:
+    token_a = str(pair_tokens["user_a_token"])
+    token_b = str(pair_tokens["user_b_token"])
+
+    created = client.post("/quotes", headers=auth(token_a), json={"text": "一起保存的一句话"})
+
+    assert created.status_code == 201
+    quote_id = created.json()["id"]
+    listed = client.get("/quotes", headers=auth(token_b)).json()
+    assert [item["text"] for item in listed] == ["一起保存的一句话"]
+
+    removed = client.delete(f"/quotes/{quote_id}", headers=auth(token_b))
+    assert removed.status_code == 204
+    assert client.get("/quotes", headers=auth(token_a)).json() == []
+
+
+def test_quotes_are_isolated_between_pairs(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    token_a = str(pair_tokens["user_a_token"])
+    other_pair = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={"user_a_display_name": "C", "user_b_display_name": "D"},
+    ).json()
+    created = client.post("/quotes", headers=auth(token_a), json={"text": "只属于第一对"})
+    quote_id = created.json()["id"]
+
+    assert client.get("/quotes", headers=auth(other_pair["user_a_token"])).json() == []
+    assert client.delete(f"/quotes/{quote_id}", headers=auth(other_pair["user_a_token"])).status_code == 404
+    assert client.delete("/quotes/999999", headers=auth(token_a)).status_code == 404
 
 
 def test_public_event_contents_are_immediately_visible(client: TestClient, pair_tokens: dict[str, str | int]) -> None:

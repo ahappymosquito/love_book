@@ -1,4 +1,4 @@
-// Shared TypeScript contracts for API payloads, user state, events, cycle dashboard, pair tokens, and reminders.
+// Shared TypeScript contracts for API payloads, user state, events, quotes, cycle dashboard, pair tokens, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
 
@@ -138,7 +138,15 @@ export interface AnniversaryOut {
   love_festival_items: ReminderItem[];
   holiday_items: ReminderItem[];
   message: string;
-  message_source: "anniversary" | "love_festival" | "holiday" | "hitokoto" | "local";
+  message_source: "anniversary" | "love_festival" | "holiday" | "local";
+}
+
+export interface QuoteOut {
+  id: number;
+  pair_id: number;
+  author_id: number;
+  text: string;
+  created_at: string;
 }
 
 export type CyclePhase =
