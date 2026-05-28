@@ -3,6 +3,7 @@
 这是一个基于 FastAPI 的后端接口项目，围绕“两位固定伴侣用户共同参与事件”的场景设计。每个事件只属于一对用户，双方都可以创建事件、发表评论、上传语音。事件创建者可以选择公开可见，或者选择“双方都提交过任意内容后再互相可见”。
 
 > ⚙️ **生产部署**：docker-compose + Caddy 自动 HTTPS 一键部署到 `qrqto.club` 的完整说明见 [`DEPLOY.md`](DEPLOY.md)。
+> 🚀 **服务器一键部署**：使用预构建 GHCR 镜像时，可用 [`deploy_server.sh`](deploy_server.sh) 在服务器生成 `.env` / `Caddyfile` / `docker-compose.yml` 并启动服务，真实密码通过服务器 env 文件传入。
 >
 > 🗄️ **媒体存储**：图片原图和缩略图写入 `MEDIA_ROOT` 本地媒体目录，数据库只保存相对 `storage_key`，旧 `images.data` / `images.thumb_data` 记录仍可回退读取；语音转为 MP3 后继续存入 `voices.data`。Docker 部署需要备份数据库和 `love_book_media` volume。
 
@@ -43,6 +44,7 @@ tests/
   test_api.py             核心接口测试
 scripts/
   migrate_images_to_media.py  手动把历史图片 BLOB 迁出到媒体目录
+deploy_server.sh          服务器预构建镜像一键部署脚本
 ```
 
 ## 安装依赖

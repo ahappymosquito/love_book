@@ -16,6 +16,7 @@
 ├── Dockerfile                    # 后端镜像
 ├── docker-compose.yml            # 后端 / 前端 / Caddy 三件套
 ├── deploy.sh                     # Linux 部署脚本
+├── deploy_server.sh              # 服务器预构建镜像一键部署脚本
 ├── deploy.bat                    # Windows 包装脚本
 ├── deploy/
 │   └── caddy/
@@ -27,6 +28,8 @@
 ```
 
 当前生产入口以 `deploy/caddy/Caddyfile` 和 `docker-compose.yml` 中的 `caddy` 服务为准。
+
+如果服务器不在本机构建镜像，而是直接使用 `ghcr.io/ahappymosquito/love_book-backend:latest` 和 `ghcr.io/ahappymosquito/love_book-frontend:latest`，使用根目录的 `deploy_server.sh`。它会在服务器部署目录生成 `.env`、`Caddyfile`、`docker-compose.yml`，并拉取镜像启动服务。
 
 ## 2. 前置条件
 
@@ -79,6 +82,38 @@ vim .env
 ```
 
 `./deploy.sh up` 会执行 `docker compose up -d --build --remove-orphans`。首次启动时 Caddy 会自动向 Let's Encrypt 申请证书，并把证书数据持久化到 Docker volume `caddy_data` / `caddy_config`；后端图片媒体文件会持久化到 `love_book_media`。
+
+### 4.1 服务器预构建镜像一键部署
+
+服务器只需要 Docker，不需要仓库源码构建时，先在服务器准备一个不提交到 Git 的 `server.env`：
+
+```bash
+ADMIN_KEY=your-admin-key
+DATABASE_URL=mysql+pymysql://db_user:PASSWORD_URL_ENCODED@db.example.com:3306/love_book?charset=utf8mb4
+MYSQL_PASSWORD=your-mysql-password
+SMTP_PASS=your-smtp-auth-code
+APP_WEB_URL=https://qrqto.club
+
+MYSQL_HOST=db.example.com
+MYSQL_PORT=3306
+MYSQL_USER=db_user
+MYSQL_DATABASE=love_book
+SMTP_HOST=smtp.qq.com
+SMTP_PORT=465
+SMTP_USER=you@example.com
+SMTP_FROM=you@example.com
+SMTP_FROM_NAME=Love Book
+SMTP_USE_SSL=1
+```
+
+然后执行：
+
+```bash
+chmod +x deploy_server.sh
+./deploy_server.sh --env-file ./server.env up
+```
+
+脚本默认生成到 `/opt/love_book`，可用 `PROJECT_DIR=/path/to/app` 覆盖。生成的 Compose 会使用 `love_book_media:/app/media` 保存图片媒体文件，不再使用旧 `UPLOAD_DIR` / `./uploads:/app/uploads` 配置。
 
 ## 5. 验收地址
 
@@ -145,7 +180,8 @@ python scripts/migrate_images_to_media.py --clear-blobs --compact
 | 图片媒体 volume | `docker-compose.yml` 的 `love_book_media:/app/media` |
 | 历史图片迁移 | `scripts/migrate_images_to_media.py` |
 | Caddy HTTPS 与反代 | `deploy/caddy/Caddyfile` |
-| 部署脚本 | `deploy.sh` / `deploy.bat` |
+| 本机构建部署脚本 | `deploy.sh` / `deploy.bat` |
+| 服务器预构建镜像部署脚本 | `deploy_server.sh` |
 | 前端 API 同源配置 | `docker-compose.yml` 的 `NEXT_PUBLIC_API_BASE=/api` |
 | 管理端动态入口链接 | `web/src/app/admin/page.tsx` |
 | 邮件入口域名 | `.env` / `.env.example` 的 `APP_WEB_URL` |

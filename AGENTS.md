@@ -23,6 +23,7 @@
 - 管理端复制入口链接由浏览器当前 `window.location.origin` 动态生成：HTTP 环境复制 HTTP，HTTPS 环境复制 HTTPS。
 - 生产 Docker 公网入口使用 Caddy 自动申请和续期 `qrqto.club` / `www.qrqto.club` HTTPS 证书；邮件链接仍由后端 `APP_WEB_URL` 生成，生产应设为 `https://qrqto.club`。
 - 生产 Docker 媒体文件持久化在 named volume `love_book_media`，迁移服务器时需要和数据库一起备份。
+- 服务器使用预构建镜像部署时，优先执行 [deploy_server.sh](C:\RPA\code\love_book\deploy_server.sh) 生成 `.env`、`Caddyfile`、`docker-compose.yml` 并启动服务；真实密码和 SMTP 授权码只放服务器 env 文件或环境变量，不提交到仓库。
 
 ## 首页提醒约定
 
