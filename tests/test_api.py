@@ -1,4 +1,4 @@
-"""API regression tests for admin pair setup, auth, reminders, event visibility, and database media uploads."""
+"""API regression tests for auth, reminders, event visibility, local image storage, and database media fallback."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -12,6 +12,7 @@ import app.api.routes.admin as admin_routes
 import app.cycles as cycles
 import app.services as services
 from app.models import DeviceToken, Image as DBImage, Voice
+from app.storage import media_path
 from tests.conftest import auth
 
 
@@ -525,6 +526,31 @@ def test_mutual_submit_blocks_voice_download_until_unlocked(
     assert blocked.status_code == 403
 
 
+def test_mutual_submit_blocks_image_download_until_unlocked(
+    client: TestClient, pair_tokens: dict[str, str | int]
+) -> None:
+    token_a = str(pair_tokens["user_a_token"])
+    token_b = str(pair_tokens["user_b_token"])
+    event = client.post(
+        "/events",
+        headers=auth(token_a),
+        json={"title": "Image", "visibility_mode": "mutual_submit"},
+    ).json()
+    upload = client.post(
+        f"/events/{event['id']}/images",
+        headers=auth(token_a),
+        files={"file": ("photo.png", sample_png_bytes(), "image/png")},
+    )
+    assert upload.status_code == 201
+    image_id = upload.json()["id"]
+
+    blocked_full = client.get(f"/images/{image_id}/file", headers=auth(token_b))
+    blocked_thumb = client.get(f"/images/{image_id}/thumb", headers=auth(token_b))
+
+    assert blocked_full.status_code == 403
+    assert blocked_thumb.status_code == 403
+
+
 def test_legacy_voice_without_database_data_is_not_downloaded(
     client: TestClient, pair_tokens: dict[str, str | int], db_session: Session
 ) -> None:
@@ -625,6 +651,7 @@ def test_voice_upload_rejects_audio_that_cannot_be_converted(
 def test_image_upload_generates_and_serves_thumbnail(
     client: TestClient, pair_tokens: dict[str, str | int], db_session: Session
 ) -> None:
+    original = sample_png_bytes()
     event = client.post(
         "/events",
         headers=auth(str(pair_tokens["user_a_token"])),
@@ -634,27 +661,44 @@ def test_image_upload_generates_and_serves_thumbnail(
     upload = client.post(
         f"/events/{event['id']}/images",
         headers=auth(str(pair_tokens["user_a_token"])),
-        files={"file": ("photo.png", sample_png_bytes(), "image/png")},
+        files={"file": ("photo.png", original, "image/png")},
     )
     assert upload.status_code == 201
     image_id = upload.json()["id"]
     stored_image = db_session.get(DBImage, image_id)
     assert stored_image is not None
-    assert stored_image.data
-    assert stored_image.thumb_data
+    assert stored_image.data is None
+    assert stored_image.thumb_data is None
+    assert stored_image.storage_backend == "local"
+    assert stored_image.storage_key
+    assert stored_image.thumb_storage_key
+    assert stored_image.storage_key.startswith(f"images/originals/{pair_tokens['pair_id']}/{event['id']}/")
+    assert stored_image.thumb_storage_key.startswith(f"images/thumbs/{pair_tokens['pair_id']}/{event['id']}/")
     assert stored_image.thumb_mime_type == "image/jpeg"
-    assert stored_image.thumb_size_bytes == len(stored_image.thumb_data)
+    original_path = media_path(stored_image.storage_key)
+    thumb_path = media_path(stored_image.thumb_storage_key)
+    assert original_path.read_bytes() == original
+    assert thumb_path.is_file()
+    assert stored_image.thumb_size_bytes == thumb_path.stat().st_size
 
     thumb = client.get(f"/images/{image_id}/thumb", headers=auth(str(pair_tokens["user_a_token"])))
     assert thumb.status_code == 200
     assert thumb.headers["content-type"].startswith("image/jpeg")
-    assert thumb.content == stored_image.thumb_data
+    assert thumb.headers["cache-control"] == "private, max-age=604800"
+    assert thumb.content == thumb_path.read_bytes()
+
+    full = client.get(f"/images/{image_id}/file", headers=auth(str(pair_tokens["user_a_token"])))
+    assert full.status_code == 200
+    assert full.headers["content-type"].startswith("image/png")
+    assert full.headers["cache-control"] == "private, max-age=604800"
+    assert full.content == original
 
 
 def test_legacy_image_thumbnail_is_generated_lazily(
     client: TestClient, pair_tokens: dict[str, str | int], db_session: Session
 ) -> None:
     token = str(pair_tokens["user_a_token"])
+    original = sample_png_bytes()
     event = client.post(
         "/events",
         headers=auth(token),
@@ -664,7 +708,7 @@ def test_legacy_image_thumbnail_is_generated_lazily(
         event_id=event["id"],
         author_id=int(pair_tokens["user_a"]["id"]),
         file_path="",
-        data=sample_png_bytes(),
+        data=original,
         thumb_data=None,
         thumb_mime_type="image/jpeg",
         thumb_size_bytes=0,
@@ -681,6 +725,11 @@ def test_legacy_image_thumbnail_is_generated_lazily(
     db_session.refresh(legacy_image)
     assert legacy_image.thumb_data
     assert response.content == legacy_image.thumb_data
+
+    full = client.get(f"/images/{legacy_image.id}/file", headers=auth(token))
+    assert full.status_code == 200
+    assert full.headers["cache-control"] == "private, max-age=604800"
+    assert full.content == original
 
 
 def test_cycle_dashboard_requires_login(client: TestClient) -> None:

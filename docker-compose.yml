@@ -25,6 +25,10 @@ services:
       - .env
     environment:
       PYTHONPATH: /app
+      MEDIA_ROOT: /app/media
+      MEDIA_STORAGE: local
+    volumes:
+      - love_book_media:/app/media
     expose:
       - "8000"
     networks:
@@ -78,5 +82,6 @@ networks:
     driver: bridge
 
 volumes:
+  love_book_media:
   caddy_data:
   caddy_config:

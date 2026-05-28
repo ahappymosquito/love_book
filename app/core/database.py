@@ -1,4 +1,4 @@
-"""Database engine setup, session lifecycle, table creation, and lightweight media column migrations."""
+"""Database engine setup, sessions, table creation, and lightweight media storage column migrations."""
 
 from collections.abc import Generator
 
@@ -67,7 +67,7 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         "love_started_on",
         {"default": "DATE NULL"},
     ),
-    # 图片直接存入数据库 BLOB；老库的 images 表只有 file_path，这里补一列 data。
+    # Legacy image BLOB columns stay readable while new uploads use storage keys.
     (
         "images",
         "data",
@@ -104,6 +104,21 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         "images",
         "thumb_size_bytes",
         {"default": "INTEGER NOT NULL DEFAULT 0", "mysql": "INT NOT NULL DEFAULT 0", "mariadb": "INT NOT NULL DEFAULT 0"},
+    ),
+    (
+        "images",
+        "storage_key",
+        {"default": "VARCHAR(500) NULL"},
+    ),
+    (
+        "images",
+        "thumb_storage_key",
+        {"default": "VARCHAR(500) NULL"},
+    ),
+    (
+        "images",
+        "storage_backend",
+        {"default": "VARCHAR(50) NOT NULL DEFAULT 'local'"},
     ),
 ]
 

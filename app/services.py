@@ -1,4 +1,4 @@
-"""Shared business logic for pair access, content visibility, database media, quote selection, and home reminders."""
+"""Shared business logic for pair access, content visibility, media metadata, quotes, and home reminders."""
 
 import random
 from datetime import date, timedelta, timezone
@@ -21,6 +21,7 @@ from app.schemas import (
     SubmissionState,
     VoiceOut,
 )
+from app.storage import media_file_exists
 
 CHINA_TZ = timezone(timedelta(hours=8))
 HOLIDAY_INFO_URL = "https://timor.tech/api/holiday/info/{date}"
@@ -289,9 +290,11 @@ def ensure_image_file_visible(db: Session, image_id: int, user: User, pair: Pair
     contents = visible_contents(db, event, user, pair)
     if all(item.id != image.id for item in contents.images):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Image is not visible yet")
-    # 内容存在性：BLOB 优先；老数据回退到磁盘路径
-    has_blob = bool(image.data)
+    # Local storage keys are preferred, with old BLOB and file_path records kept readable.
+    has_storage = bool(image.storage_key) and media_file_exists(image.storage_key or "")
+    has_thumb_storage = bool(image.thumb_storage_key) and media_file_exists(image.thumb_storage_key or "")
+    has_blob = bool(image.data) or bool(image.thumb_data)
     has_file = bool(image.file_path) and Path(image.file_path).exists()
-    if not has_blob and not has_file:
+    if not has_storage and not has_thumb_storage and not has_blob and not has_file:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image file not found")
     return image

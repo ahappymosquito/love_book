@@ -1,4 +1,4 @@
-"""SQLAlchemy models for users, pairs, tokens, timeline events, quotes, cycle logs, database media, and login logs."""
+"""SQLAlchemy models for pair timelines, shared content, local image storage metadata, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -186,11 +186,13 @@ class Image(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), nullable=False, index=True)
     author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    # 兼容旧数据：早期版本把图片落到磁盘，路径写在这里。新版改为存 BLOB（data 列）。
-    # 仍保留该列且允许空字符串，避免对老库 NOT NULL 约束做破坏性变更。
+    # Legacy disk-path column kept as an empty placeholder for old schemas and old rows.
     file_path: Mapped[str] = mapped_column(String(500), nullable=False, default="", server_default="")
-    # 图片二进制内容（MySQL 走 LONGBLOB，其它方言走通用 BLOB）。
-    # 允许 NULL：旧记录通常没有 data，仅有 file_path。
+    # New image uploads store bytes in MEDIA_ROOT and keep only relative keys in these columns.
+    storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    thumb_storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    storage_backend: Mapped[str] = mapped_column(String(50), nullable=False, default="local", server_default="local")
+    # Legacy BLOB columns are readable for old rows; new image uploads leave them NULL.
     data: Mapped[bytes | None] = mapped_column(
         LargeBinary().with_variant(LONGBLOB(), "mysql").with_variant(LONGBLOB(), "mariadb"),
         nullable=True,

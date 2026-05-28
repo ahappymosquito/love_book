@@ -1,4 +1,4 @@
-# Backend runtime image for the FastAPI API; ffmpeg normalizes voice audio and media bytes stay in the database.
+# Backend runtime image for the FastAPI API; ffmpeg normalizes voice audio and images use /app/media local storage.
 
 FROM ubuntu:24.04
 

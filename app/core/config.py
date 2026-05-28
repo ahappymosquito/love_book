@@ -1,4 +1,4 @@
-"""Environment-backed application settings for database, media limits, SMTP, and public URLs."""
+"""Environment-backed settings for database, upload limits, local media storage, SMTP, and public URLs."""
 
 from functools import lru_cache
 from pathlib import Path
@@ -17,6 +17,8 @@ class Settings(BaseModel):
     admin_key: str = "change-me"
     max_voice_bytes: int = 10 * 1024 * 1024
     max_image_bytes: int = 10 * 1024 * 1024
+    media_root: str = "/app/media"
+    media_storage: str = "local"
     allowed_voice_mime_types: set[str] = {
         "audio/mpeg",
         "audio/mp3",
@@ -54,6 +56,8 @@ def get_settings() -> Settings:
         admin_key=os.getenv("ADMIN_KEY", defaults.admin_key),
         max_voice_bytes=int(os.getenv("MAX_VOICE_BYTES", str(defaults.max_voice_bytes))),
         max_image_bytes=int(os.getenv("MAX_IMAGE_BYTES", str(defaults.max_image_bytes))),
+        media_root=os.getenv("MEDIA_ROOT", defaults.media_root),
+        media_storage=os.getenv("MEDIA_STORAGE", defaults.media_storage).strip().lower(),
         smtp_host=os.getenv("SMTP_HOST", defaults.smtp_host),
         smtp_port=int(os.getenv("SMTP_PORT", str(defaults.smtp_port))),
         smtp_user=os.getenv("SMTP_USER", defaults.smtp_user),

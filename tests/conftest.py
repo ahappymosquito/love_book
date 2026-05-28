@@ -1,7 +1,8 @@
-"""Pytest fixtures for isolated database sessions, TestClient overrides, and auth headers."""
+"""Pytest fixtures for isolated database sessions, local media storage, TestClient overrides, and auth headers."""
 
 from collections.abc import Generator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -33,9 +34,12 @@ def db_session() -> Generator[Session, None, None]:
 
 
 @pytest.fixture
-def client(db_session: Session) -> Generator[TestClient, None, None]:
+def client(db_session: Session, tmp_path: Path) -> Generator[TestClient, None, None]:
     settings = get_settings()
+    original_settings = settings.model_copy()
     settings.admin_key = "test-admin-key"
+    settings.media_root = str(tmp_path / "media")
+    settings.media_storage = "local"
 
     def override_get_db() -> Generator[Session, None, None]:
         try:
@@ -57,6 +61,8 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
         with TestClient(app) as test_client:
             yield test_client
     finally:
+        for field_name in type(settings).model_fields:
+            setattr(settings, field_name, getattr(original_settings, field_name))
         app.router.lifespan_context = original_lifespan_context
         app.dependency_overrides.clear()
 

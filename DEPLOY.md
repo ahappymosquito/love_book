@@ -5,6 +5,7 @@
 - **域名**：`qrqto.club`（含 `www.qrqto.club`）
 - **公网入口**：Caddy 自动 HTTPS，`/api/*` 去掉 `/api` 前缀后反代到 FastAPI，其它请求反代到 Next.js
 - **MySQL**：由 `.env` 的 `DATABASE_URL` 提供连接信息，示例使用 `qrqto.club:3306`
+- **媒体文件**：图片原图和缩略图保存在后端 `/app/media`，由 Docker named volume `love_book_media` 持久化
 - **管理员复制入口链接**：前端运行时读取浏览器当前 `window.location.origin`，访问 HTTP 就复制 HTTP，访问 HTTPS 就复制 HTTPS
 - **邮件通知链接**：后端仍使用 `.env` 的 `APP_WEB_URL`，生产环境应设置为 `https://qrqto.club`
 
@@ -54,6 +55,8 @@ vim .env
 | `ADMIN_KEY` | 32 位以上随机字符串 | 管理后台密钥 |
 | `DATABASE_URL` | `mysql+pymysql://user:pass@qrqto.club:3306/love_book?charset=utf8mb4` | 数据库连接，密码特殊字符需 URL 编码 |
 | `APP_WEB_URL` | `https://qrqto.club` | 邮件通知中的前端入口链接 |
+| `MEDIA_ROOT` | `/app/media` | 图片媒体根目录，Docker 中挂载 `love_book_media` volume |
+| `MEDIA_STORAGE` | `local` | 当前图片存储后端 |
 | `SMTP_*` | 邮件服务配置 | 用于事件 / 评论通知 |
 前端生产请求通过 `NEXT_PUBLIC_API_BASE=/api` 走同源 Caddy 反代。管理端复制入口链接不再依赖 `NEXT_PUBLIC_APP_URL`，因此换域名或 HTTP/HTTPS 协议时不需要为了复制链接重建前端。
 
@@ -75,7 +78,7 @@ vim .env
 ./deploy.sh build
 ```
 
-`./deploy.sh up` 会执行 `docker compose up -d --build --remove-orphans`。首次启动时 Caddy 会自动向 Let's Encrypt 申请证书，并把证书数据持久化到 Docker volume `caddy_data` / `caddy_config`。
+`./deploy.sh up` 会执行 `docker compose up -d --build --remove-orphans`。首次启动时 Caddy 会自动向 Let's Encrypt 申请证书，并把证书数据持久化到 Docker volume `caddy_data` / `caddy_config`；后端图片媒体文件会持久化到 `love_book_media`。
 
 ## 5. 验收地址
 
@@ -105,7 +108,21 @@ vim .env
 
 ## 7. 数据库与媒体
 
-应用启动时 `app.core.database.init_db()` 会自动建表，并对老库做轻量补列。图片直接存入数据库 `images.data` 并生成 `images.thumb_data` 缩略图，语音通过 `ffmpeg` 转为 MP3 后存入 `voices.data`（MySQL / MariaDB 为 `LONGBLOB`，SQLite 为 `BLOB`）；生产部署不再需要 `uploads/` 目录、`UPLOAD_DIR` 或上传目录 volume。旧语音记录如果没有 `voices.data`，下载接口会返回 `404`。
+应用启动时 `app.core.database.init_db()` 会自动建表，并对老库做轻量补列。新上传图片的原图和缩略图写入 `MEDIA_ROOT`，数据库只保存 `images.storage_key` / `images.thumb_storage_key` 等相对 key 和元数据；旧 `images.data` / `images.thumb_data` BLOB 记录仍可回退读取。语音通过 `ffmpeg` 转为 MP3 后存入 `voices.data`（MySQL / MariaDB 为 `LONGBLOB`，SQLite 为 `BLOB`）；旧语音记录如果没有 `voices.data`，下载接口会返回 `404`。
+
+历史图片迁出数据库时，先备份数据库和 `love_book_media` volume，再执行：
+
+```bash
+python scripts/migrate_images_to_media.py
+```
+
+默认只导出文件并回填 key，不清空旧 BLOB。确认接口读取正常后，可执行：
+
+```bash
+python scripts/migrate_images_to_media.py --clear-blobs --compact
+```
+
+迁移服务器时必须同时备份数据库和 `love_book_media` volume，否则新图片文件会丢失。
 
 后端镜像已安装 `ffmpeg`；本地不跑 Docker 时也需要自行安装 `ffmpeg`。图片缩略图依赖 Python 包 `Pillow`。
 
@@ -125,6 +142,8 @@ vim .env
 | 功能 | 文件 |
 | --- | --- |
 | Docker 编排 | `docker-compose.yml` |
+| 图片媒体 volume | `docker-compose.yml` 的 `love_book_media:/app/media` |
+| 历史图片迁移 | `scripts/migrate_images_to_media.py` |
 | Caddy HTTPS 与反代 | `deploy/caddy/Caddyfile` |
 | 部署脚本 | `deploy.sh` / `deploy.bat` |
 | 前端 API 同源配置 | `docker-compose.yml` 的 `NEXT_PUBLIC_API_BASE=/api` |

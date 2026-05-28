@@ -4,7 +4,7 @@
 
 > ⚙️ **生产部署**：docker-compose + Caddy 自动 HTTPS 一键部署到 `qrqto.club` 的完整说明见 [`DEPLOY.md`](DEPLOY.md)。
 >
-> 🗄️ **媒体存储**：图片直接存入 `images.data` 并生成 `images.thumb_data` 缩略图，语音转为 MP3 后存入 `voices.data`（MySQL / MariaDB 为 `LONGBLOB`，SQLite 为 `BLOB`），不再依赖磁盘文件或 upload 路径。手工通过 SQL `INSERT` 入库的写法见 `DEPLOY.md §6.2`。
+> 🗄️ **媒体存储**：图片原图和缩略图写入 `MEDIA_ROOT` 本地媒体目录，数据库只保存相对 `storage_key`，旧 `images.data` / `images.thumb_data` 记录仍可回退读取；语音转为 MP3 后继续存入 `voices.data`。Docker 部署需要备份数据库和 `love_book_media` volume。
 
 ## 功能概览
 
@@ -26,6 +26,7 @@ app/
   models.py               SQLAlchemy 数据模型
   schemas.py              Pydantic 请求/响应模型
   services.py             可见性、权限和内容过滤逻辑
+  storage.py              本地图片媒体存储 key、路径校验和读写
   core/
     config.py             环境配置
     database.py           数据库连接和建表
@@ -40,6 +41,8 @@ app/
       contents.py         评论、语音、图片和内容接口
 tests/
   test_api.py             核心接口测试
+scripts/
+  migrate_images_to_media.py  手动把历史图片 BLOB 迁出到媒体目录
 ```
 
 ## 安装依赖
@@ -60,6 +63,8 @@ pip install -r requirements.txt
 | `ADMIN_KEY` | `change-me` | 管理接口密钥，请求管理接口时放在 `X-Admin-Key` 请求头中。 |
 | `MAX_VOICE_BYTES` | `10485760` | 单个语音文件最大字节数，默认 10MB。 |
 | `MAX_IMAGE_BYTES` | `10485760` | 单张图片文件最大字节数，默认 10MB。 |
+| `MEDIA_ROOT` | `/app/media` | 图片原图和缩略图的本地媒体根目录；Docker 中由 `love_book_media` volume 持久化。 |
+| `MEDIA_STORAGE` | `local` | 当前图片存储后端，现阶段固定使用本地文件。 |
 
 语音上传需要本机或容器内可执行 `ffmpeg`，用于把浏览器录音统一转为 iPhone / Android 都可播放的 MP3。图片缩略图由 Pillow 生成。
 
@@ -76,6 +81,8 @@ ADMIN_KEY=your-admin-key
 DATABASE_URL=sqlite:///./pair_events.db
 MAX_VOICE_BYTES=10485760
 MAX_IMAGE_BYTES=10485760
+MEDIA_ROOT=/app/media
+MEDIA_STORAGE=local
 ```
 
 ## 启动服务
@@ -587,7 +594,7 @@ curl -X POST "http://127.0.0.1:8000/events/1/voices" \
 - `image/webp`
 - `image/gif`
 
-单张图片最大字节数由环境变量 `MAX_IMAGE_BYTES` 控制，默认 10MB。超出返回 `413`，不支持的 MIME 类型返回 `415`。上传成功后会生成约 360px JPEG 缩略图，详情页优先加载缩略图，点开大图时再加载原图。
+单张图片最大字节数由环境变量 `MAX_IMAGE_BYTES` 控制，默认 10MB。超出返回 `413`，不支持的 MIME 类型返回 `415`。上传成功后原图写入 `MEDIA_ROOT/images/originals/{pair_id}/{event_id}/...`，约 360px JPEG 缩略图写入 `MEDIA_ROOT/images/thumbs/{pair_id}/{event_id}/...`，数据库只保存相对 key、MIME、尺寸和大小等元数据。详情页优先加载缩略图，点开大图时再加载原图。
 
 curl 示例：
 
@@ -678,13 +685,29 @@ curl -X POST "http://127.0.0.1:8000/events/1/images" \
 
 `GET /images/{image_id}/file`
 
-返回原始图片文件流。如果当前用户无权访问该图片，或 `mutual_submit` 事件还未解锁，会返回 `403`；图片不存在返回 `404`。
+返回原始图片文件流。接口优先读取 `images.storage_key` 指向的本地媒体文件；旧记录没有 key 时回退读取 `images.data`。如果当前用户无权访问该图片，或 `mutual_submit` 事件还未解锁，会返回 `403`；图片不存在返回 `404`。响应会带 `Cache-Control: private` 缓存头。
 
 ### 17. 下载图片缩略图
 
 `GET /images/{image_id}/thumb`
 
-返回数据库中保存的 JPEG 缩略图。旧图片如果还没有缩略图，首次请求会从 `images.data` 懒生成并写回数据库。
+返回 JPEG 缩略图。接口优先读取 `images.thumb_storage_key` 指向的本地媒体文件；旧记录没有 key 时回退读取 `images.thumb_data`，如果旧图片还没有缩略图，首次请求会从 `images.data` 懒生成并写回数据库。响应会带 `Cache-Control: private` 缓存头。
+
+## 历史图片迁移
+
+已有数据库如果仍包含 `images.data` / `images.thumb_data`，先备份数据库和媒体目录，然后执行：
+
+```powershell
+python scripts/migrate_images_to_media.py
+```
+
+脚本会把历史原图和缩略图导出到 `MEDIA_ROOT`，并回填 `storage_key` / `thumb_storage_key`，默认不清空旧 BLOB。确认接口读取正常、备份可用后，才执行可选清理：
+
+```powershell
+python scripts/migrate_images_to_media.py --clear-blobs --compact
+```
+
+Docker 生产环境迁移服务器时需要同时备份数据库和 `love_book_media` volume。
 
 ## 典型流程
 
@@ -717,7 +740,8 @@ curl -X POST "http://127.0.0.1:8000/events/1/images" \
 - 互锁事件任意内容提交后解锁。
 - 未解锁时阻止下载对方语音。
 - 语音上传后转 MP3 并写入 `voices.data`，不依赖 upload 路径；旧无数据语音返回 `404`。
-- 图片上传后生成缩略图，详情页缩略图接口不拉取原图。
+- 图片上传后原图和缩略图落盘到 `MEDIA_ROOT`，数据库不再写新图片 BLOB，详情页缩略图接口不拉取原图。
+- 旧 `images.data` / `images.thumb_data` 图片仍可读取，避免升级后历史图片失效。
 - 只有事件创建者可以修改和删除事件。
 - 情侣共享语录库的添加、列表、删除和 pair 隔离权限。
 - 非音频文件上传被拒绝。
@@ -733,7 +757,7 @@ python -m pytest tests -q
 - v1 token 默认永久有效，也可以在创建 pair 时指定过期时间；尚未提供刷新和撤销机制。
 - v1 自动建表，并带少量轻量级补列逻辑（如 `users.avatar`、`device_tokens.expires_at`）。已有生产数据库中的旧 token 因 `expires_at` 为 `NULL` 会继续永久有效。
 - SQLite 适合本地开发；正式部署建议改成 PostgreSQL，并增加迁移、备份和文件存储策略。
-- 上传文件默认保存到本地目录，正式部署时需要考虑对象存储或持久化挂载。
+- 图片文件默认保存到 `MEDIA_ROOT` 本地目录；Docker 生产部署已用 `love_book_media` named volume 持久化，服务器迁移时要和数据库一起备份。
 - `.env` 不应提交到版本库；项目已在 `.gitignore` 中排除 `.env`。
 - `ADMIN_KEY` 默认值是 `change-me`，正式环境必须改掉。
 - 前端代码在 `web/`，不参与后端 Python 测试。`web/node_modules/`、`web/.next/`、`web/.env.local` 已在 `.gitignore` 中排除。

@@ -1,4 +1,4 @@
-"""Content route handlers for comments, MP3 voice uploads, image thumbnails, and filtered media downloads.
+"""Content route handlers for comments, MP3 voice uploads, local image storage, and filtered media downloads.
 
 Creation endpoints commit before returning so detail pages can refresh content immediately after a submit.
 """
@@ -24,6 +24,13 @@ from app.services import (
     ensure_voice_file_visible,
     submission_state,
     visible_contents,
+)
+from app.storage import (
+    PRIVATE_MEDIA_CACHE_HEADERS,
+    MediaStorageError,
+    build_image_storage_keys,
+    read_media_file,
+    write_media_file,
 )
 
 router = APIRouter(tags=["contents"])
@@ -113,11 +120,12 @@ def upload_image(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ImageOut:
-    """图片以 BLOB 形式写入数据库 images.data 列；不再落磁盘。"""
+    """Store uploaded image bytes under MEDIA_ROOT and save only relative storage keys."""
     pair = get_pair_for_user(db, current_user.id)
-    ensure_pair_event(db, event_id, pair)
+    event = ensure_pair_event(db, event_id, pair)
     settings = get_settings()
-    if file.content_type not in settings.allowed_image_mime_types:
+    content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
+    if content_type not in settings.allowed_image_mime_types:
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Unsupported image mime type")
 
     body = file.file.read(settings.max_image_bytes + 1)
@@ -131,15 +139,25 @@ def upload_image(
             detail=f"Image thumbnail could not be generated: {exc}",
         ) from exc
 
+    storage_key, thumb_storage_key = build_image_storage_keys(pair.id, event.id, content_type)
+    try:
+        write_media_file(storage_key, body)
+        write_media_file(thumb_storage_key, thumb)
+    except (MediaStorageError, OSError) as exc:
+        raise HTTPException(status_code=500, detail=f"Image file could not be saved: {exc}") from exc
+
     image = Image(
         event_id=event_id,
         author_id=current_user.id,
         file_path="",  # 旧列保留占位，新数据不写文件
-        data=body,
-        thumb_data=thumb,
+        storage_key=storage_key,
+        thumb_storage_key=thumb_storage_key,
+        storage_backend=settings.media_storage,
+        data=None,
+        thumb_data=None,
         thumb_mime_type="image/jpeg",
         thumb_size_bytes=len(thumb),
-        mime_type=file.content_type or "application/octet-stream",
+        mime_type=content_type or "application/octet-stream",
         size_bytes=len(body),
         width=width,
         height=height,
@@ -182,13 +200,22 @@ def get_image_file(
     pair = get_pair_for_user(db, current_user.id)
     image = ensure_image_file_visible(db, image_id, current_user, pair)
     media_type = image.mime_type or "application/octet-stream"
-    # 新版数据在 BLOB 中
+    if image.storage_key:
+        try:
+            stored = read_media_file(image.storage_key)
+        except MediaStorageError as exc:
+            raise HTTPException(status_code=500, detail=f"Image file could not be read: {exc}") from exc
+        if stored is not None:
+            return Response(content=stored, media_type=media_type, headers=dict(PRIVATE_MEDIA_CACHE_HEADERS))
     if image.data:
-        return Response(content=bytes(image.data), media_type=media_type)
+        return Response(content=bytes(image.data), media_type=media_type, headers=dict(PRIVATE_MEDIA_CACHE_HEADERS))
     # 兼容旧数据：仍走磁盘文件
     if image.file_path and Path(image.file_path).exists():
         return FileResponse(
-            path=image.file_path, media_type=media_type, filename=Path(image.file_path).name
+            path=image.file_path,
+            media_type=media_type,
+            filename=Path(image.file_path).name,
+            headers=dict(PRIVATE_MEDIA_CACHE_HEADERS),
         )
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image file not found")
 
@@ -201,6 +228,17 @@ def get_image_thumb(
 ):
     pair = get_pair_for_user(db, current_user.id)
     image = ensure_image_file_visible(db, image_id, current_user, pair)
+    if image.thumb_storage_key:
+        try:
+            stored_thumb = read_media_file(image.thumb_storage_key)
+        except MediaStorageError as exc:
+            raise HTTPException(status_code=500, detail=f"Image thumbnail could not be read: {exc}") from exc
+        if stored_thumb is not None:
+            return Response(
+                content=stored_thumb,
+                media_type=image.thumb_mime_type or "image/jpeg",
+                headers=dict(PRIVATE_MEDIA_CACHE_HEADERS),
+            )
     if not image.thumb_data and image.data:
         try:
             thumb = make_image_thumbnail(bytes(image.data))
@@ -213,5 +251,9 @@ def get_image_thumb(
         db.commit()
         db.refresh(image)
     if image.thumb_data:
-        return Response(content=bytes(image.thumb_data), media_type=image.thumb_mime_type or "image/jpeg")
+        return Response(
+            content=bytes(image.thumb_data),
+            media_type=image.thumb_mime_type or "image/jpeg",
+            headers=dict(PRIVATE_MEDIA_CACHE_HEADERS),
+        )
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image thumbnail not found")

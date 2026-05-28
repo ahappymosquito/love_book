@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 .pytest_tmp/
 pair_events.db
+media/
 *.log
 pytest-cache-files-*/
 .env
