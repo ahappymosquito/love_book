@@ -1,4 +1,4 @@
-"""Content route handlers for comments, MP3 voice uploads, local image storage, and filtered media downloads.
+"""Content route handlers for comments, local MP3 voice/image storage, and filtered media downloads.
 
 Creation endpoints commit before returning so detail pages can refresh content immediately after a submit.
 """
@@ -29,6 +29,7 @@ from app.storage import (
     PRIVATE_MEDIA_CACHE_HEADERS,
     MediaStorageError,
     build_image_storage_keys,
+    build_voice_storage_key,
     read_media_file,
     write_media_file,
 )
@@ -78,7 +79,7 @@ def upload_voice(
     db: Session = Depends(get_db),
 ) -> VoiceOut:
     pair = get_pair_for_user(db, current_user.id)
-    ensure_pair_event(db, event_id, pair)
+    event = ensure_pair_event(db, event_id, pair)
     settings = get_settings()
     content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
     if content_type not in settings.allowed_voice_mime_types:
@@ -95,11 +96,19 @@ def upload_voice(
             detail=f"Voice audio could not be converted to MP3: {exc}",
         ) from exc
 
+    storage_key = build_voice_storage_key(pair.id, event.id)
+    try:
+        write_media_file(storage_key, body)
+    except (MediaStorageError, OSError) as exc:
+        raise HTTPException(status_code=500, detail=f"Voice file could not be saved: {exc}") from exc
+
     voice = Voice(
         event_id=event_id,
         author_id=current_user.id,
         file_path="",
-        data=body,
+        storage_key=storage_key,
+        storage_backend=settings.media_storage,
+        data=None,
         duration_ms=duration_ms,
         mime_type="audio/mpeg",
         size_bytes=len(body),
@@ -188,7 +197,22 @@ def get_voice_file(
 ):
     pair = get_pair_for_user(db, current_user.id)
     voice = ensure_voice_file_visible(db, voice_id, current_user, pair)
-    return Response(content=bytes(voice.data or b""), media_type=voice.mime_type)
+    if voice.storage_key:
+        try:
+            stored = read_media_file(voice.storage_key)
+        except MediaStorageError as exc:
+            raise HTTPException(status_code=500, detail=f"Voice file could not be read: {exc}") from exc
+        if stored is not None:
+            return Response(
+                content=stored,
+                media_type=voice.mime_type or "audio/mpeg",
+                headers=dict(PRIVATE_MEDIA_CACHE_HEADERS),
+            )
+    return Response(
+        content=bytes(voice.data or b""),
+        media_type=voice.mime_type,
+        headers=dict(PRIVATE_MEDIA_CACHE_HEADERS),
+    )
 
 
 @router.get("/images/{image_id}/file")

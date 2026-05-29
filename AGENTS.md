@@ -14,7 +14,7 @@
 - `start_dev.bat --install` 会先安装后端 `requirements.txt` 和前端 `web/package.json` 依赖，再启动本地开发服务。
 - 直接执行 `start_dev.bat` 只启动服务，不重复安装依赖。
 - 事件、评论、语音、图片等写接口必须在响应返回前完成数据库提交，避免前端立即刷新时读到未提交数据。
-- 语音文件必须转为 MP3 后直接存入 `voices.data` 数据库字段，不得写入 upload 路径；旧语音记录没有数据库数据时按不可播放处理。
+- 语音文件必须转为 MP3 后写入 `MEDIA_ROOT` 本地媒体目录，数据库只保存 `voices.storage_key`，不得再为新语音写入 `voices.data`；旧语音记录没有 storage key 且没有数据库数据时按不可播放处理。
 - 移动端图片上传入口不得强制 `capture` 调用相机，优先使用系统图片选择器以兼容 iPhone 相册选择。
 - 图片上传需要把原图和缩略图写入 `MEDIA_ROOT` 本地媒体目录，数据库只保存 `images.storage_key` / `images.thumb_storage_key`，不得再为新图片写入 `images.data` / `images.thumb_data`。
 - 旧图片记录没有 storage key 时必须回退读取 `images.data` / `images.thumb_data`，详情页缩略图展示不得直接拉取原图。

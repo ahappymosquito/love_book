@@ -1,4 +1,4 @@
-"""Local media storage helpers for image files saved under MEDIA_ROOT by relative storage keys."""
+"""Local media storage helpers for media files saved under MEDIA_ROOT by relative storage keys."""
 
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
@@ -30,6 +30,10 @@ def build_image_storage_keys(pair_id: int, event_id: int, mime_type: str | None)
         f"images/originals/{pair_id}/{event_id}/{stem}{ext}",
         f"images/thumbs/{pair_id}/{event_id}/{stem}.jpg",
     )
+
+
+def build_voice_storage_key(pair_id: int, event_id: int) -> str:
+    return f"voices/{pair_id}/{event_id}/{uuid4().hex}.mp3"
 
 
 def _require_local_storage(settings: Settings | None = None) -> Settings:

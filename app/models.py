@@ -174,8 +174,12 @@ class Voice(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), nullable=False, index=True)
     author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    # Legacy column kept as an empty placeholder for new rows; voice bytes are stored in data.
+    # Legacy disk-path column kept as an empty placeholder for old schemas and old rows.
     file_path: Mapped[str] = mapped_column(String(500), nullable=False, default="", server_default="")
+    # New voice uploads store normalized MP3 bytes in MEDIA_ROOT and keep only a relative key.
+    storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    storage_backend: Mapped[str] = mapped_column(String(50), nullable=False, default="local", server_default="local")
+    # Legacy BLOB column is readable for old rows; new voice uploads leave it NULL.
     data: Mapped[bytes | None] = mapped_column(
         LargeBinary().with_variant(LONGBLOB(), "mysql").with_variant(LONGBLOB(), "mariadb"),
         nullable=True,

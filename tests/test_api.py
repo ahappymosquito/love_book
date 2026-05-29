@@ -407,7 +407,11 @@ def test_mutual_submit_unlocks_after_each_side_submits_any_content(
     stored_voice = db_session.get(Voice, voice_id)
     assert stored_voice is not None
     assert stored_voice.file_path == ""
-    assert stored_voice.data == b"mp3-bytes"
+    assert stored_voice.data is None
+    assert stored_voice.storage_backend == "local"
+    assert stored_voice.storage_key
+    assert stored_voice.storage_key.startswith(f"voices/{pair_tokens['pair_id']}/{event['id']}/")
+    assert media_path(stored_voice.storage_key).read_bytes() == b"mp3-bytes"
     assert stored_voice.mime_type == "audio/mpeg"
 
     after_a = client.get(f"/events/{event['id']}/contents", headers=auth(token_a)).json()
@@ -420,6 +424,7 @@ def test_mutual_submit_unlocks_after_each_side_submits_any_content(
     assert downloaded.status_code == 200
     assert downloaded.content == b"mp3-bytes"
     assert downloaded.headers["content-type"].startswith("audio/mpeg")
+    assert downloaded.headers["cache-control"] == "private, max-age=604800"
 
 
 def test_locked_event_email_hides_event_content(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -578,6 +583,35 @@ def test_legacy_voice_without_database_data_is_not_downloaded(
     response = client.get(f"/voices/{legacy_voice.id}/file", headers=auth(token))
 
     assert response.status_code == 404
+
+
+def test_legacy_voice_database_data_is_still_downloaded(
+    client: TestClient, pair_tokens: dict[str, str | int], db_session: Session
+) -> None:
+    token = str(pair_tokens["user_a_token"])
+    event = client.post(
+        "/events",
+        headers=auth(token),
+        json={"title": "Legacy voice data", "visibility_mode": "public"},
+    ).json()
+    legacy_voice = Voice(
+        event_id=event["id"],
+        author_id=int(pair_tokens["user_a"]["id"]),
+        file_path="",
+        data=b"legacy-mp3",
+        duration_ms=1000,
+        mime_type="audio/mpeg",
+        size_bytes=10,
+    )
+    db_session.add(legacy_voice)
+    db_session.commit()
+    db_session.refresh(legacy_voice)
+
+    response = client.get(f"/voices/{legacy_voice.id}/file", headers=auth(token))
+
+    assert response.status_code == 200
+    assert response.content == b"legacy-mp3"
+    assert response.headers["cache-control"] == "private, max-age=604800"
 
 
 def test_third_pair_cannot_access_events(client: TestClient, pair_tokens: dict[str, str | int]) -> None:

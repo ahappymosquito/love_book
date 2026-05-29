@@ -87,6 +87,16 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         },
     ),
     (
+        "voices",
+        "storage_key",
+        {"default": "VARCHAR(500) NULL"},
+    ),
+    (
+        "voices",
+        "storage_backend",
+        {"default": "VARCHAR(50) NOT NULL DEFAULT 'local'"},
+    ),
+    (
         "images",
         "thumb_data",
         {

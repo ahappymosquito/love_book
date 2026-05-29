@@ -5,7 +5,7 @@
 > ⚙️ **生产部署**：docker-compose + Caddy 自动 HTTPS 一键部署到 `qrqto.club` 的完整说明见 [`DEPLOY.md`](DEPLOY.md)。
 > 🚀 **服务器一键部署**：使用预构建 GHCR 镜像时，可用 [`deploy_server.sh`](deploy_server.sh) 在服务器生成 `.env` / `Caddyfile` / `docker-compose.yml` 并启动服务，真实密码通过服务器 env 文件传入。
 >
-> 🗄️ **媒体存储**：图片原图和缩略图写入 `MEDIA_ROOT` 本地媒体目录，数据库只保存相对 `storage_key`，旧 `images.data` / `images.thumb_data` 记录仍可回退读取；语音转为 MP3 后继续存入 `voices.data`。Docker 部署需要备份数据库和 `love_book_media` volume。
+> 🗄️ **媒体存储**：图片原图、缩略图和 MP3 语音写入 `MEDIA_ROOT` 本地媒体目录，数据库只保存相对 `storage_key`；旧 `images.data` / `images.thumb_data` / `voices.data` 记录仍可回退读取。Docker 部署需要备份数据库和 `love_book_media` volume。
 
 ## 功能概览
 
@@ -44,6 +44,7 @@ tests/
   test_api.py             核心接口测试
 scripts/
   migrate_images_to_media.py  手动把历史图片 BLOB 迁出到媒体目录
+  migrate_voices_to_media.py  手动把历史语音 BLOB 迁出到媒体目录
 deploy_server.sh          服务器预构建镜像一键部署脚本
 ```
 
@@ -65,7 +66,7 @@ pip install -r requirements.txt
 | `ADMIN_KEY` | `change-me` | 管理接口密钥，请求管理接口时放在 `X-Admin-Key` 请求头中。 |
 | `MAX_VOICE_BYTES` | `10485760` | 单个语音文件最大字节数，默认 10MB。 |
 | `MAX_IMAGE_BYTES` | `10485760` | 单张图片文件最大字节数，默认 10MB。 |
-| `MEDIA_ROOT` | `/app/media` | 图片原图和缩略图的本地媒体根目录；Docker 中由 `love_book_media` volume 持久化。 |
+| `MEDIA_ROOT` | `/app/media` | 图片原图、缩略图和 MP3 语音的本地媒体根目录；Docker 中由 `love_book_media` volume 持久化。 |
 | `MEDIA_STORAGE` | `local` | 当前图片存储后端，现阶段固定使用本地文件。 |
 
 语音上传需要本机或容器内可执行 `ffmpeg`，用于把浏览器录音统一转为 iPhone / Android 都可播放的 MP3。图片缩略图由 Pillow 生成。
@@ -527,7 +528,7 @@ Authorization: Bearer token-for-alice
 
 请求类型：`multipart/form-data`
 
-服务端会使用 `ffmpeg` 将上传音频统一转为 `audio/mpeg` MP3 后保存，避免 Android 录制的 `webm/opus` 在 iPhone 上无法播放。转码失败时返回 `422`，不会保存不可播放语音。
+服务端会使用 `ffmpeg` 将上传音频统一转为 `audio/mpeg` MP3 后保存到 `MEDIA_ROOT/voices/{pair_id}/{event_id}/...`，数据库只保存相对 `voices.storage_key` 和元数据，避免 Android 录制的 `webm/opus` 在 iPhone 上无法播放。转码失败时返回 `422`，不会保存不可播放语音。
 
 字段：
 
@@ -681,7 +682,7 @@ curl -X POST "http://127.0.0.1:8000/events/1/images" \
 
 `GET /voices/{voice_id}/file`
 
-返回数据库中保存的原始音频流。如果当前用户无权访问该语音，或 `mutual_submit` 事件还未解锁，会返回 `403`；语音不存在或旧记录没有 `voices.data` 时返回 `404`。
+返回 MP3 语音文件流。接口优先读取 `voices.storage_key` 指向的本地媒体文件；旧记录没有 key 时回退读取 `voices.data`。如果当前用户无权访问该语音，或 `mutual_submit` 事件还未解锁，会返回 `403`；语音不存在或旧记录没有可用数据时返回 `404`。响应会带 `Cache-Control: private` 缓存头。
 
 ### 16. 下载图片文件
 
@@ -710,6 +711,20 @@ python scripts/migrate_images_to_media.py --clear-blobs --compact
 ```
 
 Docker 生产环境迁移服务器时需要同时备份数据库和 `love_book_media` volume。
+
+## 历史语音迁移
+
+已有数据库如果仍包含 `voices.data`，先备份数据库和媒体目录，然后执行：
+
+```powershell
+python scripts/migrate_voices_to_media.py
+```
+
+脚本会把历史 MP3 语音导出到 `MEDIA_ROOT`，并回填 `voices.storage_key`，默认不清空旧 BLOB。确认接口读取正常、备份可用后，才执行可选清理：
+
+```powershell
+python scripts/migrate_voices_to_media.py --clear-blobs --compact
+```
 
 ## 典型流程
 
@@ -741,7 +756,7 @@ Docker 生产环境迁移服务器时需要同时备份数据库和 `love_book_m
 - 公开事件立即可见。
 - 互锁事件任意内容提交后解锁。
 - 未解锁时阻止下载对方语音。
-- 语音上传后转 MP3 并写入 `voices.data`，不依赖 upload 路径；旧无数据语音返回 `404`。
+- 语音上传后转 MP3 并落盘到 `MEDIA_ROOT`，数据库不再写新语音 BLOB；旧无 storage key 且无数据语音返回 `404`。
 - 图片上传后原图和缩略图落盘到 `MEDIA_ROOT`，数据库不再写新图片 BLOB，详情页缩略图接口不拉取原图。
 - 旧 `images.data` / `images.thumb_data` 图片仍可读取，避免升级后历史图片失效。
 - 只有事件创建者可以修改和删除事件。
@@ -759,7 +774,7 @@ python -m pytest tests -q
 - v1 token 默认永久有效，也可以在创建 pair 时指定过期时间；尚未提供刷新和撤销机制。
 - v1 自动建表，并带少量轻量级补列逻辑（如 `users.avatar`、`device_tokens.expires_at`）。已有生产数据库中的旧 token 因 `expires_at` 为 `NULL` 会继续永久有效。
 - SQLite 适合本地开发；正式部署建议改成 PostgreSQL，并增加迁移、备份和文件存储策略。
-- 图片文件默认保存到 `MEDIA_ROOT` 本地目录；Docker 生产部署已用 `love_book_media` named volume 持久化，服务器迁移时要和数据库一起备份。
+- 图片和语音文件默认保存到 `MEDIA_ROOT` 本地目录；Docker 生产部署已用 `love_book_media` named volume 持久化，服务器迁移时要和数据库一起备份。
 - `.env` 不应提交到版本库；项目已在 `.gitignore` 中排除 `.env`。
 - `ADMIN_KEY` 默认值是 `change-me`，正式环境必须改掉。
 - 前端代码在 `web/`，不参与后端 Python 测试。`web/node_modules/`、`web/.next/`、`web/.env.local` 已在 `.gitignore` 中排除。
