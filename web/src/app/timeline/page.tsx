@@ -1,11 +1,11 @@
 "use client";
 
-// Timeline home screen showing pair reminders with inline quote editing, event list, visibility state, and shortcuts.
+// Timeline home screen showing pair reminders with quote refresh and editing, event list, visibility state, and shortcuts.
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { BookHeart, CalendarHeart, Check, Gift, HeartPulse, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { BookHeart, CalendarHeart, Check, Gift, HeartPulse, Pencil, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { AuthGate } from "@/components/auth-gate";
 import { TimelineHeader } from "@/components/timeline-header";
@@ -64,6 +64,7 @@ function TimelineInner() {
   const [quoteText, setQuoteText] = useState("");
   const [quoteSaving, setQuoteSaving] = useState(false);
   const [quoteEditorOpen, setQuoteEditorOpen] = useState(false);
+  const [quoteRefreshing, setQuoteRefreshing] = useState(false);
 
   useEffect(() => {
     void load();
@@ -126,6 +127,16 @@ function TimelineInner() {
     await loadAnniversary(me!.love_started_on);
   }
 
+  async function refreshAnniversary() {
+    if (!me) return;
+    setQuoteRefreshing(true);
+    try {
+      await loadAnniversary(me.love_started_on);
+    } finally {
+      setQuoteRefreshing(false);
+    }
+  }
+
   if (!me) return <LoadingScreen />;
 
   return (
@@ -152,9 +163,11 @@ function TimelineInner() {
             quoteText={quoteText}
             quoteSaving={quoteSaving}
             quoteEditorOpen={quoteEditorOpen}
+            quoteRefreshing={quoteRefreshing}
             onQuoteTextChange={setQuoteText}
             onCreateQuote={createQuote}
             onDeleteQuote={deleteQuote}
+            onRefreshQuote={refreshAnniversary}
             onOpenQuoteEditor={() => setQuoteEditorOpen(true)}
             onCloseQuoteEditor={() => {
               setQuoteText("");
@@ -221,9 +234,11 @@ function AnniversaryCard({
   quoteText,
   quoteSaving,
   quoteEditorOpen,
+  quoteRefreshing,
   onQuoteTextChange,
   onCreateQuote,
   onDeleteQuote,
+  onRefreshQuote,
   onOpenQuoteEditor,
   onCloseQuoteEditor,
 }: {
@@ -232,9 +247,11 @@ function AnniversaryCard({
   quoteText: string;
   quoteSaving: boolean;
   quoteEditorOpen: boolean;
+  quoteRefreshing: boolean;
   onQuoteTextChange: (text: string) => void;
   onCreateQuote: (event: FormEvent<HTMLFormElement>) => void;
   onDeleteQuote: (id: number) => void;
+  onRefreshQuote: () => void;
   onOpenQuoteEditor: () => void;
   onCloseQuoteEditor: () => void;
 }) {
@@ -259,14 +276,25 @@ function AnniversaryCard({
             <p className="font-display text-2xl text-ink leading-tight">
               一起第 {data.days_together} 天
             </p>
-            <button
-              type="button"
-              onClick={quoteEditorOpen ? onCloseQuoteEditor : onOpenQuoteEditor}
-              className="grid h-9 w-9 flex-none place-items-center rounded-full text-ink-muted transition hover:bg-white/70 hover:text-rose-deep focus-ring"
-              aria-label={quoteEditorOpen ? "收起语录编辑" : "编辑语录库"}
-            >
-              {quoteEditorOpen ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-            </button>
+            <div className="flex flex-none items-center gap-1">
+              <button
+                type="button"
+                onClick={onRefreshQuote}
+                disabled={quoteRefreshing}
+                className="grid h-9 w-9 place-items-center rounded-full text-ink-muted transition hover:bg-white/70 hover:text-rose-deep disabled:cursor-not-allowed disabled:opacity-50 focus-ring"
+                aria-label="刷新语录"
+              >
+                <RefreshCw className={`h-4 w-4 ${quoteRefreshing ? "animate-spin" : ""}`} />
+              </button>
+              <button
+                type="button"
+                onClick={quoteEditorOpen ? onCloseQuoteEditor : onOpenQuoteEditor}
+                className="grid h-9 w-9 place-items-center rounded-full text-ink-muted transition hover:bg-white/70 hover:text-rose-deep focus-ring"
+                aria-label={quoteEditorOpen ? "收起语录编辑" : "编辑语录库"}
+              >
+                {quoteEditorOpen ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
           <p className="font-sc text-sm text-ink-soft mt-2 leading-relaxed">
             {data.message}
