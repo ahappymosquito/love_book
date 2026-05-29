@@ -1,4 +1,4 @@
-"""Shared business logic for pair access, content visibility, media metadata, quotes, and home reminders."""
+"""Shared business logic for pair access, content visibility, media metadata, database quotes, and home reminders."""
 
 import random
 from datetime import date, timedelta, timezone
@@ -9,7 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, exists, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Comment, DeviceToken, Event, Image, Pair, Quote, User, VisibilityMode, Voice, utc_now
+from app.models import Comment, DefaultQuote, DeviceToken, Event, Image, Pair, Quote, User, VisibilityMode, Voice, utc_now
 from app.schemas import (
     AnniversaryOut,
     CommentOut,
@@ -25,7 +25,7 @@ from app.storage import media_file_exists
 
 CHINA_TZ = timezone(timedelta(hours=8))
 HOLIDAY_INFO_URL = "https://timor.tech/api/holiday/info/{date}"
-LOCAL_LOVE_QUOTES = [
+DEFAULT_LOVE_QUOTES = [
     "我说伤心了怎么办 小狗说忘忘忘忘忘忘",
     "见人说人话，见鬼说鬼话，见你说黄话",
     "你不用变得多厉害，只要每天开开心心，乖乖听话，我就很满足了",
@@ -126,11 +126,22 @@ def fetch_holiday_item(today: date) -> tuple[list[ReminderItem], str | None]:
     return items, name
 
 
+def ensure_default_quotes(db: Session) -> None:
+    existing_texts = set(db.execute(select(DefaultQuote.text)).scalars().all())
+    missing = [text for text in DEFAULT_LOVE_QUOTES if text not in existing_texts]
+    if not missing:
+        return
+    db.add_all(DefaultQuote(text=text) for text in missing)
+    db.flush()
+
+
 def local_quote_for_pair(db: Session, pair: Pair) -> str:
     quotes = db.execute(select(Quote.text).where(Quote.pair_id == pair.id)).scalars().all()
     if quotes:
         return random.choice(quotes)
-    return random.choice(LOCAL_LOVE_QUOTES)
+    ensure_default_quotes(db)
+    default_quotes = db.execute(select(DefaultQuote.text)).scalars().all()
+    return random.choice(default_quotes)
 
 
 def build_anniversary(db: Session, pair: Pair) -> AnniversaryOut:

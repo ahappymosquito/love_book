@@ -1,4 +1,4 @@
-"""Database engine setup, sessions, table creation, and lightweight media storage column migrations."""
+"""Database engine setup, sessions, table creation, default quote seeding, and lightweight column migrations."""
 
 from collections.abc import Generator
 
@@ -140,6 +140,10 @@ def _ensure_columns(target_engine: Engine) -> None:
 
 def init_db() -> None:
     from app import models  # noqa: F401
+    from app.services import ensure_default_quotes
 
     Base.metadata.create_all(bind=engine)
     _ensure_columns(engine)
+    with SessionLocal() as db:
+        ensure_default_quotes(db)
+        db.commit()

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 import app.api.routes.admin as admin_routes
 import app.cycles as cycles
 import app.services as services
-from app.models import DeviceToken, Image as DBImage, Voice
+from app.models import DefaultQuote, DeviceToken, Image as DBImage, Voice
 from app.storage import media_path
 from tests.conftest import auth
 
@@ -245,7 +245,7 @@ def test_anniversary_endpoint_returns_love_festival(client: TestClient, monkeypa
 
 
 def test_anniversary_endpoint_uses_default_local_quote_when_quote_library_is_empty(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, db_session: Session
 ) -> None:
     monkeypatch.setattr(services, "local_today", lambda: date(2026, 3, 2))
     monkeypatch.setattr(services, "httpx", RaisingHTTPClient)
@@ -262,7 +262,9 @@ def test_anniversary_endpoint_uses_default_local_quote_when_quote_library_is_emp
     data = client.get("/auth/anniversary", headers=auth(created["user_a_token"])).json()
 
     assert data["message_source"] == "local"
-    assert data["message"] in services.LOCAL_LOVE_QUOTES
+    assert data["message"] in services.DEFAULT_LOVE_QUOTES
+    stored_defaults = db_session.query(DefaultQuote).all()
+    assert {item.text for item in stored_defaults} == set(services.DEFAULT_LOVE_QUOTES)
 
 
 def test_anniversary_endpoint_uses_pair_quote_before_default_quote(

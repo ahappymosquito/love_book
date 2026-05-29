@@ -1,11 +1,11 @@
 "use client";
 
-// Timeline home screen showing pair reminders, shared quotes, event list, visibility state, and entry creation shortcuts.
+// Timeline home screen showing pair reminders with inline quote editing, event list, visibility state, and shortcuts.
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { BookHeart, CalendarHeart, Gift, HeartPulse, Plus, Send, Sparkles, Trash2 } from "lucide-react";
+import { BookHeart, CalendarHeart, Check, Gift, HeartPulse, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { AuthGate } from "@/components/auth-gate";
 import { TimelineHeader } from "@/components/timeline-header";
@@ -63,6 +63,7 @@ function TimelineInner() {
   const [quotes, setQuotes] = useState<QuoteOut[] | null>(null);
   const [quoteText, setQuoteText] = useState("");
   const [quoteSaving, setQuoteSaving] = useState(false);
+  const [quoteEditorOpen, setQuoteEditorOpen] = useState(false);
 
   useEffect(() => {
     void load();
@@ -112,6 +113,7 @@ function TimelineInner() {
       toast.success("语录已添加");
       await loadQuotes();
       await loadAnniversary(me!.love_started_on);
+      setQuoteEditorOpen(false);
     } finally {
       setQuoteSaving(false);
     }
@@ -143,16 +145,23 @@ function TimelineInner() {
           <BookHeart className="h-7 w-7 text-rose hidden sm:block" />
         </div>
 
-        {anniversary && <AnniversaryCard data={anniversary} />}
-
-        <QuoteManager
-          quotes={quotes}
-          quoteText={quoteText}
-          quoteSaving={quoteSaving}
-          onQuoteTextChange={setQuoteText}
-          onCreateQuote={createQuote}
-          onDeleteQuote={deleteQuote}
-        />
+        {anniversary && (
+          <AnniversaryCard
+            data={anniversary}
+            quotes={quotes}
+            quoteText={quoteText}
+            quoteSaving={quoteSaving}
+            quoteEditorOpen={quoteEditorOpen}
+            onQuoteTextChange={setQuoteText}
+            onCreateQuote={createQuote}
+            onDeleteQuote={deleteQuote}
+            onOpenQuoteEditor={() => setQuoteEditorOpen(true)}
+            onCloseQuoteEditor={() => {
+              setQuoteText("");
+              setQuoteEditorOpen(false);
+            }}
+          />
+        )}
 
         <Link
           href="/cycle"
@@ -206,7 +215,29 @@ function TimelineInner() {
   );
 }
 
-function AnniversaryCard({ data }: { data: AnniversaryOut }) {
+function AnniversaryCard({
+  data,
+  quotes,
+  quoteText,
+  quoteSaving,
+  quoteEditorOpen,
+  onQuoteTextChange,
+  onCreateQuote,
+  onDeleteQuote,
+  onOpenQuoteEditor,
+  onCloseQuoteEditor,
+}: {
+  data: AnniversaryOut;
+  quotes: QuoteOut[] | null;
+  quoteText: string;
+  quoteSaving: boolean;
+  quoteEditorOpen: boolean;
+  onQuoteTextChange: (text: string) => void;
+  onCreateQuote: (event: FormEvent<HTMLFormElement>) => void;
+  onDeleteQuote: (id: number) => void;
+  onOpenQuoteEditor: () => void;
+  onCloseQuoteEditor: () => void;
+}) {
   const items = [
     ...data.anniversary_items,
     ...data.love_festival_items,
@@ -224,10 +255,18 @@ function AnniversaryCard({ data }: { data: AnniversaryOut }) {
           <CalendarHeart className="h-6 w-6" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-start justify-between gap-3">
             <p className="font-display text-2xl text-ink leading-tight">
               一起第 {data.days_together} 天
             </p>
+            <button
+              type="button"
+              onClick={quoteEditorOpen ? onCloseQuoteEditor : onOpenQuoteEditor}
+              className="grid h-9 w-9 flex-none place-items-center rounded-full text-ink-muted transition hover:bg-white/70 hover:text-rose-deep focus-ring"
+              aria-label={quoteEditorOpen ? "收起语录编辑" : "编辑语录库"}
+            >
+              {quoteEditorOpen ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+            </button>
           </div>
           <p className="font-sc text-sm text-ink-soft mt-2 leading-relaxed">
             {data.message}
@@ -239,13 +278,23 @@ function AnniversaryCard({ data }: { data: AnniversaryOut }) {
               ))}
             </div>
           )}
+          {quoteEditorOpen && (
+            <QuoteEditor
+              quotes={quotes}
+              quoteText={quoteText}
+              quoteSaving={quoteSaving}
+              onQuoteTextChange={onQuoteTextChange}
+              onCreateQuote={onCreateQuote}
+              onDeleteQuote={onDeleteQuote}
+            />
+          )}
         </div>
       </div>
     </motion.section>
   );
 }
 
-function QuoteManager({
+function QuoteEditor({
   quotes,
   quoteText,
   quoteSaving,
@@ -261,15 +310,7 @@ function QuoteManager({
   onDeleteQuote: (id: number) => void;
 }) {
   return (
-    <section className="glass-card rounded-3xl p-5 sm:p-6 mb-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="font-display text-xl text-ink leading-tight">本地语录库</p>
-          <p className="font-sc text-sm text-ink-soft mt-1">普通日会从你们自己的语录里随机挑一句。</p>
-        </div>
-        <Sparkles className="h-5 w-5 text-rose flex-none" />
-      </div>
-
+    <div className="mt-5 border-t border-line/70 pt-4">
       <form onSubmit={onCreateQuote} className="mt-4 flex gap-2">
         <input
           value={quoteText}
@@ -282,9 +323,9 @@ function QuoteManager({
           type="submit"
           disabled={quoteSaving || !quoteText.trim()}
           className="grid h-12 w-12 flex-none place-items-center rounded-2xl bg-rose text-white shadow-soft transition hover:bg-rose-deep disabled:cursor-not-allowed disabled:opacity-50 focus-ring"
-          aria-label="添加语录"
+          aria-label="保存语录"
         >
-          <Send className="h-4 w-4" />
+          <Check className="h-4 w-4" />
         </button>
       </form>
 
@@ -313,7 +354,7 @@ function QuoteManager({
           ))
         )}
       </div>
-    </section>
+    </div>
   );
 }
 

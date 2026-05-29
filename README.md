@@ -388,7 +388,7 @@ Authorization: Bearer token-for-alice
 
 `GET /quotes`、`POST /quotes`、`DELETE /quotes/{quote_id}`
 
-语录库按 pair 共享，双方都可以查看、添加和删除。首页 `/auth/anniversary` 在普通日会优先从当前 pair 的数据库语录随机取一句；如果没有自定义语录，则使用服务端内置的全站默认兜底语录。新增和删除接口都会在响应返回前提交数据库，前端保存后可以立即刷新读到最新内容。
+语录库按 pair 共享，双方都可以查看、添加和删除。首页 `/auth/anniversary` 在普通日会优先从当前 pair 的数据库语录随机取一句；如果没有自定义语录，则从 `default_quotes` 全站共享兜底语录表随机取一句。应用启动和普通日读取时都会自动补齐默认语录。新增和删除接口都会在响应返回前提交数据库，前端保存后可以立即刷新读到最新内容。
 
 新增请求体：
 
@@ -768,8 +768,8 @@ python -m pytest tests -q
 
 - 创建 pair 时可设置 `love_started_on` 情侣日期；旧数据未设置时回退到 pair 创建日期。
 - 登录后的 `/timeline` 会调用 `GET /auth/anniversary`，展示“一起第 N 天”、520/1314/整月纪念、固定恋爱节日、中国大陆节假日/调休信息和普通日本地语录。
-- 一言模块已弃用；非特殊日后端优先从当前 pair 的 `quotes` 数据库语录库随机取一句，没有自定义语录时随机使用全站默认兜底语录。
-- 前端在 `/timeline` 提供本地语录库管理入口，可添加、查看和删除当前 pair 的共享语录。
+- 一言模块已弃用；非特殊日后端优先从当前 pair 的 `quotes` 数据库语录库随机取一句，没有自定义语录时随机使用 `default_quotes` 全站共享兜底语录表。
+- 前端在纪念日卡片右侧提供编辑图标，点开后可添加、查看和删除当前 pair 的共享语录，保存后自动收起编辑区。
 - 节假日信息使用 `https://timor.tech/api/holiday/info/{YYYY-MM-DD}`；接口失败时静默跳过节假日标签，不影响首页加载。
 ## 周期日历 Dashboard
 

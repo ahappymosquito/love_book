@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair timelines, shared content, local image storage metadata, and login logs."""
+"""SQLAlchemy models for pair timelines, pair quotes, global fallback quotes, media metadata, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -120,6 +120,14 @@ class Quote(Base):
 
     pair: Mapped[Pair] = relationship()
     author: Mapped[User] = relationship()
+
+
+class DefaultQuote(Base):
+    __tablename__ = "default_quotes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
 
 class CycleDailyLog(Base):
