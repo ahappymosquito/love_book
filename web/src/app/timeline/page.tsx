@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home screen showing pair reminders with quote refresh and editing, event list, visibility state, and shortcuts.
+// Timeline home screen showing sweet pair reminders with quote refresh/editing, event list, visibility state, and shortcuts.
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
@@ -147,10 +147,10 @@ function TimelineInner() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="font-display text-3xl sm:text-4xl text-ink leading-tight">
-              我们的小事
+              我们的甜蜜小事
             </h2>
             <p className="font-sc text-sm text-ink-soft mt-1">
-              你写一笔，ta 写一笔，慢慢就成了一本书。
+              把每一次心动、想念和日常，都慢慢写成只属于你们的书。
             </p>
           </div>
           <BookHeart className="h-7 w-7 text-rose hidden sm:block" />
@@ -159,6 +159,8 @@ function TimelineInner() {
         {anniversary && (
           <AnniversaryCard
             data={anniversary}
+            userName={me.user.display_name}
+            counterpartName={me.counterpart.display_name}
             quotes={quotes}
             quoteText={quoteText}
             quoteSaving={quoteSaving}
@@ -230,6 +232,8 @@ function TimelineInner() {
 
 function AnniversaryCard({
   data,
+  userName,
+  counterpartName,
   quotes,
   quoteText,
   quoteSaving,
@@ -243,6 +247,8 @@ function AnniversaryCard({
   onCloseQuoteEditor,
 }: {
   data: AnniversaryOut;
+  userName: string;
+  counterpartName: string;
   quotes: QuoteOut[] | null;
   quoteText: string;
   quoteSaving: boolean;
@@ -273,8 +279,8 @@ function AnniversaryCard({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
-            <p className="font-display text-2xl text-ink leading-tight">
-              一起第 {data.days_together} 天
+            <p className="min-w-0 flex-1 break-words font-display text-2xl text-ink leading-tight">
+              {userName} 和 {counterpartName} 在一起第 {data.days_together} 天
             </p>
             <div className="flex flex-none items-center gap-1">
               <button
