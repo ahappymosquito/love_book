@@ -253,8 +253,8 @@ function TimelineInner() {
       <TimelineHeader />
 
       <div className="max-w-3xl mx-auto px-5 sm:px-6 pt-6 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)]">
-        <div className="flex items-center justify-between mb-6">
-          <div>
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <div className="min-w-0">
             <h2 className="font-display text-3xl sm:text-4xl text-ink leading-tight">
               我们的甜蜜小事
             </h2>
@@ -264,7 +264,7 @@ function TimelineInner() {
           </div>
           <Link
             href="/cycle"
-            className="hidden h-11 w-11 flex-none place-items-center rounded-full bg-surface-raised/70 text-rose-deep shadow-soft transition hover:-translate-y-0.5 hover:bg-surface-raised focus-ring sm:grid"
+            className="grid h-11 w-11 flex-none place-items-center rounded-full bg-surface-raised/70 text-rose-deep shadow-soft transition hover:-translate-y-0.5 hover:bg-surface-raised focus-ring"
             aria-label="进入月经周期记录"
             title="月经周期记录"
           >
@@ -376,56 +376,51 @@ function AnniversaryCard({
       animate={{ opacity: 1, y: 0 }}
       className="glass-card rounded-3xl p-5 sm:p-6 mb-6 overflow-hidden"
     >
-      <div className="flex items-start gap-4">
-        <div className="h-12 w-12 rounded-2xl bg-rose/12 text-rose-deep grid place-items-center flex-none">
-          <CalendarHeart className="h-6 w-6" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3">
-            <p className="min-w-0 flex-1 break-words font-display text-2xl text-ink leading-tight">
-              {userName} 和 {counterpartName} 在一起第 {data.days_together} 天
-            </p>
-            <div className="flex flex-none items-center gap-1">
-              <button
-                type="button"
-                onClick={onRefreshQuote}
-                disabled={quoteRefreshing}
-                className="grid h-9 w-9 place-items-center rounded-full text-ink-muted transition hover:bg-white/70 hover:text-rose-deep disabled:cursor-not-allowed disabled:opacity-50 focus-ring"
-                aria-label="刷新语录"
-              >
-                <RefreshCw className={`h-4 w-4 ${quoteRefreshing ? "animate-spin" : ""}`} />
-              </button>
-              <button
-                type="button"
-                onClick={quoteEditorOpen ? onCloseQuoteEditor : onOpenQuoteEditor}
-                className="grid h-9 w-9 place-items-center rounded-full text-ink-muted transition hover:bg-white/70 hover:text-rose-deep focus-ring"
-                aria-label={quoteEditorOpen ? "收起语录编辑" : "编辑语录库"}
-              >
-                {quoteEditorOpen ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-              </button>
-            </div>
-          </div>
-          <p className="font-sc text-sm text-ink-soft mt-2 leading-relaxed">
-            {data.message}
+      <div className="min-w-0">
+        <div className="flex items-start justify-between gap-3">
+          <p className="min-w-0 flex-1 break-words font-display text-2xl text-ink leading-tight">
+            {userName} 和 {counterpartName} 在一起第 {data.days_together} 天
           </p>
-          {items.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {items.map((item, index) => (
-                <ReminderPill key={`${item.type}-${item.label}-${index}`} item={item} />
-              ))}
-            </div>
-          )}
-          {quoteEditorOpen && (
-            <QuoteEditor
-              quotes={quotes}
-              quoteText={quoteText}
-              quoteSaving={quoteSaving}
-              onQuoteTextChange={onQuoteTextChange}
-              onCreateQuote={onCreateQuote}
-              onDeleteQuote={onDeleteQuote}
-            />
-          )}
+          <div className="flex flex-none items-center gap-1">
+            <button
+              type="button"
+              onClick={onRefreshQuote}
+              disabled={quoteRefreshing}
+              className="grid h-9 w-9 place-items-center rounded-full text-ink-muted transition hover:bg-white/70 hover:text-rose-deep disabled:cursor-not-allowed disabled:opacity-50 focus-ring"
+              aria-label="刷新语录"
+            >
+              <RefreshCw className={`h-4 w-4 ${quoteRefreshing ? "animate-spin" : ""}`} />
+            </button>
+            <button
+              type="button"
+              onClick={quoteEditorOpen ? onCloseQuoteEditor : onOpenQuoteEditor}
+              className="grid h-9 w-9 place-items-center rounded-full text-ink-muted transition hover:bg-white/70 hover:text-rose-deep focus-ring"
+              aria-label={quoteEditorOpen ? "收起语录编辑" : "编辑语录库"}
+            >
+              {quoteEditorOpen ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
+        <p className="font-sc text-sm text-ink-soft mt-2 leading-relaxed">
+          {data.message}
+        </p>
+        {items.length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {items.map((item, index) => (
+              <ReminderPill key={`${item.type}-${item.label}-${index}`} item={item} />
+            ))}
+          </div>
+        )}
+        {quoteEditorOpen && (
+          <QuoteEditor
+            quotes={quotes}
+            quoteText={quoteText}
+            quoteSaving={quoteSaving}
+            onQuoteTextChange={onQuoteTextChange}
+            onCreateQuote={onCreateQuote}
+            onDeleteQuote={onDeleteQuote}
+          />
+        )}
       </div>
     </motion.section>
   );
