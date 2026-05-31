@@ -1,3 +1,5 @@
+/* Global theme tokens, persistent page background, reusable glass controls, inputs, and focus styles. */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -53,7 +55,7 @@
 
   html,
   body {
-    height: 100%;
+    min-height: 100%;
     background: rgb(var(--cream));
     color: rgb(var(--ink));
     font-family: var(--font-inter), var(--font-noto-sc), system-ui, sans-serif;
@@ -66,6 +68,21 @@
     background-attachment: fixed;
     background-size: cover;
     min-height: 100dvh;
+  }
+
+  html,
+  body,
+  body > div {
+    min-height: 100%;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background: var(--bg-grad);
+    background-size: cover;
   }
 
   ::selection {

@@ -1,7 +1,7 @@
 "use client";
 
-// CycleCalendarDashboard implements the authenticated shared pair cycle calendar, quick daily logging,
-// filters, statistics, and mobile bottom-sheet detail experience backed by the /cycles API.
+// CycleCalendarDashboard implements the authenticated shared pair cycle calendar, reminder timing settings,
+// filters, statistics, quick daily logging, and mobile bottom-sheet detail experience backed by the /cycles API.
 
 import Link from "next/link";
 import {
@@ -27,18 +27,15 @@ import {
   CircleDot,
   ClipboardList,
   Droplet,
-  Eraser,
   Filter,
   HeartPulse,
   List,
   Loader2,
   Moon,
   Plus,
-  RotateCcw,
   Save,
   Search,
   ShieldCheck,
-  Sparkles,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -50,6 +47,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { readCycleReminderDays, saveCycleReminderDays } from "@/lib/cycle-reminder";
+import { useAppStore } from "@/lib/store";
 import type { CycleDashboardOut, CycleFlow, CycleMood, CyclePhase, DailyLog, DailyLogInput } from "@/lib/types";
 
 type ViewMode = "month" | "week" | "list";
@@ -201,6 +200,7 @@ function confidenceLabel(value: "high" | "medium" | "low"): string {
 }
 
 export function CycleCalendarDashboard() {
+  const pairId = useAppStore((s) => s.me?.pair_id);
   const [viewDate, setViewDate] = useState(() => new Date());
   const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [dashboard, setDashboard] = useState<CycleDashboardOut | null>(null);
@@ -208,6 +208,7 @@ export function CycleCalendarDashboard() {
   const [selectedDate, setSelectedDate] = useState(toISODate(new Date()));
   const [editing, setEditing] = useState(false);
   const [filters, setFilters] = useState<FilterState>({ symptom: "", hasNote: false, periodOnly: false });
+  const [reminderDays, setReminderDays] = useState(3);
   const isMobile = useMediaQuery("(max-width: 767px)");
 
   const loadDashboard = useCallback(async () => {
@@ -228,6 +229,20 @@ export function CycleCalendarDashboard() {
   useEffect(() => {
     void loadDashboard();
   }, [loadDashboard]);
+
+  useEffect(() => {
+    if (!pairId) return;
+    setReminderDays(readCycleReminderDays(pairId));
+  }, [pairId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (new URLSearchParams(window.location.search).get("quickLog") !== "today") return;
+    const today = new Date();
+    setViewDate(today);
+    setSelectedDate(toISODate(today));
+    setEditing(true);
+  }, []);
 
   const logsByDate = useMemo(() => dateKey(dashboard?.logs ?? []), [dashboard]);
   const selectedLog = logsByDate.get(selectedDate) ?? null;
@@ -256,16 +271,9 @@ export function CycleCalendarDashboard() {
     toast.success("这一天的记录已删除");
   }
 
-  async function seedExample() {
-    await api.seedCycleExampleData();
-    await loadDashboard();
-    toast.success("已加载示例数据");
-  }
-
-  async function clearData() {
-    await api.clearCycleLogs();
-    await loadDashboard();
-    toast.success("周期记录已清空");
+  function changeReminderDays(days: number) {
+    if (!pairId) return;
+    setReminderDays(saveCycleReminderDays(pairId, days));
   }
 
   return (
@@ -300,9 +308,10 @@ export function CycleCalendarDashboard() {
             />
           )}
 
+          <ReminderSettingsCard value={reminderDays} onChange={changeReminderDays} />
+
           {dashboard?.is_empty ? (
             <EmptyState
-              onSeed={seedExample}
               onStart={() => {
                 setSelectedDate(toISODate(new Date()));
                 setEditing(true);
@@ -374,16 +383,6 @@ export function CycleCalendarDashboard() {
                 <p className="font-sc text-sm leading-relaxed text-ink-soft">
                   数据保存在当前服务中，当前 pair 双方可共同查看和编辑。预测结果仅供参考。
                 </p>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={seedExample}>
-                  <Sparkles className="h-4 w-4" />
-                  示例数据
-                </Button>
-                <Button variant="danger" size="sm" onClick={clearData}>
-                  <Eraser className="h-4 w-4" />
-                  清空数据
-                </Button>
               </div>
             </div>
           </Card>
@@ -535,6 +534,38 @@ export function HeaderSummaryCards({
         </Card>
       ))}
     </div>
+  );
+}
+
+function ReminderSettingsCard({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+  return (
+    <Card className="p-5">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-rose/10 text-rose">
+            <Droplet className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="font-display text-xl leading-tight text-ink">首页记录提醒</p>
+            <p className="mt-1 font-sc text-sm leading-relaxed text-ink-soft">
+              预计月经开始前 {value} 天内，如果当天还没记录，首页会提醒填写。
+            </p>
+          </div>
+        </div>
+        <label className="flex min-w-[220px] items-center gap-3 rounded-2xl bg-surface-raised/60 px-4 py-3">
+          <span className="font-sc text-sm text-ink-soft">提前</span>
+          <input
+            type="number"
+            min={1}
+            max={7}
+            value={value}
+            onChange={(event) => onChange(Number(event.target.value))}
+            className="h-10 w-16 rounded-xl border border-line/70 bg-surface px-3 text-center font-sc text-sm text-ink outline-none transition focus:border-rose/60"
+          />
+          <span className="font-sc text-sm text-ink-soft">天</span>
+        </label>
+      </div>
+    </Card>
   );
 }
 
@@ -1065,7 +1096,7 @@ export function StatsCards({ dashboard }: { dashboard: CycleDashboardOut }) {
   );
 }
 
-export function EmptyState({ onSeed, onStart }: { onSeed: () => void; onStart: () => void }) {
+export function EmptyState({ onStart }: { onStart: () => void }) {
   return (
     <Card className="overflow-hidden p-6">
       <div className="grid gap-5 md:grid-cols-[180px_1fr] md:items-center">
@@ -1077,20 +1108,12 @@ export function EmptyState({ onSeed, onStart }: { onSeed: () => void; onStart: (
         <div>
           <h2 className="font-display text-2xl text-ink">还没有周期记录</h2>
           <p className="mt-2 font-sc text-sm leading-relaxed text-ink-soft">
-            可以先开始记录第一次经期，或加载示例数据查看完整日历效果。
+            可以先记录一次经期，之后日历会根据历史记录展示参考预测。
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
-            <Button onClick={onSeed}>
-              <Sparkles className="h-4 w-4" />
-              查看示例数据
-            </Button>
-            <Button variant="outline" onClick={onStart}>
+            <Button onClick={onStart}>
               <Plus className="h-4 w-4" />
-              开始记录第一次经期
-            </Button>
-            <Button variant="ghost">
-              <RotateCcw className="h-4 w-4" />
-              导入历史数据
+              开始记录
             </Button>
           </div>
         </div>

@@ -1,11 +1,25 @@
 "use client";
 
-// Timeline home screen showing sweet pair reminders with quote refresh/editing, event list, visibility state, and shortcuts.
+// Timeline home screen showing pair reminders, month-collapsible events, cycle check-in prompts, visibility state, and shortcuts.
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { BookHeart, CalendarHeart, Check, Gift, HeartPulse, Pencil, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
+import {
+  BookHeart,
+  CalendarHeart,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Droplet,
+  Gift,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AuthGate } from "@/components/auth-gate";
 import { TimelineHeader } from "@/components/timeline-header";
@@ -15,7 +29,12 @@ import { LoadingScreen } from "@/components/loading-screen";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import { formatAbsolute, formatRelative } from "@/lib/format";
-import type { AnniversaryOut, EventSummary, QuoteOut, ReminderItem } from "@/lib/types";
+import {
+  dismissCycleReminder,
+  isCycleReminderDismissed,
+  readCycleReminderDays,
+} from "@/lib/cycle-reminder";
+import type { AnniversaryOut, CycleDashboardOut, EventSummary, QuoteOut, ReminderItem } from "@/lib/types";
 
 const LOCAL_REMINDER_QUOTES = [
   "我说伤心了怎么办 小狗说忘忘忘忘忘忘",
@@ -26,6 +45,43 @@ function todayDateOnly(): string {
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
   return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function monthKeyForEvent(evt: EventSummary): string {
+  const date = new Date(evt.occurred_at ?? evt.created_at);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${date.getFullYear()}-${month}`;
+}
+
+function monthLabel(key: string): string {
+  const [year, month] = key.split("-");
+  return `${year} 年 ${Number(month)} 月`;
+}
+
+function monthSortValue(key: string): number {
+  const [year, month] = key.split("-").map(Number);
+  return year * 12 + month;
+}
+
+function daysUntil(date: string, today: string): number {
+  const targetTime = new Date(`${date}T00:00:00`).getTime();
+  const todayTime = new Date(`${today}T00:00:00`).getTime();
+  return Math.round((targetTime - todayTime) / 86_400_000);
+}
+
+function reminderRange(today: string): { start: string; end: string } {
+  const now = new Date(`${today}T00:00:00`);
+  const start = new Date(now);
+  start.setDate(start.getDate() - 1);
+  const end = new Date(now);
+  end.setDate(end.getDate() + 7);
+  return { start: toDateOnly(start), end: toDateOnly(end) };
+}
+
+function toDateOnly(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
 }
 
 function daysTogether(startedOn: string, today: string): number {
@@ -65,6 +121,9 @@ function TimelineInner() {
   const [quoteSaving, setQuoteSaving] = useState(false);
   const [quoteEditorOpen, setQuoteEditorOpen] = useState(false);
   const [quoteRefreshing, setQuoteRefreshing] = useState(false);
+  const [cycleDashboard, setCycleDashboard] = useState<CycleDashboardOut | null>(null);
+  const [cyclePromptDismissed, setCyclePromptDismissed] = useState(false);
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => new Set([todayDateOnly().slice(0, 7)]));
 
   useEffect(() => {
     void load();
@@ -75,7 +134,38 @@ function TimelineInner() {
     setAnniversary(immediateAnniversary(me.love_started_on));
     void loadAnniversary(me.love_started_on);
     void loadQuotes();
+    const today = todayDateOnly();
+    const range = reminderRange(today);
+    void api
+      .getCycleDashboard(range)
+      .then((dashboard) => {
+        setCycleDashboard(dashboard);
+        setCyclePromptDismissed(isCycleReminderDismissed(me.pair_id, today));
+      })
+      .catch(() => setCycleDashboard(null));
   }, [me]);
+
+  const eventGroups = useMemo(() => {
+    const map = new Map<string, EventSummary[]>();
+    for (const evt of events ?? []) {
+      const key = monthKeyForEvent(evt);
+      map.set(key, [...(map.get(key) ?? []), evt]);
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => monthSortValue(b) - monthSortValue(a))
+      .map(([key, monthEvents]) => ({ key, events: monthEvents }));
+  }, [events]);
+
+  const cyclePrompt = useMemo(() => {
+    if (!me || !cycleDashboard || cyclePromptDismissed) return null;
+    const today = todayDateOnly();
+    const todayRecorded = cycleDashboard.logs.some((log) => log.date === today && log.source === "recorded");
+    if (todayRecorded || isCycleReminderDismissed(me.pair_id, today)) return null;
+    const reminderDays = readCycleReminderDays(me.pair_id);
+    const daysLeft = daysUntil(cycleDashboard.stats.next_period_start, today);
+    if (daysLeft < 0 || daysLeft > reminderDays) return null;
+    return { today, daysLeft, reminderDays, nextPeriodStart: cycleDashboard.stats.next_period_start };
+  }, [cycleDashboard, cyclePromptDismissed, me]);
 
   async function load() {
     try {
@@ -101,6 +191,24 @@ function TimelineInner() {
     } catch {
       setQuotes([]);
     }
+  }
+
+  function toggleMonth(month: string) {
+    setExpandedMonths((prev) => {
+      const next = new Set(prev);
+      if (next.has(month)) {
+        next.delete(month);
+      } else {
+        next.add(month);
+      }
+      return next;
+    });
+  }
+
+  function dismissTodayCyclePrompt() {
+    if (!me || !cyclePrompt) return;
+    dismissCycleReminder(me.pair_id, cyclePrompt.today);
+    setCyclePromptDismissed(true);
   }
 
   async function createQuote(event: FormEvent<HTMLFormElement>) {
@@ -178,45 +286,32 @@ function TimelineInner() {
           />
         )}
 
-        <Link
-          href="/cycle"
-          className="glass-card mb-6 flex items-center justify-between gap-4 rounded-3xl p-5 transition-transform hover:-translate-y-0.5 focus-ring"
-        >
-          <div className="flex min-w-0 items-center gap-4">
-            <div className="grid h-12 w-12 flex-none place-items-center rounded-2xl bg-rose/12 text-rose-deep">
-              <HeartPulse className="h-6 w-6" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-display text-xl leading-tight text-ink">周期日历</p>
-              <p className="mt-1 font-sc text-sm leading-relaxed text-ink-soft">
-                查看周期阶段、预测区间，并快速记录每日状态。
-              </p>
-            </div>
-          </div>
-          <span className="hidden rounded-full bg-cream-deep/70 px-3 py-1 font-sc text-xs text-ink-soft sm:inline">
-            进入
-          </span>
-        </Link>
-
         {events === null ? (
           <ListSkeleton />
         ) : events.length === 0 ? (
           <EmptyState />
         ) : (
-          <ul className="space-y-4">
-            {events.map((evt, idx) => (
-              <motion.li
-                key={evt.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: Math.min(idx * 0.04, 0.32), duration: 0.3 }}
-              >
-                <EventCard evt={evt} />
-              </motion.li>
+          <div className="space-y-4">
+            {eventGroups.map((group) => (
+              <MonthEventGroup
+                key={group.key}
+                month={group.key}
+                events={group.events}
+                expanded={expandedMonths.has(group.key)}
+                onToggle={() => toggleMonth(group.key)}
+              />
             ))}
-          </ul>
+          </div>
         )}
       </div>
+
+      {cyclePrompt && (
+        <CycleCheckInPrompt
+          daysLeft={cyclePrompt.daysLeft}
+          nextPeriodStart={cyclePrompt.nextPeriodStart}
+          onDismiss={dismissTodayCyclePrompt}
+        />
+      )}
 
       <Link
         href="/create"
@@ -402,7 +497,103 @@ function ReminderPill({ item }: { item: ReminderItem }) {
   );
 }
 
-function EventCard({ evt }: { evt: EventSummary }) {
+function MonthEventGroup({
+  month,
+  events,
+  expanded,
+  onToggle,
+}: {
+  month: string;
+  events: EventSummary[];
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <section className="glass-card overflow-hidden rounded-3xl">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex min-h-[64px] w-full items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-white/45 focus-ring sm:px-6"
+        aria-expanded={expanded}
+      >
+        <div>
+          <h3 className="font-display text-xl leading-tight text-ink">{monthLabel(month)}</h3>
+          <p className="mt-1 font-sc text-xs text-ink-muted">{events.length} 件小事</p>
+        </div>
+        <span className="grid h-10 w-10 flex-none place-items-center rounded-full bg-surface-raised/70 text-ink-soft">
+          {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </span>
+      </button>
+      {expanded && (
+        <ul className="space-y-3 border-t border-line/60 p-3 sm:p-4">
+          {events.map((evt, idx) => (
+            <motion.li
+              key={evt.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: Math.min(idx * 0.03, 0.18), duration: 0.24 }}
+            >
+              <EventCard evt={evt} nested />
+            </motion.li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function CycleCheckInPrompt({
+  daysLeft,
+  nextPeriodStart,
+  onDismiss,
+}: {
+  daysLeft: number;
+  nextPeriodStart: string;
+  onDismiss: () => void;
+}) {
+  const title = daysLeft === 0 ? "预计今天来月经" : `预计还有 ${daysLeft} 天来月经`;
+  return (
+    <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom,0px)+5.5rem)] z-40 mx-auto w-full max-w-3xl px-5 sm:bottom-6">
+      <motion.section
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-card rounded-3xl p-5 shadow-glow"
+        role="dialog"
+        aria-label="周期记录提醒"
+      >
+        <div className="flex items-start gap-4">
+          <div className="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-rose/12 text-rose-deep">
+            <Droplet className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-display text-xl leading-tight text-ink">{title}</h3>
+            <p className="mt-1 font-sc text-sm leading-relaxed text-ink-soft">
+              今天还没有记录状态，预计日期是 {formatAbsolute(`${nextPeriodStart}T00:00:00`, false)}。
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link
+                href="/cycle?quickLog=today"
+                className="btn-primary inline-flex min-h-11 items-center gap-2 rounded-full px-4 font-sc text-sm font-medium focus-ring"
+              >
+                <Plus className="h-4 w-4" />
+                填写今天
+              </Link>
+              <button
+                type="button"
+                onClick={onDismiss}
+                className="btn-ghost min-h-11 rounded-full px-4 font-sc text-sm focus-ring"
+              >
+                暂时不写
+              </button>
+            </div>
+          </div>
+        </div>
+      </motion.section>
+    </div>
+  );
+}
+
+function EventCard({ evt, nested = false }: { evt: EventSummary; nested?: boolean }) {
   const me = useAppStore((s) => s.me)!;
   const author =
     evt.creator_id === me.user.id ? me.user : me.counterpart;
@@ -412,7 +603,11 @@ function EventCard({ evt }: { evt: EventSummary }) {
       href={`/timeline/${evt.id}`}
       className="block group focus-ring rounded-3xl"
     >
-      <article className="glass-card rounded-3xl p-5 sm:p-6 transition-transform group-hover:-translate-y-0.5 group-active:translate-y-0">
+      <article
+        className={`rounded-3xl p-5 transition-transform group-hover:-translate-y-0.5 group-active:translate-y-0 sm:p-6 ${
+          nested ? "bg-surface-raised/60" : "glass-card"
+        }`}
+      >
         <header className="flex items-start gap-3">
           <Avatar emoji={author.avatar} name={author.display_name} size="md" />
           <div className="min-w-0 flex-1">

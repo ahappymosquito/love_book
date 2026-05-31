@@ -783,15 +783,18 @@ python -m pytest tests -q
 
 - 创建 pair 时可设置 `love_started_on` 情侣日期；旧数据未设置时回退到 pair 创建日期。
 - 登录后的 `/timeline` 会调用 `GET /auth/anniversary`，展示“双方昵称在一起第 N 天”、520/1314/整月纪念、固定恋爱节日、中国大陆节假日/调休信息和普通日本地语录。
+- `/timeline` 事件列表按发生时间 `occurred_at` 所在月份收纳，没有发生时间时回退创建时间 `created_at`；默认只展开当前月份，其他月份可手动展开。
+- 首页不再常驻展示周期入口；仅在预计月经开始前本机配置的 N 天到预计当天、且今日尚未记录时弹出周期记录提醒，可进入 `/cycle?quickLog=today` 填写或选择当天暂时不写。
 - 一言模块已弃用；非特殊日后端从当前 pair 的 `quotes` 数据库语录库和 `default_quotes` 全站共享兜底语录表合并后的随机池中取一句。
 - 前端在纪念日卡片右侧提供刷新和编辑图标：刷新会重新请求提醒文案，编辑可添加、查看和删除当前 pair 的共享语录，保存后自动收起编辑区。
 - 节假日信息使用 `https://timor.tech/api/holiday/info/{YYYY-MM-DD}`；接口失败时静默跳过节假日标签，不影响首页加载。
 ## 周期日历 Dashboard
 
-- 前端新增 `/cycle` 页面，登录后可从 `/timeline` 的“周期日历”入口进入。
+- 前端新增 `/cycle` 页面，登录后可通过首页周期提醒进入，或直接访问该路由。
 - 后端新增 `/cycles` API，所有接口复用现有 Bearer token 鉴权，并按当前 pair 共享周期记录。
 - 新增 `cycle_daily_logs` 表，使用 `pair_id + date` 唯一约束保存单日记录；字段包括周期阶段、是否经期、流量、症状、心情、BBT、宫颈黏液、备注、创建/更新用户与时间。
 - `GET /cycles/dashboard?start=YYYY-MM-DD&end=YYYY-MM-DD` 返回区间内记录、预测填充记录、统计信息和空状态。
-- `PUT /cycles/logs/{date}`、`DELETE /cycles/logs/{date}`、`DELETE /cycles/logs`、`POST /cycles/example-data` 用于保存、删除、清空和生成演示数据；写接口在返回前完成提交。
+- `PUT /cycles/logs/{date}`、`DELETE /cycles/logs/{date}`、`DELETE /cycles/logs`、`POST /cycles/example-data` 用于保存、删除、清空和生成演示数据；写接口在返回前完成提交。正式前端界面只展示记录、查看、编辑和提醒设置，不再展示演示/清空/导入入口。
 - 预测逻辑只基于历史经期开始日和平均周期做参考展示，数据不足时使用 28 天周期、5 天经期默认值；周期波动大时展示预测区间。
+- 周期提醒提前天数保存在当前浏览器 localStorage：`love-book:cycle-reminder-days:{pairId}`，默认 3 天、页面限制 1-7 天；当天“暂时不写”状态保存为 `love-book:cycle-reminder-dismissed:{pairId}:{yyyy-MM-dd}`。
 - 页面文案保持“记录和预测仅供参考”，不提供医疗诊断或避孕建议。
