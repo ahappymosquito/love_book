@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home screen showing pair reminders, month-collapsible events, cycle check-in prompts, visibility state, and shortcuts.
+// Timeline home screen showing pair reminders, moon cycle entry, month-collapsible events, cycle check-in prompts, visibility state, and shortcuts.
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Droplet,
   Gift,
+  Moon,
   Pencil,
   Plus,
   RefreshCw,
@@ -261,7 +262,14 @@ function TimelineInner() {
               把每一次心动、想念和日常，都慢慢写成只属于你们的书。
             </p>
           </div>
-          <BookHeart className="h-7 w-7 text-rose hidden sm:block" />
+          <Link
+            href="/cycle"
+            className="hidden h-11 w-11 flex-none place-items-center rounded-full bg-surface-raised/70 text-rose-deep shadow-soft transition hover:-translate-y-0.5 hover:bg-surface-raised focus-ring sm:grid"
+            aria-label="进入月经周期记录"
+            title="月经周期记录"
+          >
+            <Moon className="h-5 w-5" />
+          </Link>
         </div>
 
         {anniversary && (
