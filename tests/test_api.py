@@ -267,11 +267,18 @@ def test_anniversary_endpoint_uses_default_local_quote_when_quote_library_is_emp
     assert {item.text for item in stored_defaults} == set(services.DEFAULT_LOVE_QUOTES)
 
 
-def test_anniversary_endpoint_uses_pair_quote_before_default_quote(
+def test_anniversary_endpoint_uses_pair_and_default_quotes_in_one_random_pool(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    choices_seen: list[list[str]] = []
+
+    def choose_last(items: list[str]) -> str:
+        choices_seen.append(list(items))
+        return items[-1]
+
     monkeypatch.setattr(services, "local_today", lambda: date(2026, 3, 2))
     monkeypatch.setattr(services, "httpx", RaisingHTTPClient)
+    monkeypatch.setattr(services.random, "choice", choose_last)
     created = client.post(
         "/admin/pairs",
         headers={"X-Admin-Key": "test-admin-key"},
@@ -287,7 +294,11 @@ def test_anniversary_endpoint_uses_pair_quote_before_default_quote(
 
     assert quote.status_code == 201
     assert data["message_source"] == "local"
-    assert data["message"] == "数据库里的喜欢先到。"
+    assert data["message"] == services.DEFAULT_LOVE_QUOTES[-1]
+    assert choices_seen
+    quote_pool = choices_seen[-1]
+    assert "数据库里的喜欢先到。" in quote_pool
+    assert set(services.DEFAULT_LOVE_QUOTES).issubset(set(quote_pool))
 
 
 def test_quotes_require_login(client: TestClient) -> None:

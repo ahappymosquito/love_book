@@ -136,12 +136,13 @@ def ensure_default_quotes(db: Session) -> None:
 
 
 def local_quote_for_pair(db: Session, pair: Pair) -> str:
-    quotes = db.execute(select(Quote.text).where(Quote.pair_id == pair.id)).scalars().all()
-    if quotes:
-        return random.choice(quotes)
     ensure_default_quotes(db)
+    pair_quotes = db.execute(select(Quote.text).where(Quote.pair_id == pair.id)).scalars().all()
     default_quotes = db.execute(select(DefaultQuote.text)).scalars().all()
-    return random.choice(default_quotes)
+    quote_pool = [*pair_quotes, *default_quotes]
+    if quote_pool:
+        return random.choice(quote_pool)
+    return random.choice(DEFAULT_LOVE_QUOTES)
 
 
 def build_anniversary(db: Session, pair: Pair) -> AnniversaryOut:
