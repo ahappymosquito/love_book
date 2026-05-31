@@ -43,3 +43,11 @@
 - 周期日历已作为正式功能使用，正式界面不展示示例数据、清空数据或导入历史数据等测试入口。
 - 周期提醒提前天数保存在当前浏览器 localStorage，key 为 `love-book:cycle-reminder-days:{pairId}`；当天暂时不写状态 key 为 `love-book:cycle-reminder-dismissed:{pairId}:{yyyy-MM-dd}`。
 - 周期阶段和下次经期预测只用于记录参考，页面和接口文案不得写医疗诊断、避孕建议或恐吓式提醒。
+
+## 头像约定
+
+- 用户头像支持图片上传和 emoji 备用头像；展示时优先显示上传图片，图片缺失或加载失败时回退 `users.avatar` emoji，再回退昵称首字。
+- 头像图片按私有媒体处理：写入 `MEDIA_ROOT/avatars/{user_id}/...`，数据库只保存 `users.avatar_storage_key` / `users.avatar_mime_type` / `users.avatar_size_bytes` / `users.avatar_updated_at`，不得写入数据库 BLOB。
+- `POST /auth/me/avatar` 和 `DELETE /auth/me/avatar` 必须在响应返回前完成数据库提交，保证前端上传或清除后立即刷新可读。
+- `GET /users/{user_id}/avatar` 只允许同一 pair 的双方或管理员读取；头像下载使用私有缓存头，不提供公开静态 URL。
+- 管理端创建配对阶段继续只设置 emoji 默认头像；登录用户可在顶部头像弹窗里上传或清除自己的头像图片。

@@ -1,25 +1,38 @@
 "use client";
 
+// Avatar editing sheet with private image upload controls plus the existing emoji fallback presets.
+
+import { useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { X } from "lucide-react";
+import { ImagePlus, Loader2, Trash2, X } from "lucide-react";
 import { AVATAR_PRESETS } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
 interface AvatarPickerProps {
   open: boolean;
   current?: string | null;
+  hasImage?: boolean;
+  uploading?: boolean;
   onClose: () => void;
   onPick: (emoji: string) => void;
+  onUpload?: (file: File) => void;
+  onDeleteImage?: () => void;
   title?: string;
 }
 
 export function AvatarPicker({
   open,
   current,
+  hasImage,
+  uploading,
   onClose,
   onPick,
+  onUpload,
+  onDeleteImage,
   title = "选择一个头像",
 }: AvatarPickerProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
   return (
     <AnimatePresence>
       {open && (
@@ -56,9 +69,44 @@ export function AvatarPicker({
                 <X className="h-4 w-4 text-ink-soft" />
               </button>
             </div>
+
+            {onUpload && (
+              <div className="mb-5 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => inputRef.current?.click()}
+                  disabled={uploading}
+                  className="min-h-12 rounded-2xl bg-rose text-white shadow-soft transition hover:bg-rose-deep disabled:opacity-60 focus-ring inline-flex items-center justify-center gap-2 font-sc text-sm"
+                >
+                  {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                  上传图片
+                </button>
+                <button
+                  type="button"
+                  onClick={onDeleteImage}
+                  disabled={!hasImage || uploading || !onDeleteImage}
+                  className="min-h-12 rounded-2xl bg-surface-raised/70 hairline text-ink-soft transition hover:bg-cream-deep/70 disabled:opacity-45 focus-ring inline-flex items-center justify-center gap-2 font-sc text-sm"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  清除图片
+                </button>
+                <input
+                  ref={inputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="sr-only"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (file) onUpload(file);
+                  }}
+                />
+              </div>
+            )}
+
             <div className="grid grid-cols-4 gap-3">
               {AVATAR_PRESETS.map((emoji) => {
-                const active = emoji === current;
+                const active = emoji === current && !hasImage;
                 return (
                   <button
                     key={emoji}

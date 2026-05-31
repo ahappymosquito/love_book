@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home screen showing pair reminders, moon cycle entry, month-collapsible events, cycle check-in prompts, visibility state, and shortcuts.
+// Timeline home screen showing pair reminders, avatar-aware event authors, moon cycle entry, month groups, and shortcuts.
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -617,7 +617,7 @@ function EventCard({ evt, nested = false }: { evt: EventSummary; nested?: boolea
         }`}
       >
         <header className="flex items-start gap-3">
-          <Avatar emoji={author.avatar} name={author.display_name} size="md" />
+          <Avatar user={author} size="md" />
           <div className="min-w-0 flex-1">
             <p className="font-sc text-xs text-ink-muted">
               {author.display_name} ·{" "}

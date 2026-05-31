@@ -1,5 +1,7 @@
 "use client";
 
+// Sticky timeline header with logout, current user avatar display, emoji fallback, and private avatar image upload.
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -22,6 +24,7 @@ export function TimelineHeader({ title, back, rightSlot }: TimelineHeaderProps) 
   const setMe = useAppStore((s) => s.setMe);
   const logout = useAppStore((s) => s.logout);
   const [picking, setPicking] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   if (!me) return null;
 
@@ -29,10 +32,39 @@ export function TimelineHeader({ title, back, rightSlot }: TimelineHeaderProps) 
     if (!me) return;
     try {
       const updated = await api.patchMe({ avatar: emoji });
-      setMe({ ...me, user: { ...me.user, avatar: updated.avatar, display_name: updated.display_name } });
+      setMe({ ...me, user: { ...me.user, ...updated } });
       toast.success("头像已更新");
     } catch {
       // toast handled
+    }
+  }
+
+  async function onUploadAvatar(file: File) {
+    if (!me) return;
+    setUploadingAvatar(true);
+    try {
+      const updated = await api.uploadMyAvatar(file);
+      setMe({ ...me, user: { ...me.user, ...updated } });
+      toast.success("头像图片已更新");
+      setPicking(false);
+    } catch {
+      // toast handled
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
+
+  async function onDeleteAvatarImage() {
+    if (!me) return;
+    setUploadingAvatar(true);
+    try {
+      const updated = await api.deleteMyAvatar();
+      setMe({ ...me, user: { ...me.user, ...updated } });
+      toast.success("头像图片已清除");
+    } catch {
+      // toast handled
+    } finally {
+      setUploadingAvatar(false);
     }
   }
 
@@ -54,7 +86,7 @@ export function TimelineHeader({ title, back, rightSlot }: TimelineHeaderProps) 
               className="group relative inline-flex items-center gap-2 focus-ring rounded-full pl-1 pr-3 py-1 hover:bg-ink/5 transition"
               aria-label="编辑头像"
             >
-              <Avatar emoji={me.user.avatar} name={me.user.display_name} size="md" />
+              <Avatar user={me.user} size="md" />
               <span className="absolute -bottom-0.5 -right-0.5 h-5 w-5 rounded-full bg-rose text-white grid place-items-center shadow-soft border-2 border-cream">
                 <Pencil className="h-2.5 w-2.5" />
               </span>
@@ -70,7 +102,7 @@ export function TimelineHeader({ title, back, rightSlot }: TimelineHeaderProps) 
                   {me.user.display_name}
                 </p>
                 <p className="font-sc text-[11px] text-ink-muted">
-                  与 {me.counterpart.display_name} 一起
+                  和 {me.counterpart.display_name} 一起
                 </p>
               </div>
             )}
@@ -96,8 +128,12 @@ export function TimelineHeader({ title, back, rightSlot }: TimelineHeaderProps) 
       <AvatarPicker
         open={picking}
         current={me.user.avatar}
+        hasImage={me.user.avatar_has_image}
+        uploading={uploadingAvatar}
         onClose={() => setPicking(false)}
         onPick={onPickAvatar}
+        onUpload={onUploadAvatar}
+        onDeleteImage={onDeleteAvatarImage}
         title="挑一个属于你的样子"
       />
     </>

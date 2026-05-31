@@ -1,6 +1,6 @@
 "use client";
 
-// Admin console for creating pairs, issuing tokens, editing contact details, setting relationship dates,
+// Admin console for creating pairs, issuing tokens, editing contact details, showing avatar-aware users,
 // and copying tokens or runtime-origin entry links with a clipboard fallback for deployed browsers.
 
 import { useCallback, useEffect, useState } from "react";
@@ -543,7 +543,7 @@ function TokenCard({
   link,
   onCopy,
 }: {
-  user: { display_name: string; avatar: string };
+  user: Pick<PairOut["user_a"], "id" | "display_name" | "avatar" | "avatar_has_image" | "avatar_updated_at">;
   token: string;
   expiresAt: string | null;
   link: string;
@@ -552,7 +552,7 @@ function TokenCard({
   return (
     <div className="rounded-2xl bg-surface-raised/80 hairline p-4 space-y-3">
       <div className="flex items-center gap-2 min-w-0">
-        <Avatar emoji={user.avatar} name={user.display_name} size="sm" />
+        <Avatar user={user} size="sm" />
         <span className="font-display text-base text-ink truncate">
           {user.display_name}
         </span>
@@ -622,9 +622,9 @@ function PairRow({
     <li className="glass-card rounded-3xl p-5 sm:p-6 transition hover:shadow-glow space-y-3">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
-          <Avatar emoji={pair.user_a.avatar} name={pair.user_a.display_name} size="md" />
+          <Avatar user={pair.user_a} size="md" />
           <div className="font-display text-2xl text-rose">·</div>
-          <Avatar emoji={pair.user_b.avatar} name={pair.user_b.display_name} size="md" />
+          <Avatar user={pair.user_b} size="md" />
           <div className="ml-1 min-w-0">
             <p className="font-display text-base text-ink truncate">
               {pair.user_a.display_name} <span className="text-rose">&</span>{" "}

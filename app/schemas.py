@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, admin, pair, event, quote, content, cycle dashboard, and reminder APIs."""
+"""Pydantic schemas for auth, avatar-aware users, admin, pair, event, quote, content, cycle, and reminder APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -22,6 +22,8 @@ class UserOut(APIModel):
     id: int
     display_name: str
     avatar: str = ""
+    avatar_has_image: bool = False
+    avatar_updated_at: datetime | None = None
     email: str | None = None
     created_at: datetime
 

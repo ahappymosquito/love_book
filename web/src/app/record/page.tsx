@@ -1,5 +1,7 @@
 "use client";
 
+// Admin login record page with avatar-aware user filters and log cards.
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -23,7 +25,7 @@ import { api, APIError } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import { Avatar } from "@/components/avatar";
 import { formatAbsolute, formatRelative } from "@/lib/format";
-import type { LoginLogOut } from "@/lib/types";
+import type { LoginLogOut, UserOut } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
 export default function RecordPage() {
@@ -76,14 +78,10 @@ export default function RecordPage() {
   }
 
   const userOptions = useMemo(() => {
-    const map = new Map<number, { id: number; name: string; avatar: string }>();
+    const map = new Map<number, Pick<UserOut, "id" | "display_name" | "avatar" | "avatar_has_image" | "avatar_updated_at">>();
     for (const log of logs) {
       if (log.user && !map.has(log.user.id)) {
-        map.set(log.user.id, {
-          id: log.user.id,
-          name: log.user.display_name,
-          avatar: log.user.avatar,
-        });
+        map.set(log.user.id, log.user);
       }
     }
     return Array.from(map.values());
@@ -194,8 +192,8 @@ export default function RecordPage() {
                     onClick={() => setFilterUserId(u.id)}
                     label={
                       <span className="inline-flex items-center gap-1.5">
-                        <span className="text-base leading-none">{u.avatar}</span>
-                        {u.name}
+                        <Avatar user={u} size="xs" />
+                        {u.display_name}
                       </span>
                     }
                   />
@@ -261,7 +259,7 @@ function LogCard({ log }: { log: LoginLogOut }) {
       <div className="flex items-start gap-3 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
           {log.user ? (
-            <Avatar emoji={log.user.avatar} name={log.user.display_name} size="md" />
+            <Avatar user={log.user} size="md" />
           ) : (
             <div className="h-12 w-12 rounded-2xl bg-cream-deep/50 grid place-items-center text-ink-muted">
               ?

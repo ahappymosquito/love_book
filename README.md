@@ -195,6 +195,9 @@ token 由管理接口生成，默认永久有效；创建 pair 时也可以指�
 | admin | GET | `/admin/pairs` | `X-Admin-Key` | 列出全部配对及其 token |
 | auth | GET | `/auth/me` | `Bearer` | 获取当前用户、对方、pair_id |
 | auth | PATCH | `/auth/me` | `Bearer` | 修改自己的昵称或头像 |
+| auth | POST | `/auth/me/avatar` | `Bearer` | 上传自己的图片头像（multipart） |
+| auth | DELETE | `/auth/me/avatar` | `Bearer` | 清除自己的图片头像，回退 emoji/首字 |
+| users | GET | `/users/{user_id}/avatar` | `Bearer` 或 `X-Admin-Key` | 下载私有图片头像，同 pair 或管理员可读 |
 | quotes | GET | `/quotes` | `Bearer` | 当前 pair 的共享语录列表 |
 | quotes | POST | `/quotes` | `Bearer` | 添加一条共享语录 |
 | quotes | DELETE | `/quotes/{quote_id}` | `Bearer` | 删除当前 pair 的共享语录 |
@@ -274,12 +277,16 @@ X-Admin-Key: your-admin-key
     "id": 1,
     "display_name": "Alice",
     "avatar": "🐶",
+    "avatar_has_image": false,
+    "avatar_updated_at": null,
     "created_at": "2026-04-29T12:00:00Z"
   },
   "user_b": {
     "id": 2,
     "display_name": "Bob",
     "avatar": "🐱",
+    "avatar_has_image": false,
+    "avatar_updated_at": null,
     "created_at": "2026-04-29T12:00:00Z"
   },
   "user_a_token": "token-for-alice",
@@ -314,8 +321,8 @@ X-Admin-Key: your-admin-key
 [
   {
     "pair_id": 1,
-    "user_a": { "id": 1, "display_name": "Alice", "avatar": "🐶", "created_at": "2026-04-29T12:00:00Z" },
-    "user_b": { "id": 2, "display_name": "Bob", "avatar": "🐱", "created_at": "2026-04-29T12:00:00Z" },
+    "user_a": { "id": 1, "display_name": "Alice", "avatar": "🐶", "avatar_has_image": false, "avatar_updated_at": null, "created_at": "2026-04-29T12:00:00Z" },
+    "user_b": { "id": 2, "display_name": "Bob", "avatar": "🐱", "avatar_has_image": false, "avatar_updated_at": null, "created_at": "2026-04-29T12:00:00Z" },
     "user_a_token": "token-for-alice",
     "user_b_token": "token-for-bob",
     "user_a_token_expires_at": null,
@@ -345,12 +352,16 @@ Authorization: Bearer token-for-alice
     "id": 1,
     "display_name": "Alice",
     "avatar": "🐶",
+    "avatar_has_image": true,
+    "avatar_updated_at": "2026-04-29T12:10:00Z",
     "created_at": "2026-04-29T12:00:00Z"
   },
   "counterpart": {
     "id": 2,
     "display_name": "Bob",
     "avatar": "🐱",
+    "avatar_has_image": false,
+    "avatar_updated_at": null,
     "created_at": "2026-04-29T12:00:00Z"
   },
   "pair_id": 1
@@ -385,7 +396,36 @@ Authorization: Bearer token-for-alice
 
 成功响应是更新后的用户对象，与 `GET /auth/me` 中 `user` 字段结构相同。
 
-### 5.1 共享语录库
+### 5.1 上传、清除和读取图片头像
+
+图片头像和 emoji 头像并存：展示时优先显示上传图片；没有图片或图片读取失败时，回退 `avatar` emoji，再回退昵称首字。图片头像按私有媒体保存到 `MEDIA_ROOT`，数据库只保存相对 storage key 和元数据。
+
+`POST /auth/me/avatar`
+
+请求头：
+
+```http
+Authorization: Bearer token-for-alice
+Content-Type: multipart/form-data
+```
+
+表单字段：
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `file` | 是 | 支持 `image/jpeg`、`image/png`、`image/webp`、`image/gif`，大小受 `MAX_IMAGE_BYTES` 限制。 |
+
+成功响应是更新后的 `UserOut`，其中 `avatar_has_image` 为 `true`，`avatar_updated_at` 为本次更新时间。非法类型返回 `415`，超限返回 `413`。
+
+`DELETE /auth/me/avatar`
+
+清除当前用户上传的图片头像，成功响应是更新后的 `UserOut`，其中 `avatar_has_image` 为 `false`，原有 `avatar` emoji 保留。
+
+`GET /users/{user_id}/avatar`
+
+请求头可使用当前用户 `Bearer` token 或管理员 `X-Admin-Key`。只有同一 pair 的双方和管理员可读取；未上传、已清除、文件缺失或无权限时返回 `404`。成功时返回头像 JPEG 文件，并带 `Cache-Control: private, max-age=604800`。
+
+### 5.2 共享语录库
 
 `GET /quotes`、`POST /quotes`、`DELETE /quotes/{quote_id}`
 

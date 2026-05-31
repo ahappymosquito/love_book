@@ -1,4 +1,4 @@
-"""API regression tests for auth, reminders, event visibility, local image storage, and database media fallback."""
+"""API regression tests for auth, private avatars, reminders, event visibility, local media, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 import app.api.routes.admin as admin_routes
 import app.cycles as cycles
 import app.services as services
+from app.core.config import get_settings
 from app.models import DefaultQuote, DeviceToken, Image as DBImage, Voice
 from app.storage import media_path
 from tests.conftest import auth
@@ -157,6 +158,95 @@ def test_auth_me_returns_user_counterpart_and_pair(client: TestClient, pair_toke
     assert data["counterpart"]["display_name"] == "B"
     assert data["pair_id"] == pair_tokens["pair_id"]
     assert data["love_started_on"]
+    assert data["user"]["avatar_has_image"] is False
+
+
+def test_user_can_upload_and_pair_can_read_avatar(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    token_a = str(pair_tokens["user_a_token"])
+    token_b = str(pair_tokens["user_b_token"])
+
+    uploaded = client.post(
+        "/auth/me/avatar",
+        headers=auth(token_a),
+        files={"file": ("avatar.png", sample_png_bytes(), "image/png")},
+    )
+
+    assert uploaded.status_code == 200
+    user = uploaded.json()
+    assert user["avatar_has_image"] is True
+    assert user["avatar_updated_at"]
+
+    me = client.get("/auth/me", headers=auth(token_a)).json()
+    assert me["user"]["avatar_has_image"] is True
+    downloaded = client.get(f"/users/{user['id']}/avatar", headers=auth(token_b))
+    assert downloaded.status_code == 200
+    assert downloaded.headers["content-type"].startswith("image/jpeg")
+    assert downloaded.headers["cache-control"] == "private, max-age=604800"
+    assert downloaded.content.startswith(b"\xff\xd8")
+
+
+def test_user_avatar_download_is_pair_private(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    uploaded = client.post(
+        "/auth/me/avatar",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        files={"file": ("avatar.png", sample_png_bytes(), "image/png")},
+    ).json()
+    other_pair = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={"user_a_display_name": "C", "user_b_display_name": "D"},
+    ).json()
+
+    blocked = client.get(f"/users/{uploaded['id']}/avatar", headers=auth(other_pair["user_a_token"]))
+    admin = client.get(f"/users/{uploaded['id']}/avatar", headers={"X-Admin-Key": "test-admin-key"})
+
+    assert blocked.status_code == 404
+    assert admin.status_code == 200
+
+
+def test_user_avatar_upload_rejects_invalid_type_and_oversize(
+    client: TestClient, pair_tokens: dict[str, str | int]
+) -> None:
+    token = str(pair_tokens["user_a_token"])
+    bad_type = client.post(
+        "/auth/me/avatar",
+        headers=auth(token),
+        files={"file": ("avatar.txt", b"not-image", "text/plain")},
+    )
+
+    settings = get_settings()
+    previous_limit = settings.max_image_bytes
+    settings.max_image_bytes = 4
+    try:
+        too_large = client.post(
+            "/auth/me/avatar",
+            headers=auth(token),
+            files={"file": ("avatar.png", sample_png_bytes(), "image/png")},
+        )
+    finally:
+        settings.max_image_bytes = previous_limit
+
+    assert bad_type.status_code == 415
+    assert too_large.status_code == 413
+
+
+def test_user_can_delete_uploaded_avatar_and_fallback_to_emoji(
+    client: TestClient, pair_tokens: dict[str, str | int]
+) -> None:
+    token = str(pair_tokens["user_a_token"])
+    uploaded = client.post(
+        "/auth/me/avatar",
+        headers=auth(token),
+        files={"file": ("avatar.png", sample_png_bytes(), "image/png")},
+    ).json()
+
+    deleted = client.delete("/auth/me/avatar", headers=auth(token))
+    missing = client.get(f"/users/{uploaded['id']}/avatar", headers=auth(token))
+
+    assert deleted.status_code == 200
+    assert deleted.json()["avatar_has_image"] is False
+    assert deleted.json()["avatar"] == uploaded["avatar"]
+    assert missing.status_code == 404
 
 
 def test_anniversary_endpoint_returns_520_love_festival_and_holiday_fallback(

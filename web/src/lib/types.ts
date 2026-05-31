@@ -1,4 +1,4 @@
-// Shared TypeScript contracts for API payloads, user state, events, quotes, cycle dashboard, pair tokens, and reminders.
+// Shared TypeScript contracts for API payloads, avatar-aware user state, events, quotes, cycle dashboard, pair tokens, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
 
@@ -6,6 +6,8 @@ export interface UserOut {
   id: number;
   display_name: string;
   avatar: string;
+  avatar_has_image: boolean;
+  avatar_updated_at: string | null;
   email: string | null;
   created_at: string;
 }

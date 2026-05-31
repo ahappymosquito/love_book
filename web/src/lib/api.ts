@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated user, admin, event, quote, cycle dashboard, media upload, and thumbnail requests.
+// Browser API client for authenticated user, private avatars, admin, event, quote, cycle dashboard, media upload, and thumbnail requests.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -192,6 +192,15 @@ export const api = {
   getAnniversary: () => apiRequest<AnniversaryOut>("/auth/anniversary", { silent: true }),
   patchMe: (payload: { display_name?: string; avatar?: string }) =>
     apiRequest<UserOut>("/auth/me", { method: "PATCH", json: payload }),
+  uploadMyAvatar: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file, file.name);
+    return apiRequest<UserOut>("/auth/me/avatar", {
+      method: "POST",
+      body: fd,
+    });
+  },
+  deleteMyAvatar: () => apiRequest<UserOut>("/auth/me/avatar", { method: "DELETE" }),
   recordLogin: (payload: LoginRecordCreate) =>
     apiRequest<LoginLogOut>("/auth/login-record", {
       method: "POST",
@@ -275,11 +284,27 @@ export function fileUrl(kind: "voices" | "images" | "image-thumbs", id: number):
   return `${API_BASE}/${kind}/${id}/file`;
 }
 
+export function avatarUrl(userId: number): string {
+  return `${API_BASE}/users/${userId}/avatar`;
+}
+
 export async function fetchFileBlob(kind: "voices" | "images" | "image-thumbs", id: number): Promise<string> {
   const token = useAppStore.getState().token;
   const resp = await fetch(fileUrl(kind, id), {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
+  if (!resp.ok) throw new APIError(resp.status, await resp.text());
+  const blob = await resp.blob();
+  return URL.createObjectURL(blob);
+}
+
+export async function fetchAvatarBlob(userId: number): Promise<string> {
+  const token = useAppStore.getState().token;
+  const adminKey = useAppStore.getState().adminKey;
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (adminKey) headers["X-Admin-Key"] = adminKey;
+  const resp = await fetch(avatarUrl(userId), { headers });
   if (!resp.ok) throw new APIError(resp.status, await resp.text());
   const blob = await resp.blob();
   return URL.createObjectURL(blob);

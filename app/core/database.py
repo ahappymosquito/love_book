@@ -1,4 +1,4 @@
-"""Database engine setup, sessions, table creation, default quote seeding, and lightweight column migrations."""
+"""Database setup, sessions, default quote seeding, and lightweight migrations including user avatar media columns."""
 
 from collections.abc import Generator
 
@@ -52,6 +52,30 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         "users",
         "email",
         {"default": "VARCHAR(255) NULL"},
+    ),
+    (
+        "users",
+        "avatar_storage_key",
+        {"default": "VARCHAR(500) NULL"},
+    ),
+    (
+        "users",
+        "avatar_mime_type",
+        {"default": "VARCHAR(100) NULL"},
+    ),
+    (
+        "users",
+        "avatar_size_bytes",
+        {"default": "INTEGER NULL", "mysql": "INT NULL", "mariadb": "INT NULL"},
+    ),
+    (
+        "users",
+        "avatar_updated_at",
+        {
+            "default": "TIMESTAMP WITH TIME ZONE NULL",
+            "mysql": "DATETIME NULL",
+            "mariadb": "DATETIME NULL",
+        },
     ),
     (
         "device_tokens",

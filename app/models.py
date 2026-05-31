@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair timelines, pair quotes, global fallback quotes, media metadata, and login logs."""
+"""SQLAlchemy models for pair timelines, user avatar media keys, quotes, content metadata, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -60,8 +60,16 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
     avatar: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+    avatar_storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    avatar_mime_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    avatar_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    avatar_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    @property
+    def avatar_has_image(self) -> bool:
+        return bool(self.avatar_storage_key)
 
 
 class Pair(Base):

@@ -1,10 +1,12 @@
+"""FastAPI application factory registering auth, private avatar, admin, cycle, event, quote, and content routes."""
+
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import admin, admin_auth, auth, contents, cycles, events, quotes
+from app.api.routes import admin, admin_auth, auth, contents, cycles, events, quotes, users
 from app.core.database import init_db
 
 
@@ -31,6 +33,7 @@ def create_app() -> FastAPI:
     app.include_router(events.router)
     app.include_router(quotes.router)
     app.include_router(contents.router)
+    app.include_router(users.router)
 
     return app
 

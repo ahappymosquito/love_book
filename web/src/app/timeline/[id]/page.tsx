@@ -1,5 +1,7 @@
 "use client";
 
+// Event detail screen with avatar-aware author rendering, comments, media stream, and submission state.
+
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -290,7 +292,7 @@ function EventDetailInner() {
           )}
 
           <div className="mt-5 flex items-center gap-3">
-            <Avatar emoji={creator.avatar} name={creator.display_name} size="sm" />
+            <Avatar user={creator} size="sm" />
             <div>
               <p className="font-sc text-xs text-ink-muted">由 {creator.display_name} 起笔</p>
               <p className="font-sc text-[11px] text-ink-muted/80" title={formatAbsolute(event.created_at)}>
@@ -378,7 +380,7 @@ function EventDetailInner() {
                     isMine ? "flex-row-reverse" : "flex-row",
                   )}
                 >
-                  <Avatar emoji={author.avatar} name={author.display_name} size="sm" />
+                  <Avatar user={author} size="sm" />
 
                   <div
                     className={cn(
@@ -497,7 +499,7 @@ function SubmissionTile({
       )}
     >
       <div className="flex items-center gap-3">
-        <Avatar emoji={user.avatar} name={user.display_name} size="md" />
+        <Avatar user={user} size="md" />
         <div className="min-w-0 flex-1">
           <p className="font-sc text-sm text-ink truncate">
             {user.display_name}

@@ -1,14 +1,17 @@
-"""Authenticated user routes for profile, pair context, login logs, and database-backed home reminders."""
+"""Authenticated user routes for profile, avatar upload, pair context, login logs, and home reminders."""
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_pair_for_user
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.login_logs import client_ip, enrich_location, record_login
-from app.models import User
+from app.media import MediaProcessingError, make_avatar_image
+from app.models import User, utc_now
 from app.schemas import AnniversaryOut, LoginLogOut, LoginRecordCreate, MeOut, MeUpdate, UserOut
 from app.services import build_anniversary, counterpart, pair_love_started_on
+from app.storage import MediaStorageError, build_avatar_storage_key, write_media_file
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -45,6 +48,57 @@ def update_me(
     if "avatar" in data and data["avatar"] is not None:
         current_user.avatar = data["avatar"]
     db.flush()
+    db.commit()
+    db.refresh(current_user)
+    return UserOut.model_validate(current_user)
+
+
+@router.post("/me/avatar", response_model=UserOut)
+def upload_my_avatar(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    settings = get_settings()
+    content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
+    if content_type not in settings.allowed_image_mime_types:
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Unsupported image mime type")
+
+    body = file.file.read(settings.max_image_bytes + 1)
+    if len(body) > settings.max_image_bytes:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Image file is too large")
+    try:
+        avatar = make_avatar_image(body)
+    except MediaProcessingError as exc:
+        raise HTTPException(status_code=422, detail=f"Avatar image could not be generated: {exc}") from exc
+
+    storage_key = build_avatar_storage_key(current_user.id)
+    try:
+        write_media_file(storage_key, avatar)
+    except (MediaStorageError, OSError) as exc:
+        raise HTTPException(status_code=500, detail=f"Avatar image could not be saved: {exc}") from exc
+
+    current_user.avatar_storage_key = storage_key
+    current_user.avatar_mime_type = "image/jpeg"
+    current_user.avatar_size_bytes = len(avatar)
+    current_user.avatar_updated_at = utc_now()
+    db.flush()
+    db.commit()
+    db.refresh(current_user)
+    return UserOut.model_validate(current_user)
+
+
+@router.delete("/me/avatar", response_model=UserOut)
+def delete_my_avatar(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    current_user.avatar_storage_key = None
+    current_user.avatar_mime_type = None
+    current_user.avatar_size_bytes = None
+    current_user.avatar_updated_at = None
+    db.flush()
+    db.commit()
     db.refresh(current_user)
     return UserOut.model_validate(current_user)
 
