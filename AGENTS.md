@@ -29,11 +29,30 @@
 
 - 首页纪念日提醒由后端 `/auth/anniversary` 聚合：情侣日期天数、520/1314/整月纪念、固定恋爱节日、本地语录库和 timor.tech 中国节假日信息。
 - 首页时间线事件按 `occurred_at` 所在月份收纳；没有发生时间时回退 `created_at`，默认只展开当前月份。
-- 首页标题区右侧月亮图标是 `/cycle` 月经周期记录入口，桌面端和手机端都必须显示。
+- 首页标题区右侧 `ListTodo` 图标是 `/todo` 共享 todo 看板入口，月亮图标是 `/cycle` 月经周期记录入口，桌面端和手机端都必须显示。
 - 一言模块已弃用；普通日情话从当前 pair 的数据库语录库和 `default_quotes` 全站共享兜底语录表合并后的随机池中选取。
 - 节假日接口失败时必须静默降级，不能影响 `/timeline` 首页加载。
 - `/quotes` 是登录后的情侣共享语录库接口；同一 pair 双方可添加、查看、删除共享语录，写接口必须在响应返回前完成数据库提交；前端刷新和编辑入口收在首页纪念日卡片右侧图标按钮内。
 - 首页周期记录提醒只在预计月经开始前本机配置的 N 天到预计当天展示，默认 3 天；今日已记录或当天选择“暂时不写”后不再弹出。
+
+## Todo 看板约定
+
+- `/todo` 是登录后的共享 todo 看板，从 `/timeline` 入口进入，复用当前 Bearer token 鉴权。
+- Todo 数据独立于时间线事件，不自动创建或更新 `/timeline` 事件。
+- Todo 项目按 pair 双方共享，分为 `food` 吃饭和 `play` 玩乐；默认玩乐项目为“唱歌、台球、看电影、拼乐高”。
+- 日期安排写接口必须在响应返回前完成数据库提交，并向另一方发送邮件通知；邮件展示日期、板块、项目和 `/todo?date=YYYY-MM-DD` 入口。
+- 餐厅搜索和详情解析通过后端运行 `npx -y @amap/amap-maps-mcp-server` 调用高德 MCP，密钥只从 `.env` / 环境变量 `AMAP_MAPS_API_KEY` 读取。
+- 餐厅有评论或图片即视为吃饭打卡完成。
+- Todo 图片写入 `MEDIA_ROOT/todo/images/...`，数据库只保存 `todo_images.storage_key` / `todo_images.thumb_storage_key`，不得写入数据库 BLOB。
+- 随机抽奖支持人均、城市/区域、附近 1/3/5/10km 筛选；附近筛选由浏览器定位提供经纬度，定位失败不得阻断其它抽奖方式。
+- 3D 抽奖动画使用 Three.js / react-three-fiber，并需要尊重 `prefers-reduced-motion`。
+
+## Admin AI 配置约定
+
+- Admin AI 配置为全站唯一；管理端只保存协议和选中模型，不保存或显示完整密钥。
+- `.env` / 服务器环境变量维护 `LLM_OPENAI_BASE_URL`、`LLM_ANTHROPIC_BASE_URL`、`LLM_API_KEY`、`LLM_PROTOCOL`、`LLM_MODEL`。
+- OpenAI 协议获取模型列表走 `{LLM_OPENAI_BASE_URL}/models`；Anthropic 协议走 `{LLM_ANTHROPIC_BASE_URL}/v1/models`。
+- `.env.example` 只能放占位值，不得提交真实高德 key、LLM token、数据库密码或 SMTP 授权码。
 
 ## 周期日历约定
 

@@ -1,16 +1,30 @@
-"""Admin routes for verifying pair setup, tokens, contact details, and relationship dates."""
+"""Admin routes for pair setup, tokens, contact details, relationship dates, login logs, and AI model config."""
 
 import secrets
 from datetime import timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai_config import get_ai_setting, list_models, preview_secret, update_ai_setting
 from app.api.dependencies import require_admin_key
+from app.core.config import get_settings
 from app.core.database import get_db
-from app.models import DeviceToken, LoginLog, Pair, User, utc_now
-from app.schemas import LoginLogOut, PairCreate, PairCreated, PairOut, PairUpdate, UserOut
+from app.models import AIProtocol, DeviceToken, LoginLog, Pair, User, utc_now
+from app.schemas import (
+    AdminAIConfigOut,
+    AdminAIConfigUpdate,
+    AdminAIConnectionTestOut,
+    AdminAIModelListOut,
+    LoginLogOut,
+    PairCreate,
+    PairCreated,
+    PairOut,
+    PairUpdate,
+    UserOut,
+)
 from app.services import local_today, pair_love_started_on
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -167,3 +181,52 @@ def list_login_logs(
             )
         )
     return out
+
+
+@router.get("/ai-config", response_model=AdminAIConfigOut, dependencies=[Depends(require_admin_key)])
+def get_admin_ai_config(db: Session = Depends(get_db)) -> AdminAIConfigOut:
+    settings = get_settings()
+    row = get_ai_setting(db)
+    return AdminAIConfigOut(
+        protocol=row.protocol,
+        selected_model=row.selected_model or settings.llm_model,
+        env_model=settings.llm_model,
+        openai_base_url=settings.llm_openai_base_url,
+        anthropic_base_url=settings.llm_anthropic_base_url,
+        api_key_preview=preview_secret(settings.llm_api_key),
+        has_api_key=bool(settings.llm_api_key),
+        amap_key_preview=preview_secret(settings.amap_maps_api_key),
+        has_amap_key=bool(settings.amap_maps_api_key),
+        updated_at=row.updated_at,
+    )
+
+
+@router.patch("/ai-config", response_model=AdminAIConfigOut, dependencies=[Depends(require_admin_key)])
+def patch_admin_ai_config(payload: AdminAIConfigUpdate, db: Session = Depends(get_db)) -> AdminAIConfigOut:
+    update_ai_setting(db, payload.protocol, payload.selected_model)
+    db.commit()
+    return get_admin_ai_config(db)
+
+
+@router.get("/ai-config/models", response_model=AdminAIModelListOut, dependencies=[Depends(require_admin_key)])
+def get_admin_ai_models(protocol: AIProtocol | None = None, db: Session = Depends(get_db)) -> AdminAIModelListOut:
+    row = get_ai_setting(db)
+    target_protocol = protocol or row.protocol
+    try:
+        return AdminAIModelListOut(models=list_models(target_protocol))
+    except (RuntimeError, httpx.HTTPError) as exc:
+        raise HTTPException(status_code=502, detail=f"Model list request failed: {exc}") from exc
+
+
+@router.post("/ai-config/test", response_model=AdminAIConnectionTestOut, dependencies=[Depends(require_admin_key)])
+def test_admin_ai_config(db: Session = Depends(get_db)) -> AdminAIConnectionTestOut:
+    row = get_ai_setting(db)
+    try:
+        models = list_models(row.protocol)
+    except (RuntimeError, httpx.HTTPError) as exc:
+        raise HTTPException(status_code=502, detail=f"AI connection test failed: {exc}") from exc
+    selected = row.selected_model or get_settings().llm_model
+    message = "Connection ok"
+    if selected and selected not in models:
+        message = f"Connection ok, but selected model {selected!r} was not returned"
+    return AdminAIConnectionTestOut(ok=True, message=message)

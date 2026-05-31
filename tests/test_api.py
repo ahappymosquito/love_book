@@ -1,4 +1,4 @@
-"""API regression tests for auth, private avatars, reminders, event visibility, local media, and fallback data."""
+"""API regression tests for auth, avatars, reminders, event visibility, todo boards, AI config, media, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -958,3 +958,170 @@ def test_cycle_log_delete_removes_single_day(client: TestClient, pair_tokens: di
     assert client.delete("/cycles/logs/2026-05-20", headers=auth(token)).status_code == 204
     dashboard = client.get("/cycles/dashboard?start=2026-05-20&end=2026-05-20", headers=auth(token)).json()
     assert dashboard["logs"][0]["source"] == "predicted"
+
+
+def test_todo_dashboard_requires_login_and_seeds_default_play_items(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    assert client.get("/todos/dashboard?month=2026-05").status_code == 401
+
+    response = client.get("/todos/dashboard?month=2026-05", headers=auth(str(pair_tokens["user_a_token"])))
+
+    assert response.status_code == 200
+    titles = [item["title"] for item in response.json()["items"] if item["category"] == "play"]
+    assert titles == ["拼乐高", "看电影", "台球", "唱歌"]
+
+
+def test_todo_items_are_pair_isolated(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    created = client.post(
+        "/todos/items",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"category": "play", "title": "看展"},
+    ).json()
+    other_pair = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={"user_a_display_name": "C", "user_b_display_name": "D"},
+    ).json()
+
+    assert client.get(f"/todos/items/{created['id']}", headers=auth(other_pair["user_a_token"])).status_code == 404
+
+
+def test_todo_schedule_commits_and_sends_email(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[dict[str, str]] = []
+
+    def fake_send_email(to: str, subject: str, text_body: str, html_body: str | None = None) -> bool:
+        sent.append({"to": to, "subject": subject, "text": text_body, "html": html_body or ""})
+        return True
+
+    monkeypatch.setattr("app.emailer.send_email", fake_send_email)
+    pair_tokens = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={
+            "user_a_display_name": "A",
+            "user_b_display_name": "B",
+            "user_a_email": "a@example.com",
+            "user_b_email": "b@example.com",
+        },
+    ).json()
+    item = client.post(
+        "/todos/items",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"category": "play", "title": "看电影"},
+    ).json()
+
+    scheduled = client.post(
+        f"/todos/items/{item['id']}/schedules",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"scheduled_on": "2026-05-20"},
+    )
+
+    assert scheduled.status_code == 201
+    dashboard = client.get("/todos/dashboard?month=2026-05", headers=auth(str(pair_tokens["user_b_token"]))).json()
+    assert any(schedule["item_id"] == item["id"] for schedule in dashboard["schedules"])
+    assert sent
+    assert "看电影" in sent[-1]["text"]
+
+
+def test_todo_restaurant_search_and_create_use_amap_mcp(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.amap_mcp.search_restaurants",
+        lambda keyword, city=None: [
+            {
+                "amap_poi_id": "B001",
+                "name": "小馆",
+                "address": "幸福路 1 号",
+                "location": "120.1,30.2",
+                "city": city,
+                "poi_type": "餐饮服务",
+                "tel": "123",
+                "business_area": "中心",
+                "raw": {"id": "B001"},
+            }
+        ],
+    )
+    monkeypatch.setattr("app.amap_mcp.restaurant_detail", lambda poi_id: {"id": poi_id, "rating": "4.8"})
+
+    search = client.post(
+        "/todos/restaurants/search",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"keyword": "小馆", "city": "杭州"},
+    )
+    assert search.status_code == 200
+    candidate = search.json()["candidates"][0]
+    created = client.post(
+        "/todos/restaurants",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"candidate": candidate, "signature_dishes": "红烧肉", "per_capita": 88},
+    )
+
+    assert created.status_code == 201
+    data = created.json()
+    assert data["category"] == "food"
+    assert data["restaurant"]["parse_status"] == "resolved"
+    assert data["restaurant"]["signature_dishes"] == "红烧肉"
+
+
+def test_todo_restaurant_detail_is_checked_in_after_comment_or_image(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.amap_mcp.restaurant_detail", lambda poi_id: {"id": poi_id})
+    item = client.post(
+        "/todos/restaurants",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={
+            "candidate": {
+                "amap_poi_id": "B002",
+                "name": "打卡餐厅",
+                "address": "幸福路 2 号",
+                "location": "120.1,30.2",
+                "city": "杭州",
+                "poi_type": "餐饮服务",
+                "tel": None,
+                "business_area": None,
+                "raw": {},
+            }
+        },
+    ).json()
+    comment = client.post(
+        f"/todos/items/{item['id']}/comments",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"text": "吃完啦"},
+    )
+
+    assert comment.status_code == 201
+    detail = client.get(f"/todos/items/{item['id']}", headers=auth(str(pair_tokens["user_b_token"]))).json()
+    assert detail["checked_in"] is True
+    assert detail["comments"][0]["text"] == "吃完啦"
+
+    upload = client.post(
+        f"/todos/items/{item['id']}/images",
+        headers=auth(str(pair_tokens["user_b_token"])),
+        files={"file": ("photo.png", sample_png_bytes(), "image/png")},
+    )
+    assert upload.status_code == 201
+    image_id = upload.json()["id"]
+    assert client.get(f"/todo-images/{image_id}/thumb", headers=auth(str(pair_tokens["user_a_token"]))).status_code == 200
+
+
+def test_admin_ai_config_masks_keys_and_saves_model(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = get_settings()
+    settings.llm_api_key = "secret-token-1234"
+    settings.amap_maps_api_key = "amap-secret-5678"
+    settings.llm_model = "mimo-v2.5-pro"
+    monkeypatch.setattr("app.api.routes.admin.list_models", lambda protocol: ["mimo-v2.5-pro", "other-model"])
+
+    config = client.get("/admin/ai-config", headers={"X-Admin-Key": "test-admin-key"})
+    assert config.status_code == 200
+    assert config.json()["api_key_preview"] == "secr***1234"
+    assert config.json()["amap_key_preview"] == "amap***5678"
+
+    updated = client.patch(
+        "/admin/ai-config",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={"protocol": "openai", "selected_model": "other-model"},
+    )
+    models = client.get("/admin/ai-config/models", headers={"X-Admin-Key": "test-admin-key"})
+    tested = client.post("/admin/ai-config/test", headers={"X-Admin-Key": "test-admin-key"})
+
+    assert updated.status_code == 200
+    assert updated.json()["selected_model"] == "other-model"
+    assert models.json()["models"] == ["mimo-v2.5-pro", "other-model"]
+    assert tested.json()["ok"] is True

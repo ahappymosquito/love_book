@@ -1,6 +1,9 @@
-// Shared TypeScript contracts for API payloads, avatar-aware user state, events, quotes, cycle dashboard, pair tokens, and reminders.
+// Shared TypeScript contracts for API payloads, avatar-aware user state, events, todo boards, admin AI config, cycles, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
+export type TodoCategory = "food" | "play";
+export type TodoParseStatus = "pending" | "resolved" | "failed";
+export type AIProtocol = "openai" | "anthropic";
 
 export interface UserOut {
   id: number;
@@ -213,6 +216,111 @@ export interface CycleDashboardOut {
   logs: DailyLog[];
   stats: CycleStats;
   is_empty: boolean;
+}
+
+export interface TodoRestaurantOut {
+  id: number;
+  item_id: number;
+  amap_poi_id: string | null;
+  name: string;
+  address: string | null;
+  location: string | null;
+  city: string | null;
+  poi_type: string | null;
+  tel: string | null;
+  business_area: string | null;
+  signature_dishes: string | null;
+  per_capita: number | null;
+  parse_status: TodoParseStatus;
+  parse_error: string | null;
+  raw: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TodoScheduleOut {
+  id: number;
+  item_id: number;
+  scheduled_on: string;
+  created_by_id: number;
+  created_at: string;
+}
+
+export interface TodoItemOut {
+  id: number;
+  pair_id: number;
+  creator_id: number;
+  category: TodoCategory;
+  title: string;
+  note: string | null;
+  is_archived: boolean;
+  restaurant: TodoRestaurantOut | null;
+  schedules: TodoScheduleOut[];
+  comments_count: number;
+  images_count: number;
+  checked_in: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TodoDashboardOut {
+  month: string;
+  items: TodoItemOut[];
+  schedules: TodoScheduleOut[];
+}
+
+export interface TodoRestaurantCandidate {
+  amap_poi_id: string | null;
+  name: string;
+  address: string | null;
+  location: string | null;
+  city: string | null;
+  poi_type: string | null;
+  tel: string | null;
+  business_area: string | null;
+  raw: Record<string, unknown> | null;
+}
+
+export interface TodoCommentOut {
+  id: number;
+  item_id: number;
+  author_id: number;
+  text: string;
+  created_at: string;
+}
+
+export interface TodoImageOut {
+  id: number;
+  item_id: number;
+  author_id: number;
+  mime_type: string;
+  size_bytes: number;
+  width: number | null;
+  height: number | null;
+  created_at: string;
+}
+
+export interface TodoItemDetail extends TodoItemOut {
+  comments: TodoCommentOut[];
+  images: TodoImageOut[];
+}
+
+export interface TodoLotteryOut {
+  item: TodoItemOut | null;
+  candidate: TodoRestaurantCandidate | null;
+}
+
+export interface AdminAIConfigOut {
+  protocol: AIProtocol;
+  selected_model: string;
+  env_model: string;
+  openai_base_url: string;
+  anthropic_base_url: string;
+  api_key_preview: string;
+  has_api_key: boolean;
+  amap_key_preview: string;
+  has_amap_key: boolean;
+  updated_at: string | null;
 }
 
 export const AVATAR_PRESETS = [

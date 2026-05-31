@@ -1,15 +1,11 @@
-"""轻量 SMTP 邮件发送封装。
-
-提供 send_email() 同步函数和适合放进 FastAPI BackgroundTasks 的
-notify_event_created / notify_comment_created 帮助函数；事件未解锁时通知邮件只给入口，
-不显示标题、摘要或评论正文。
-"""
+"""SMTP email helpers for timeline notices, todo schedule notices, and locked-content privacy rules."""
 from __future__ import annotations
 
 from html import escape
 import logging
 import smtplib
 import ssl
+from datetime import date
 from email.message import EmailMessage
 from email.utils import formataddr
 from typing import Iterable
@@ -88,6 +84,65 @@ def _event_link(event_id: int, recipient_token: str | None = None) -> str:
 
         return f"{base}/?token={quote(recipient_token, safe='')}&next={quote(target, safe='/')}"
     return f"{base}{target}"
+
+
+def _todo_link(target_date: date, recipient_token: str | None = None) -> str:
+    """Build a todo-board link, optionally through token login."""
+    base = (get_settings().app_web_url or "").rstrip("/")
+    target = f"/todo?date={target_date.isoformat()}"
+    if not base:
+        return target
+    if recipient_token:
+        from urllib.parse import quote
+
+        return f"{base}/?token={quote(recipient_token, safe='')}&next={quote(target, safe='/?=&')}"
+    return f"{base}{target}"
+
+
+def notify_todo_schedule_created(
+    *,
+    recipient_email: str | None,
+    recipient_name: str,
+    recipient_token: str | None,
+    actor_name: str,
+    scheduled_on: date,
+    category: str,
+    item_title: str,
+) -> None:
+    if not recipient_email:
+        return
+    label = "吃饭" if category == "food" else "玩乐"
+    link = _todo_link(scheduled_on, recipient_token)
+    safe_recipient_name = escape(recipient_name)
+    safe_actor_name = escape(actor_name)
+    safe_item_title = escape(item_title)
+    safe_label = escape(label)
+    safe_date = escape(scheduled_on.isoformat())
+    safe_link = escape(link, quote=True)
+    subject = f"【我们之间的小事】{actor_name} 把 {item_title} 安排到了 {scheduled_on.isoformat()}"
+    text_body = (
+        f"{recipient_name}，你好：\n\n"
+        f"{actor_name} 在 todo 看板里新增了日期安排：\n"
+        f"  日期：{scheduled_on.isoformat()}\n"
+        f"  板块：{label}\n"
+        f"  项目：{item_title}\n\n"
+        f"查看看板：{link}\n\n"
+        f"-- 我们之间的小事"
+    )
+    html_body = f"""
+    <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;line-height:1.6;color:#2b2522;max-width:560px;margin:0 auto;padding:24px;">
+      <p>{safe_recipient_name}，你好：</p>
+      <p><strong>{safe_actor_name}</strong> 在 todo 看板里新增了日期安排。</p>
+      <div style="background:#fdf6f1;border:1px solid #e9ddd3;border-radius:12px;padding:16px 18px;margin:12px 0;">
+        <p style="margin:0 0 6px;"><strong>日期：</strong>{safe_date}</p>
+        <p style="margin:0 0 6px;"><strong>板块：</strong>{safe_label}</p>
+        <p style="margin:0;"><strong>项目：</strong>{safe_item_title}</p>
+      </div>
+      <p><a href="{safe_link}" style="display:inline-block;background:#d76679;color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;">查看看板</a></p>
+      <p style="color:#a09489;font-size:12px;margin-top:24px;">-- 我们之间的小事</p>
+    </div>
+    """
+    send_email(recipient_email, subject, text_body, html_body)
 
 
 def notify_event_created(

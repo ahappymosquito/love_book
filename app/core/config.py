@@ -1,4 +1,4 @@
-"""Environment-backed settings for database, upload limits, local media storage, SMTP, and public URLs."""
+"""Environment-backed settings for database, media, SMTP, AMap MCP, LLM endpoints, and public URLs."""
 
 from functools import lru_cache
 from pathlib import Path
@@ -45,6 +45,12 @@ class Settings(BaseModel):
     smtp_from_name: str = "我们之间的小事"
     smtp_use_ssl: bool = True
     app_web_url: str = "http://localhost:3000"
+    amap_maps_api_key: str = ""
+    llm_openai_base_url: str = "https://api.openai.com/v1"
+    llm_anthropic_base_url: str = "https://api.anthropic.com"
+    llm_api_key: str = ""
+    llm_protocol: str = "openai"
+    llm_model: str = ""
 
 
 @lru_cache
@@ -66,4 +72,10 @@ def get_settings() -> Settings:
         smtp_from_name=os.getenv("SMTP_FROM_NAME", defaults.smtp_from_name),
         smtp_use_ssl=os.getenv("SMTP_USE_SSL", "1") not in {"0", "false", "False"},
         app_web_url=os.getenv("APP_WEB_URL", defaults.app_web_url),
+        amap_maps_api_key=os.getenv("AMAP_MAPS_API_KEY", defaults.amap_maps_api_key),
+        llm_openai_base_url=os.getenv("LLM_OPENAI_BASE_URL", defaults.llm_openai_base_url),
+        llm_anthropic_base_url=os.getenv("LLM_ANTHROPIC_BASE_URL", defaults.llm_anthropic_base_url),
+        llm_api_key=os.getenv("LLM_API_KEY", defaults.llm_api_key),
+        llm_protocol=os.getenv("LLM_PROTOCOL", defaults.llm_protocol).strip().lower() or defaults.llm_protocol,
+        llm_model=os.getenv("LLM_MODEL", defaults.llm_model),
     )

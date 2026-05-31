@@ -1,7 +1,6 @@
 "use client";
 
-// Admin console for creating pairs, issuing tokens, editing contact details, showing avatar-aware users,
-// and copying tokens or runtime-origin entry links with a clipboard fallback for deployed browsers.
+// Admin console for pairs, tokens, contact details, AI model config, avatar-aware users, and clipboard-safe entry links.
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -10,6 +9,7 @@ import { toast } from "sonner";
 import {
   ArrowLeft,
   ArrowRight,
+  Bot,
   CalendarClock,
   CalendarHeart,
   Check,
@@ -19,6 +19,7 @@ import {
   LogOut,
   Mail,
   Plus,
+  RefreshCw,
   Save,
   ScrollText,
   Sparkles,
@@ -29,7 +30,7 @@ import { useAppStore } from "@/lib/store";
 import { Avatar } from "@/components/avatar";
 import { AvatarPicker } from "@/components/avatar-picker";
 import { formatAbsolute, fromLocalInputValue, toLocalInputValue } from "@/lib/format";
-import { AVATAR_PRESETS, type PairCreated, type PairOut } from "@/lib/types";
+import { AVATAR_PRESETS, type AdminAIConfigOut, type AIProtocol, type PairCreated, type PairOut } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
 function toDateInputValue(date: Date): string {
@@ -413,6 +414,8 @@ export default function AdminPage() {
                 </AnimatePresence>
               </section>
 
+              <AIConfigPanel />
+
               {/* List pairs */}
               <section>
                 <div className="flex items-center gap-3 mb-4 px-1">
@@ -469,6 +472,143 @@ export default function AdminPage() {
         title="选择 ta 二的头像"
       />
     </div>
+  );
+}
+
+function AIConfigPanel() {
+  const [config, setConfig] = useState<AdminAIConfigOut | null>(null);
+  const [protocol, setProtocol] = useState<AIProtocol>("openai");
+  const [selectedModel, setSelectedModel] = useState("");
+  const [models, setModels] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  const loadConfig = useCallback(async () => {
+    setLoading(true);
+    try {
+      const next = await api.getAdminAIConfig();
+      setConfig(next);
+      setProtocol(next.protocol);
+      setSelectedModel(next.selected_model || next.env_model);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadConfig();
+  }, [loadConfig]);
+
+  async function loadModels() {
+    setLoading(true);
+    try {
+      const result = await api.listAdminAIModels(protocol);
+      setModels(result.models);
+      if (!selectedModel && result.models[0]) setSelectedModel(result.models[0]);
+      toast.success("模型列表已更新");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveConfig() {
+    if (!selectedModel.trim()) return;
+    setSaving(true);
+    try {
+      const next = await api.updateAdminAIConfig({ protocol, selected_model: selectedModel.trim() });
+      setConfig(next);
+      toast.success("模型配置已保存");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function testConnection() {
+    setTesting(true);
+    try {
+      const result = await api.testAdminAIConfig();
+      toast.success(result.message || "连接测试通过");
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <section className="glass-card rounded-3xl p-6 sm:p-8">
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="grid h-10 w-10 place-items-center rounded-2xl bg-rose/12 text-rose-deep">
+            <Bot className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="font-display text-2xl text-ink">AI / 模型配置</h2>
+            <p className="font-sc text-xs text-ink-muted">密钥来自服务器 .env，页面只保存协议和选中模型。</p>
+          </div>
+        </div>
+        <button type="button" onClick={loadConfig} className="grid h-10 w-10 place-items-center rounded-full hover:bg-white/70 focus-ring" aria-label="刷新配置">
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+        </button>
+      </div>
+
+      {config && (
+        <div className="mb-4 grid gap-2 rounded-2xl bg-surface-raised/65 p-4 text-xs font-sc text-ink-soft hairline sm:grid-cols-2">
+          <span>OpenAI: {config.openai_base_url}</span>
+          <span>Anthropic: {config.anthropic_base_url}</span>
+          <span>LLM Key: {config.has_api_key ? config.api_key_preview : "未配置"}</span>
+          <span>高德 Key: {config.has_amap_key ? config.amap_key_preview : "未配置"}</span>
+        </div>
+      )}
+
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-2">
+          {(["openai", "anthropic"] as AIProtocol[]).map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setProtocol(item)}
+              className={cn(
+                "min-h-11 rounded-2xl px-4 font-sc text-sm hairline focus-ring",
+                protocol === item ? "bg-rose/10 text-rose-deep" : "bg-surface-raised/65 text-ink-soft",
+              )}
+            >
+              {item === "openai" ? "OpenAI 协议" : "Anthropic 协议"}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <input
+            className="input-field"
+            value={selectedModel}
+            onChange={(event) => setSelectedModel(event.target.value)}
+            placeholder="模型 ID"
+            list="admin-ai-models"
+            maxLength={200}
+          />
+          <datalist id="admin-ai-models">
+            {models.map((model) => (
+              <option key={model} value={model} />
+            ))}
+          </datalist>
+          <button type="button" onClick={loadModels} disabled={loading} className="btn-ghost min-h-12 rounded-2xl px-4 font-sc text-sm inline-flex items-center justify-center gap-2 focus-ring">
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            获取模型
+          </button>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={saveConfig} disabled={saving || !selectedModel.trim()} className="btn-primary min-h-11 rounded-2xl px-4 font-sc text-sm inline-flex items-center gap-2 focus-ring">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            保存选择
+          </button>
+          <button type="button" onClick={testConnection} disabled={testing} className="btn-ghost min-h-11 rounded-2xl px-4 font-sc text-sm inline-flex items-center gap-2 focus-ring">
+            {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            测试连接
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 

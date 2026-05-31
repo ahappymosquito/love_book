@@ -1,4 +1,4 @@
-# Backend runtime image for the FastAPI API; ffmpeg normalizes voice audio and images use /app/media local storage.
+# Backend runtime image for the FastAPI API; ffmpeg handles media and Node/npx runs the AMap MCP server.
 
 FROM ubuntu:24.04
 
@@ -21,11 +21,21 @@ RUN set -eux; \
         ca-certificates \
         tzdata \
         curl \
+        gnupg \
         ffmpeg \
         build-essential \
         libssl-dev \
         libffi-dev \
     ; \
+    mkdir -p /etc/apt/keyrings; \
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg; \
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
+        > /etc/apt/sources.list.d/nodesource.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends nodejs; \
+    npm config set fund false; \
+    npm config set audit false; \
     ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime; \
     echo "${TZ}" > /etc/timezone; \
     rm -rf /var/lib/apt/lists/*

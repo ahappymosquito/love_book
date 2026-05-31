@@ -61,6 +61,10 @@ vim .env
 | `MEDIA_ROOT` | `/app/media` | 图片和语音媒体根目录，Docker 中挂载 `love_book_media` volume |
 | `MEDIA_STORAGE` | `local` | 当前图片存储后端 |
 | `SMTP_*` | 邮件服务配置 | 用于事件 / 评论通知 |
+| `AMAP_MAPS_API_KEY` | 高德 Web 服务 Key | `/todo` 餐厅搜索、详情解析和附近抽奖使用 |
+| `LLM_OPENAI_BASE_URL` / `LLM_ANTHROPIC_BASE_URL` | 模型服务地址 | 管理端获取模型列表和测试连接使用 |
+| `LLM_API_KEY` | 模型服务 Key | 只放服务器 env，不在管理端明文显示 |
+| `LLM_PROTOCOL` / `LLM_MODEL` | `openai` / 模型 ID | 初始全站模型配置 |
 前端生产请求通过 `NEXT_PUBLIC_API_BASE=/api` 走同源 Caddy 反代。管理端复制入口链接不再依赖 `NEXT_PUBLIC_APP_URL`，因此换域名或 HTTP/HTTPS 协议时不需要为了复制链接重建前端。
 
 ## 4. 部署命令
@@ -104,6 +108,13 @@ SMTP_USER=you@example.com
 SMTP_FROM=you@example.com
 SMTP_FROM_NAME=Love Book
 SMTP_USE_SSL=1
+
+AMAP_MAPS_API_KEY=your-amap-key
+LLM_OPENAI_BASE_URL=https://api.example.com/v1
+LLM_ANTHROPIC_BASE_URL=https://api.example.com/anthropic
+LLM_API_KEY=your-llm-key
+LLM_PROTOCOL=openai
+LLM_MODEL=mimo-v2.5-pro
 ```
 
 然后执行：
@@ -171,7 +182,7 @@ python scripts/migrate_voices_to_media.py
 python scripts/migrate_voices_to_media.py --clear-blobs --compact
 ```
 
-后端镜像已安装 `ffmpeg`；本地不跑 Docker 时也需要自行安装 `ffmpeg`。图片缩略图依赖 Python 包 `Pillow`。
+后端镜像已安装 `ffmpeg` 和 Node.js 22。`ffmpeg` 用于语音转码，Node / `npx` 用于运行 `@amap/amap-maps-mcp-server` 高德 MCP。图片缩略图依赖 Python 包 `Pillow`。
 
 ## 8. 故障排查
 

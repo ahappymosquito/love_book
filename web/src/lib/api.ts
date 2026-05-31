@@ -1,12 +1,14 @@
 "use client";
 
-// Browser API client for authenticated user, private avatars, admin, event, quote, cycle dashboard, media upload, and thumbnail requests.
+// Browser API client for authenticated user, private avatars, admin AI config, todo, events, quotes, cycles, and media requests.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
 import { useAppStore } from "./store";
 import type {
   AnniversaryOut,
+  AdminAIConfigOut,
+  AIProtocol,
   CommentOut,
   ContentsOut,
   CycleDashboardOut,
@@ -21,6 +23,14 @@ import type {
   PairCreated,
   PairOut,
   QuoteOut,
+  TodoCategory,
+  TodoCommentOut,
+  TodoDashboardOut,
+  TodoImageOut,
+  TodoItemDetail,
+  TodoItemOut,
+  TodoLotteryOut,
+  TodoRestaurantCandidate,
   UserOut,
   VisibilityMode,
   VoiceOut,
@@ -186,6 +196,26 @@ export const api = {
       withAuth: false,
     });
   },
+  getAdminAIConfig: () =>
+    apiRequest<AdminAIConfigOut>("/admin/ai-config", { withAdmin: true, withAuth: false }),
+  updateAdminAIConfig: (payload: { protocol: AIProtocol; selected_model: string }) =>
+    apiRequest<AdminAIConfigOut>("/admin/ai-config", {
+      method: "PATCH",
+      json: payload,
+      withAdmin: true,
+      withAuth: false,
+    }),
+  listAdminAIModels: (protocol?: AIProtocol) =>
+    apiRequest<{ models: string[] }>(`/admin/ai-config/models${protocol ? `?protocol=${protocol}` : ""}`, {
+      withAdmin: true,
+      withAuth: false,
+    }),
+  testAdminAIConfig: () =>
+    apiRequest<{ ok: boolean; message: string }>("/admin/ai-config/test", {
+      method: "POST",
+      withAdmin: true,
+      withAuth: false,
+    }),
 
   // Auth
   me: () => apiRequest<MeOut>("/auth/me"),
@@ -233,6 +263,49 @@ export const api = {
     apiRequest<DailyLog[]>("/cycles/example-data", {
       method: "POST",
     }),
+
+  // Todo
+  getTodoDashboard: (month: string) => apiRequest<TodoDashboardOut>(`/todos/dashboard?month=${month}`),
+  createTodoItem: (payload: { category: TodoCategory; title: string; note?: string | null }) =>
+    apiRequest<TodoItemOut>("/todos/items", { method: "POST", json: payload }),
+  updateTodoItem: (
+    id: number,
+    payload: {
+      title?: string;
+      note?: string | null;
+      is_archived?: boolean;
+      signature_dishes?: string | null;
+      per_capita?: number | null;
+    },
+  ) => apiRequest<TodoItemOut>(`/todos/items/${id}`, { method: "PATCH", json: payload }),
+  deleteTodoItem: (id: number) => apiRequest<void>(`/todos/items/${id}`, { method: "DELETE" }),
+  scheduleTodoItem: (id: number, scheduled_on: string) =>
+    apiRequest(`/todos/items/${id}/schedules`, { method: "POST", json: { scheduled_on } }),
+  deleteTodoSchedule: (id: number) => apiRequest<void>(`/todos/schedules/${id}`, { method: "DELETE" }),
+  searchTodoRestaurants: (payload: { keyword: string; city?: string | null }) =>
+    apiRequest<{ candidates: TodoRestaurantCandidate[] }>("/todos/restaurants/search", { method: "POST", json: payload }),
+  createTodoRestaurant: (payload: {
+    candidate: TodoRestaurantCandidate;
+    signature_dishes?: string | null;
+    per_capita?: number | null;
+  }) => apiRequest<TodoItemOut>("/todos/restaurants", { method: "POST", json: payload }),
+  lotteryTodoRestaurant: (payload: {
+    per_capita_min?: number | null;
+    per_capita_max?: number | null;
+    location?: string | null;
+    radius_km?: number | null;
+    city?: string | null;
+  }) => apiRequest<TodoLotteryOut>("/todos/restaurants/lottery", { method: "POST", json: payload }),
+  getTodoItem: (id: number) => apiRequest<TodoItemDetail>(`/todos/items/${id}`),
+  postTodoComment: (id: number, text: string) =>
+    apiRequest<TodoCommentOut>(`/todos/items/${id}/comments`, { method: "POST", json: { text } }),
+  postTodoImage: (id: number, file: File, dims?: { width?: number; height?: number }) => {
+    const fd = new FormData();
+    fd.append("file", file, file.name);
+    if (dims?.width) fd.append("width", String(dims.width));
+    if (dims?.height) fd.append("height", String(dims.height));
+    return apiRequest<TodoImageOut>(`/todos/items/${id}/images`, { method: "POST", body: fd });
+  },
 
   // Events
   listEvents: () => apiRequest<EventSummary[]>("/events"),
@@ -286,6 +359,20 @@ export function fileUrl(kind: "voices" | "images" | "image-thumbs", id: number):
 
 export function avatarUrl(userId: number): string {
   return `${API_BASE}/users/${userId}/avatar`;
+}
+
+export function todoImageUrl(kind: "file" | "thumb", id: number): string {
+  return `${API_BASE}/todo-images/${id}/${kind}`;
+}
+
+export async function fetchTodoImageBlob(kind: "file" | "thumb", id: number): Promise<string> {
+  const token = useAppStore.getState().token;
+  const resp = await fetch(todoImageUrl(kind, id), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!resp.ok) throw new APIError(resp.status, await resp.text());
+  const blob = await resp.blob();
+  return URL.createObjectURL(blob);
 }
 
 export async function fetchFileBlob(kind: "voices" | "images" | "image-thumbs", id: number): Promise<string> {

@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair timelines, user avatar media keys, quotes, content metadata, and login logs."""
+"""SQLAlchemy models for pair timelines, todo boards, media keys, quotes, AI settings, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -44,6 +44,22 @@ class CycleMood(StrEnum):
     anxious = "anxious"
     sad = "sad"
     tired = "tired"
+
+
+class TodoCategory(StrEnum):
+    food = "food"
+    play = "play"
+
+
+class TodoParseStatus(StrEnum):
+    pending = "pending"
+    resolved = "resolved"
+    failed = "failed"
+
+
+class AIProtocol(StrEnum):
+    openai = "openai"
+    anthropic = "anthropic"
 
 
 class CervicalMucus(StrEnum):
@@ -136,6 +152,108 @@ class DefaultQuote(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class TodoItem(Base):
+    __tablename__ = "todo_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pair_id: Mapped[int] = mapped_column(ForeignKey("pairs.id"), nullable=False, index=True)
+    creator_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    category: Mapped[TodoCategory] = mapped_column(Enum(TodoCategory), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+    pair: Mapped[Pair] = relationship()
+    creator: Mapped[User] = relationship()
+    restaurant: Mapped["TodoRestaurant | None"] = relationship(cascade="all, delete-orphan", uselist=False)
+    schedules: Mapped[list["TodoSchedule"]] = relationship(cascade="all, delete-orphan", back_populates="item")
+    comments: Mapped[list["TodoComment"]] = relationship(cascade="all, delete-orphan")
+    images: Mapped[list["TodoImage"]] = relationship(cascade="all, delete-orphan")
+
+
+class TodoRestaurant(Base):
+    __tablename__ = "todo_restaurants"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("todo_items.id"), nullable=False, unique=True, index=True)
+    amap_poi_id: Mapped[str | None] = mapped_column(String(100), index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    address: Mapped[str | None] = mapped_column(String(500))
+    location: Mapped[str | None] = mapped_column(String(100))
+    city: Mapped[str | None] = mapped_column(String(100))
+    poi_type: Mapped[str | None] = mapped_column(String(200))
+    tel: Mapped[str | None] = mapped_column(String(200))
+    business_area: Mapped[str | None] = mapped_column(String(200))
+    signature_dishes: Mapped[str | None] = mapped_column(Text)
+    per_capita: Mapped[int | None] = mapped_column(Integer)
+    parse_status: Mapped[TodoParseStatus] = mapped_column(
+        Enum(TodoParseStatus), default=TodoParseStatus.pending, nullable=False, index=True
+    )
+    parse_error: Mapped[str | None] = mapped_column(Text)
+    raw: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+
+class TodoSchedule(Base):
+    __tablename__ = "todo_schedules"
+    __table_args__ = (UniqueConstraint("pair_id", "item_id", "scheduled_on", name="uq_todo_schedule_pair_item_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pair_id: Mapped[int] = mapped_column(ForeignKey("pairs.id"), nullable=False, index=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("todo_items.id"), nullable=False, index=True)
+    scheduled_on: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    item: Mapped[TodoItem] = relationship(back_populates="schedules")
+    created_by: Mapped[User] = relationship()
+
+
+class TodoComment(Base):
+    __tablename__ = "todo_comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("todo_items.id"), nullable=False, index=True)
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    author: Mapped[User] = relationship()
+
+
+class TodoImage(Base):
+    __tablename__ = "todo_images"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("todo_items.id"), nullable=False, index=True)
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    thumb_storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    storage_backend: Mapped[str] = mapped_column(String(50), nullable=False, default="local", server_default="local")
+    mime_type: Mapped[str] = mapped_column(String(100), nullable=False, default="application/octet-stream")
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    thumb_mime_type: Mapped[str] = mapped_column(String(100), nullable=False, default="image/jpeg")
+    thumb_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    width: Mapped[int | None] = mapped_column(Integer)
+    height: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    author: Mapped[User] = relationship()
+
+
+class AISetting(Base):
+    __tablename__ = "ai_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    protocol: Mapped[AIProtocol] = mapped_column(Enum(AIProtocol), default=AIProtocol.openai, nullable=False)
+    selected_model: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
 
 class CycleDailyLog(Base):
