@@ -1,6 +1,6 @@
 "use client";
 
-// Pair-shared todo board for food/play plans with date scheduling, AMap restaurant parsing, lottery, and check-in details.
+// Pair-shared todo board with restrained date scheduling, AMap restaurant parsing, lottery, and check-in details.
 
 import Link from "next/link";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
@@ -148,12 +148,12 @@ function TodoInner() {
         }
       />
 
-      <main className="mx-auto max-w-5xl px-5 pb-[calc(env(safe-area-inset-bottom,0px)+4rem)] pt-5 sm:px-6">
+      <main className="mx-auto max-w-6xl px-4 pb-[calc(env(safe-area-inset-bottom,0px)+4rem)] pt-5 sm:px-6">
         <section className="mb-5">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h1 className="font-display text-3xl leading-tight text-ink">想一起做的事</h1>
-              <p className="mt-1 font-sc text-sm text-ink-soft">把吃饭和玩乐安排到具体日期，完成后用评论和照片打卡。</p>
+              <h1 className="font-display text-2xl font-semibold leading-tight text-ink sm:text-3xl">想一起做的事</h1>
+              <p className="mt-2 max-w-2xl font-sc text-sm leading-relaxed text-ink-soft">把吃饭和玩乐安排到具体日期，完成后用评论和照片打卡。</p>
             </div>
             {loading && <Loader2 className="h-5 w-5 animate-spin text-ink-muted" />}
           </div>
@@ -170,10 +170,10 @@ function TodoInner() {
           />
         </section>
 
-        <section className="mb-5 rounded-3xl bg-surface-raised/70 p-4 hairline">
+        <section className="mb-5 rounded-3xl bg-surface-raised/90 p-4 hairline">
           <div className="mb-3 flex items-center gap-2">
             <CalendarDays className="h-4 w-4 text-rose-deep" />
-            <h2 className="font-display text-xl text-ink">{selectedDate} 的安排</h2>
+            <h2 className="font-display text-lg font-semibold text-ink">{selectedDate} 的安排</h2>
           </div>
           {selectedSchedules.length === 0 ? (
             <p className="font-sc text-sm text-ink-muted">点下面项目右侧的添加按钮，就能安排到这一天。</p>
@@ -267,7 +267,7 @@ function DateBoard({
         <button type="button" onClick={onPrev} className="grid h-11 w-11 place-items-center rounded-full hover:bg-white/60 focus-ring" aria-label="上个月">
           <ChevronLeft className="h-5 w-5" />
         </button>
-        <h2 className="font-display text-2xl text-ink">{monthLabel(month)}</h2>
+        <h2 className="font-display text-xl font-semibold text-ink">{monthLabel(month)}</h2>
         <button type="button" onClick={onNext} className="grid h-11 w-11 place-items-center rounded-full hover:bg-white/60 focus-ring" aria-label="下个月">
           <ChevronRight className="h-5 w-5" />
         </button>
@@ -284,7 +284,7 @@ function DateBoard({
               onClick={() => onPick(date)}
               className={cn(
                 "relative grid aspect-square min-h-11 place-items-center rounded-2xl font-sc text-sm transition focus-ring",
-                selected ? "bg-rose text-white shadow-soft" : "bg-surface-raised/70 text-ink hover:bg-white/90",
+                selected ? "bg-rose text-white shadow-soft" : "bg-surface-raised/90 text-ink hover:bg-surface-raised",
                 hasSchedule && !selected ? "ring-2 ring-rose/35 text-rose-deep" : "",
               )}
             >
@@ -334,7 +334,7 @@ function TodoSection({
         <span className="flex items-center gap-3">
           <span className="grid h-10 w-10 place-items-center rounded-2xl bg-rose/12 text-rose-deep">{icon}</span>
           <span>
-            <span className="block font-display text-xl text-ink">{title}</span>
+            <span className="block font-display text-lg font-semibold text-ink">{title}</span>
             <span className="font-sc text-xs text-ink-muted">{items.length} 个项目</span>
           </span>
         </span>
@@ -386,7 +386,7 @@ function TodoItemCard({
     <article className="rounded-2xl bg-surface-raised/70 p-4 hairline">
       <div className="flex items-start justify-between gap-3">
         <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left focus-ring rounded-xl">
-          <h3 className="font-display text-lg leading-tight text-ink">{item.title}</h3>
+          <h3 className="font-display text-base font-semibold leading-tight text-ink">{item.title}</h3>
           {restaurant ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
               <StatusPill status={restaurant.parse_status} />
@@ -579,7 +579,7 @@ function RestaurantLottery({ onCreated, onOpen }: { onCreated: () => void; onOpe
     <aside className="glass-card h-fit rounded-3xl p-4 sm:p-5">
       <div className="mb-3 flex items-center gap-2">
         <Shuffle className="h-5 w-5 text-rose-deep" />
-        <h2 className="font-display text-xl text-ink">随机抽奖</h2>
+        <h2 className="font-display text-lg font-semibold text-ink">随机抽奖</h2>
       </div>
       <TodoLotteryScene spinning={drawing} />
       <div className="mt-4 space-y-3">
@@ -598,13 +598,13 @@ function RestaurantLottery({ onCreated, onOpen }: { onCreated: () => void; onOpe
         </button>
         {winner && (
           <button type="button" onClick={() => onOpen(winner.id)} className="w-full rounded-2xl bg-surface-raised/75 p-4 text-left hairline focus-ring">
-            <span className="font-display text-lg text-ink">{winner.title}</span>
+            <span className="font-display text-base font-semibold text-ink">{winner.title}</span>
             <span className="mt-1 block font-sc text-xs text-ink-muted">点开查看详情</span>
           </button>
         )}
         {candidate && (
           <div className="rounded-2xl bg-surface-raised/75 p-4 hairline">
-            <p className="font-display text-lg text-ink">{candidate.name}</p>
+            <p className="font-display text-base font-semibold text-ink">{candidate.name}</p>
             <p className="mt-1 font-sc text-xs text-ink-muted">{candidate.address || candidate.city}</p>
             <button type="button" onClick={saveCandidate} className="btn-primary mt-3 min-h-11 rounded-2xl px-4 font-sc text-sm focus-ring">保存这家</button>
           </div>
@@ -672,13 +672,13 @@ function TodoDetailPanel({ itemId, onClose, onChanged }: { itemId: number; onClo
         initial={{ y: 24, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 24, opacity: 0 }}
-        className="mx-auto flex max-h-[calc(100dvh-3rem)] max-w-2xl flex-col overflow-hidden rounded-3xl bg-surface text-ink shadow-glow"
+        className="mx-auto flex max-h-[calc(100dvh-3rem)] max-w-2xl flex-col overflow-hidden rounded-3xl bg-surface text-ink shadow-glow hairline"
         role="dialog"
         aria-modal="true"
       >
         <header className="flex items-start justify-between gap-3 border-b border-line/60 p-5">
           <div className="min-w-0">
-            <h2 className="font-display text-2xl leading-tight text-ink">{detail?.title ?? "正在读取"}</h2>
+            <h2 className="font-display text-xl font-semibold leading-tight text-ink">{detail?.title ?? "正在读取"}</h2>
             {detail?.restaurant?.signature_dishes && <p className="mt-1 font-sc text-sm text-ink-soft">招牌菜：{detail.restaurant.signature_dishes}</p>}
             {detail?.restaurant?.address && <p className="mt-1 font-sc text-xs text-ink-muted">{detail.restaurant.address}</p>}
           </div>

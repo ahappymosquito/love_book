@@ -1,6 +1,6 @@
 "use client";
 
-// Radix Dialog based shadcn/ui-style sheet used for the mobile cycle day detail bottom panel.
+// Radix Dialog based sheet for restrained mobile and side panels with accessible close controls.
 
 import * as Dialog from "@radix-ui/react-dialog";
 import type React from "react";
@@ -23,7 +23,7 @@ export function SheetContent({
 }) {
   return (
     <Dialog.Portal forceMount>
-      <Dialog.Overlay className="fixed inset-0 z-40 bg-black/35 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0" />
+      <Dialog.Overlay className="fixed inset-0 z-40 bg-black/30 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0" />
       <Dialog.Content asChild>
         <motion.div
           initial={{ opacity: 0, y: side === "bottom" ? 32 : 0, x: side === "right" ? 32 : 0 }}
@@ -31,7 +31,7 @@ export function SheetContent({
           exit={{ opacity: 0, y: side === "bottom" ? 24 : 0, x: side === "right" ? 24 : 0 }}
           transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
           className={cn(
-            "fixed z-50 glass-card outline-none",
+            "fixed z-50 bg-surface-raised text-ink shadow-glow outline-none hairline",
             side === "bottom"
               ? "inset-x-0 bottom-0 max-h-[88dvh] rounded-t-3xl p-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)]"
               : "right-0 top-0 h-dvh w-full max-w-md rounded-none p-5",

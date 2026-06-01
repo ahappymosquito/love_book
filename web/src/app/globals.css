@@ -1,4 +1,4 @@
-/* Global theme tokens, persistent page background, reusable glass controls, inputs, and focus styles. */
+/* Global theme tokens, restrained app surfaces, reusable controls, inputs, and focus styles for the private diary UI. */
 
 @tailwind base;
 @tailwind components;
@@ -6,50 +6,48 @@
 
 @layer base {
   :root {
-    --ink: 58 42 38;
-    --ink-soft: 90 70 64;
-    --ink-muted: 130 110 104;
-    --cream: 251 246 241;
-    --cream-deep: 244 236 226;
-    --rose: 183 110 121;
-    --rose-soft: 231 200 192;
-    --rose-deep: 142 76 90;
-    --peach: 244 199 184;
-    --peach-deep: 222 152 132;
-    --sage: 156 178 158;
-    --surface: 255 252 248;
+    --ink: 42 37 35;
+    --ink-soft: 75 66 62;
+    --ink-muted: 112 101 96;
+    --cream: 248 247 245;
+    --cream-deep: 237 233 229;
+    --rose: 169 86 102;
+    --rose-soft: 225 195 198;
+    --rose-deep: 126 57 72;
+    --peach: 217 166 148;
+    --peach-deep: 181 106 88;
+    --sage: 122 148 128;
+    --surface: 253 252 250;
     --surface-raised: 255 255 255;
-    --surface-glass: 255 252 248;
-    --line: 230 217 209;
+    --surface-glass: 253 252 250;
+    --line: 220 214 208;
+    --focus: 169 86 102;
 
-    --bg-grad: radial-gradient(at 12% 8%, rgba(244, 199, 184, 0.55) 0%, transparent 45%),
-      radial-gradient(at 88% 12%, rgba(231, 200, 192, 0.65) 0%, transparent 50%),
-      radial-gradient(at 50% 92%, rgba(255, 230, 220, 0.55) 0%, transparent 55%),
-      linear-gradient(180deg, #fdf6f1 0%, #f8eee6 100%);
+    --bg-grad:
+      linear-gradient(180deg, rgb(248 247 245) 0%, rgb(241 238 234) 100%);
   }
 
   @media (prefers-color-scheme: dark) {
     :root {
-      --ink: 246 234 226;
-      --ink-soft: 218 200 192;
-      --ink-muted: 174 154 146;
-      --cream: 28 22 20;
-      --cream-deep: 22 17 15;
-      --rose: 224 152 164;
-      --rose-soft: 124 76 84;
-      --rose-deep: 244 196 200;
-      --peach: 196 132 116;
-      --peach-deep: 230 166 148;
-      --sage: 138 166 144;
-      --surface: 30 24 22;
-      --surface-raised: 38 30 28;
-      --surface-glass: 30 24 22;
-      --line: 64 50 46;
+      --ink: 246 241 237;
+      --ink-soft: 214 204 197;
+      --ink-muted: 169 157 149;
+      --cream: 27 25 24;
+      --cream-deep: 21 20 19;
+      --rose: 220 132 149;
+      --rose-soft: 103 64 73;
+      --rose-deep: 247 184 195;
+      --peach: 193 126 107;
+      --peach-deep: 226 157 136;
+      --sage: 128 158 136;
+      --surface: 33 31 30;
+      --surface-raised: 42 39 37;
+      --surface-glass: 33 31 30;
+      --line: 68 62 58;
+      --focus: 220 132 149;
 
-      --bg-grad: radial-gradient(at 12% 8%, rgba(124, 64, 80, 0.55) 0%, transparent 45%),
-        radial-gradient(at 88% 12%, rgba(180, 90, 110, 0.45) 0%, transparent 50%),
-        radial-gradient(at 50% 92%, rgba(60, 30, 36, 0.7) 0%, transparent 55%),
-        linear-gradient(180deg, #1c1614 0%, #221a18 100%);
+      --bg-grad:
+        linear-gradient(180deg, rgb(27 25 24) 0%, rgb(22 21 20) 100%);
     }
   }
 
@@ -65,7 +63,6 @@
 
   body {
     background: var(--bg-grad);
-    background-attachment: fixed;
     background-size: cover;
     min-height: 100dvh;
   }
@@ -81,8 +78,11 @@
     position: fixed;
     inset: 0;
     z-index: -1;
-    background: var(--bg-grad);
-    background-size: cover;
+    background:
+      linear-gradient(90deg, rgb(var(--line) / 0.12) 1px, transparent 1px),
+      linear-gradient(180deg, rgb(var(--line) / 0.10) 1px, transparent 1px);
+    background-size: 44px 44px;
+    opacity: 0.42;
   }
 
   ::selection {
@@ -116,32 +116,24 @@
 
 @layer components {
   .glass-card {
-    background: rgb(var(--surface-glass) / 0.66);
-    backdrop-filter: blur(28px) saturate(160%);
-    -webkit-backdrop-filter: blur(28px) saturate(160%);
-    border: 1px solid rgb(var(--line) / 0.5);
-    box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.5) inset,
-      0 1px 2px rgba(58, 42, 38, 0.04),
-      0 24px 60px -28px rgba(183, 110, 121, 0.45);
+    background: rgb(var(--surface-raised) / 0.92);
+    border: 1px solid rgb(var(--line) / 0.72);
+    box-shadow: 0 1px 2px rgb(42 37 35 / 0.05);
   }
 
   @media (prefers-color-scheme: dark) {
     .glass-card {
-      background: rgb(var(--surface-glass) / 0.7);
-      border-color: rgb(var(--line) / 0.6);
-      box-shadow:
-        0 1px 0 rgb(255 255 255 / 0.05) inset,
-        0 1px 2px rgba(0, 0, 0, 0.4),
-        0 24px 60px -28px rgba(0, 0, 0, 0.6);
+      background: rgb(var(--surface-raised) / 0.9);
+      border-color: rgb(var(--line) / 0.7);
+      box-shadow: 0 1px 2px rgb(0 0 0 / 0.32);
     }
   }
 
   .frosted-bar {
-    background: rgb(var(--surface-glass) / 0.7);
-    backdrop-filter: blur(20px) saturate(150%);
-    -webkit-backdrop-filter: blur(20px) saturate(150%);
-    border-bottom: 1px solid rgb(var(--line) / 0.5);
+    background: rgb(var(--surface) / 0.94);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgb(var(--line) / 0.74);
   }
 
   .hairline {
@@ -153,19 +145,19 @@
     padding: 0.4rem 0.85rem;
     font-size: 0.75rem;
     font-weight: 500;
-    letter-spacing: 0.02em;
+    letter-spacing: 0;
     line-height: 1;
   }
 
   .btn-primary {
-    background: linear-gradient(135deg, rgb(var(--rose)) 0%, rgb(var(--peach-deep)) 100%);
+    background: rgb(var(--rose-deep));
     color: white;
-    transition: transform 200ms ease, box-shadow 200ms ease, filter 200ms ease;
-    box-shadow: 0 10px 30px -10px rgba(183, 110, 121, 0.6);
+    transition: transform 160ms ease, background 160ms ease, box-shadow 160ms ease;
+    box-shadow: 0 1px 2px rgb(42 37 35 / 0.12);
   }
   .btn-primary:hover {
-    filter: brightness(1.04);
-    box-shadow: 0 14px 36px -10px rgba(183, 110, 121, 0.7);
+    background: rgb(var(--rose));
+    box-shadow: 0 2px 6px rgb(42 37 35 / 0.14);
   }
   .btn-primary:active {
     transform: scale(0.98);
@@ -173,17 +165,18 @@
   .btn-primary:disabled {
     opacity: 0.55;
     cursor: not-allowed;
-    filter: grayscale(0.2);
+    box-shadow: none;
   }
 
   .btn-ghost {
-    background: rgb(var(--surface-raised) / 0.65);
+    background: rgb(var(--surface-raised) / 0.84);
     color: rgb(var(--ink));
-    border: 1px solid rgb(var(--line) / 0.6);
-    transition: transform 200ms ease, background 200ms ease;
+    border: 1px solid rgb(var(--line) / 0.74);
+    transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
   }
   .btn-ghost:hover {
-    background: rgb(var(--surface-raised) / 0.95);
+    background: rgb(var(--surface-raised));
+    border-color: rgb(var(--ink-muted) / 0.28);
   }
   .btn-ghost:active {
     transform: scale(0.98);
@@ -191,26 +184,26 @@
 
   .input-field {
     width: 100%;
-    background: rgb(var(--surface-raised) / 0.85);
-    border: 1px solid rgb(var(--line) / 0.7);
-    border-radius: 1rem;
-    padding: 0.85rem 1rem;
+    background: rgb(var(--surface-raised) / 0.94);
+    border: 1px solid rgb(var(--line) / 0.82);
+    border-radius: 0.85rem;
+    padding: 0.78rem 0.9rem;
     font-size: 1rem;
     color: rgb(var(--ink));
-    transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+    transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
   }
   .input-field:focus {
     outline: none;
-    border-color: rgb(var(--rose) / 0.7);
-    box-shadow: 0 0 0 4px rgb(var(--rose) / 0.18);
+    border-color: rgb(var(--focus) / 0.72);
+    box-shadow: 0 0 0 3px rgb(var(--focus) / 0.2);
   }
   .input-field::placeholder {
-    color: rgb(var(--ink-muted) / 0.7);
+    color: rgb(var(--ink-muted) / 0.92);
   }
 
   .focus-ring:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgb(var(--rose) / 0.45);
+    box-shadow: 0 0 0 3px rgb(var(--focus) / 0.32);
   }
 
   .scroll-pad-bottom {

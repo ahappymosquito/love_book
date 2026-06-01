@@ -42,22 +42,25 @@ npm run start
 
 | 路由 | 说明 |
 | --- | --- |
-| `/` | 三维小狗 + 玻璃登录卡，支持 `?token=` 或 `#token=` 自动登录 |
+| `/` | 三维小狗背景 + 克制登录表单，支持 `?token=` 或 `#token=` 自动登录 |
 | `/admin` | 管理控制台：先用 admin key 验证，再创建配对、选择 token 有效期、复制 token / 入口链接；Clipboard API 失败时自动降级复制 |
-| `/timeline` | 当前用户的事件流，玻璃卡片瀑布 |
+| `/timeline` | 当前用户的事件流，含纪念日、语录、todo / 周期入口和月份分组 |
 | `/timeline/[id]` | 事件详情，合并的内容流（评论 / 语音气泡 / 图片缩略），底部输入栏支持文字 / 按住说话 / 图片 |
 | `/create` | 新建事件 |
+| `/todo` | 双人共享吃饭 / 玩乐 todo 看板，含日期安排、餐厅搜索、随机抽奖和打卡详情 |
+| `/cycle` | 双人共享周期日历 Dashboard，含月 / 周 / 列表视图、筛选、提醒设置和移动端详情面板 |
 
 ## 设计基线
 
-- 玫瑰金 / 桃粉 / 米白 / 深棕的暖色调，自动跟随系统暗色
-- Fraunces (display) + Inter + Noto Sans SC (body) via `next/font/google`
-- 玻璃卡片 (`backdrop-blur-xl`) + 圆角 24px + 双层阴影
-- 触控目标 ≥44px，遵守 `prefers-reduced-motion`
+- 产品默认按根目录 [`PRODUCT.md`](../PRODUCT.md) 和 [`DESIGN.md`](../DESIGN.md) 执行，气质为“亲密、安静、可信”。
+- 中性背景 + 玫瑰色主操作 / 选中状态，避免大面积粉色渐变、装饰玻璃拟态、过圆卡片和厚阴影。
+- Inter + Noto Sans SC via `next/font/google`；`font-display` 也指向克制 sans-serif 栈。
+- `glass-card` 是普通高可读面板：清晰边界、紧凑阴影、浅色/深色模式同步。
+- 触控目标 ≥44px，焦点状态可见，遵守 `prefers-reduced-motion`。
 
 ## 主要实现点
 
-- **3D 小狗**（`src/components/puppy-scene.tsx`）：基础几何体堆叠 + `useFrame` 跟随鼠标 / 触屏；点击触发跳跃 + 摇尾巴；周围漂浮粉色心形粒子 + 星空。
+- **3D 小狗**（`src/components/puppy-scene.tsx`）：基础几何体堆叠 + `useFrame` 跟随鼠标 / 触屏；点击触发跳跃 + 摇尾巴；登录页用浅色覆盖层让动画退到任务背景。
 - **录音**：按住麦克风开始录音，松开发送，上滑取消；录音控件禁用浏览器长按菜单和文本选择，停止后直接 `POST /events/{id}/voices`，后端转 MP3 后写入 `voices.data`。
 - **图片**：通过系统图片选择器进入相册 / 拍照来源，不强制调用相机；选择后前端先压缩大图并乐观渲染，详情页优先加载 `/images/{id}/thumb` 缩略图，点开才加载原图。
 - **凭据**：用户 token 存 `localStorage` (`pair-events-token`)；admin key 仅留在 zustand 内存 + sessionStorage 标记；过期 token 会在登录时提示失效。

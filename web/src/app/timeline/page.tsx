@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home screen showing pair reminders, avatar-aware authors, todo/cycle entries, month groups, and shortcuts.
+// Timeline home screen showing restrained pair reminders, avatar-aware authors, todo/cycle entries, month groups, and shortcuts.
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -253,20 +253,20 @@ function TimelineInner() {
     <div className="min-h-dvh w-full">
       <TimelineHeader />
 
-      <div className="max-w-3xl mx-auto px-5 sm:px-6 pt-6 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)]">
-        <div className="mb-6 flex items-center justify-between gap-4">
+      <div className="mx-auto max-w-5xl px-4 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)] pt-6 sm:px-6">
+        <div className="mb-6 flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h2 className="font-display text-3xl sm:text-4xl text-ink leading-tight">
+            <h2 className="font-display text-2xl font-semibold leading-tight text-ink sm:text-3xl">
               我们的甜蜜小事
             </h2>
-            <p className="font-sc text-sm text-ink-soft mt-1">
-              把每一次心动、想念和日常，都慢慢写成只属于你们的书。
+            <p className="mt-2 max-w-xl font-sc text-sm leading-relaxed text-ink-soft">
+              把心动、想念和日常收进同一本书，也把下一次约定安排好。
             </p>
           </div>
           <div className="flex flex-none items-center gap-2">
             <Link
               href="/todo"
-              className="grid h-11 w-11 place-items-center rounded-full bg-surface-raised/70 text-rose-deep shadow-soft transition hover:-translate-y-0.5 hover:bg-surface-raised focus-ring"
+              className="grid h-11 w-11 place-items-center rounded-full border border-line/80 bg-surface-raised/90 text-rose-deep transition hover:bg-surface-raised focus-ring"
               aria-label="进入 todo 看板"
               title="todo 看板"
             >
@@ -274,7 +274,7 @@ function TimelineInner() {
             </Link>
             <Link
               href="/cycle"
-              className="grid h-11 w-11 place-items-center rounded-full bg-surface-raised/70 text-rose-deep shadow-soft transition hover:-translate-y-0.5 hover:bg-surface-raised focus-ring"
+              className="grid h-11 w-11 place-items-center rounded-full border border-line/80 bg-surface-raised/90 text-rose-deep transition hover:bg-surface-raised focus-ring"
               aria-label="进入月经周期记录"
               title="月经周期记录"
             >
@@ -334,7 +334,7 @@ function TimelineInner() {
 
       <Link
         href="/create"
-        className="fixed right-5 bottom-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] z-30 btn-primary rounded-full pl-5 pr-6 py-3.5 shadow-glow font-sc text-sm font-medium inline-flex items-center gap-2 focus-ring min-h-[52px]"
+        className="btn-primary fixed bottom-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] right-5 z-30 inline-flex min-h-[52px] items-center gap-2 rounded-full py-3.5 pl-5 pr-6 font-sc text-sm font-medium focus-ring"
         aria-label="记一笔新事"
       >
         <Plus className="h-4 w-4" />
@@ -385,11 +385,11 @@ function AnniversaryCard({
     <motion.section
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="glass-card rounded-3xl p-5 sm:p-6 mb-6 overflow-hidden"
+      className="glass-card mb-6 overflow-hidden rounded-3xl p-5 sm:p-6"
     >
       <div className="min-w-0">
         <div className="flex items-start justify-between gap-3">
-          <p className="min-w-0 flex-1 break-words font-display text-2xl text-ink leading-tight">
+          <p className="min-w-0 flex-1 break-words font-display text-xl font-semibold leading-tight text-ink sm:text-2xl">
             {userName} 和 {counterpartName} 在一起第 {data.days_together} 天
           </p>
           <div className="flex flex-none items-center gap-1">
@@ -531,7 +531,7 @@ function MonthEventGroup({
         aria-expanded={expanded}
       >
         <div>
-          <h3 className="font-display text-xl leading-tight text-ink">{monthLabel(month)}</h3>
+          <h3 className="font-display text-lg font-semibold leading-tight text-ink">{monthLabel(month)}</h3>
           <p className="mt-1 font-sc text-xs text-ink-muted">{events.length} 件小事</p>
         </div>
         <span className="grid h-10 w-10 flex-none place-items-center rounded-full bg-surface-raised/70 text-ink-soft">
@@ -615,10 +615,10 @@ function EventCard({ evt, nested = false }: { evt: EventSummary; nested?: boolea
   return (
     <Link
       href={`/timeline/${evt.id}`}
-      className="block group focus-ring rounded-3xl"
+      className="group block rounded-3xl focus-ring"
     >
       <article
-        className={`rounded-3xl p-5 transition-transform group-hover:-translate-y-0.5 group-active:translate-y-0 sm:p-6 ${
+        className={`rounded-3xl p-5 transition-colors group-active:translate-y-0 sm:p-6 ${
           nested ? "bg-surface-raised/60" : "glass-card"
         }`}
       >
@@ -631,7 +631,7 @@ function EventCard({ evt, nested = false }: { evt: EventSummary; nested?: boolea
                 {formatRelative(evt.created_at)}
               </span>
             </p>
-            <h3 className="font-display text-xl text-ink mt-0.5 leading-snug truncate">
+            <h3 className="mt-0.5 truncate font-display text-lg font-semibold leading-snug text-ink">
               {evt.title}
             </h3>
           </div>
@@ -687,7 +687,7 @@ function EmptyState() {
       <div className="mx-auto h-14 w-14 grid place-items-center rounded-full bg-rose/10 text-rose mb-4">
         <BookHeart className="h-6 w-6" />
       </div>
-      <p className="font-display text-xl text-ink">还是空白的一页</p>
+      <p className="font-display text-lg font-semibold text-ink">还是空白的一页</p>
       <p className="font-sc text-sm text-ink-soft mt-2">
         从今天的小事开始，记下来你们就拥有了它。
       </p>

@@ -1,6 +1,6 @@
 "use client";
 
-// shadcn/ui-style card primitives used to group cycle dashboard summaries, forms, and statistics.
+// Shared card primitives for restrained app panels, dashboard summaries, forms, and statistics.
 
 import * as React from "react";
 import { cn } from "@/lib/cn";
@@ -14,11 +14,11 @@ export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDiv
 }
 
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h3 className={cn("font-display text-xl leading-tight text-ink", className)} {...props} />;
+  return <h3 className={cn("font-display text-lg font-semibold leading-tight text-ink", className)} {...props} />;
 }
 
 export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
-  return <p className={cn("font-sc text-sm leading-relaxed text-ink-soft", className)} {...props} />;
+  return <p className={cn("font-sc text-sm leading-relaxed text-ink-muted", className)} {...props} />;
 }
 
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {

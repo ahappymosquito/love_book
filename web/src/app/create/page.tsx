@@ -1,5 +1,7 @@
 "use client";
 
+// Event creation form with restrained inputs, date selection, visibility controls, and authenticated submission.
+
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion } from "framer-motion";
@@ -50,17 +52,24 @@ function CreateInner() {
     <div className="min-h-dvh w-full">
       <TimelineHeader back={{ href: "/timeline" }} title="记一笔" />
 
-      <div className="max-w-2xl mx-auto px-5 sm:px-6 pt-6 pb-[calc(env(safe-area-inset-bottom,0px)+3rem)]">
+      <div className="mx-auto max-w-2xl px-4 pb-[calc(env(safe-area-inset-bottom,0px)+3rem)] pt-6 sm:px-6">
         <motion.form
           onSubmit={onSubmit}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="glass-card rounded-3xl p-6 sm:p-8 space-y-6"
+          className="glass-card space-y-6 rounded-3xl p-5 sm:p-6"
         >
+          <div>
+            <h1 className="font-display text-2xl font-semibold leading-tight text-ink">记下这一笔</h1>
+            <p className="mt-2 font-sc text-sm leading-relaxed text-ink-soft">
+              标题先写清楚，细节可以慢慢补。
+            </p>
+          </div>
+
           <div className="space-y-2">
             <Label>标题</Label>
             <input
-              className="input-field text-lg font-display"
+              className="input-field font-display text-lg font-semibold"
               placeholder="例如：周三的雨夜，我们躲进便利店"
               value={title}
               maxLength={200}
@@ -98,7 +107,7 @@ function CreateInner() {
 
           <div className="space-y-2">
             <Label>可见方式</Label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <VisibilityCard
                 active={visibility === "public"}
                 onClick={() => setVisibility("public")}
@@ -120,7 +129,7 @@ function CreateInner() {
             <button
               type="submit"
               disabled={!title.trim() || submitting}
-              className="btn-primary rounded-2xl px-6 py-3.5 font-sc text-[15px] font-medium focus-ring inline-flex items-center gap-2 min-h-[48px]"
+            className="btn-primary inline-flex min-h-[48px] items-center gap-2 rounded-2xl px-6 py-3.5 font-sc text-[15px] font-medium focus-ring"
             >
               {submitting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -144,7 +153,7 @@ function Label({
   icon?: React.ReactNode;
 }) {
   return (
-    <label className="font-sc text-xs font-medium tracking-wider uppercase text-ink-muted inline-flex items-center gap-1.5">
+    <label className="inline-flex items-center gap-1.5 font-sc text-xs font-medium text-ink-muted">
       {icon}
       {children}
     </label>
@@ -170,10 +179,10 @@ function VisibilityCard({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "text-left rounded-2xl p-4 hairline transition focus-ring",
+        "rounded-2xl p-4 text-left transition focus-ring hairline",
         active
-          ? "bg-rose/10 ring-2 ring-rose/40"
-          : "bg-surface-raised/70 hover:bg-surface-raised/95",
+          ? "bg-rose/10 ring-2 ring-rose/35"
+          : "bg-surface-raised/85 hover:bg-surface-raised",
       )}
     >
       <div className="flex items-center gap-2 font-sc text-sm font-medium text-ink">
@@ -187,7 +196,7 @@ function VisibilityCard({
         </span>
         {title}
       </div>
-      <p className="font-sc text-xs text-ink-soft mt-2 leading-relaxed">{desc}</p>
+      <p className="mt-2 font-sc text-xs leading-relaxed text-ink-soft">{desc}</p>
     </button>
   );
 }

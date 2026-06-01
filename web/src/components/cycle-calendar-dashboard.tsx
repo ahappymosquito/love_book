@@ -1,7 +1,7 @@
 "use client";
 
-// CycleCalendarDashboard implements the authenticated shared pair cycle calendar, reminder timing settings,
-// filters, statistics, quick daily logging, and mobile bottom-sheet detail experience backed by the /cycles API.
+// CycleCalendarDashboard implements the authenticated shared pair cycle calendar with restrained dashboard layout,
+// reminder timing settings, filters, statistics, quick daily logging, and mobile detail panels backed by /cycles.
 
 import Link from "next/link";
 import {
@@ -285,7 +285,7 @@ export function CycleCalendarDashboard() {
             时间线
           </Link>
           <div className="min-w-0 text-center">
-            <h1 className="font-display text-xl leading-tight text-ink sm:text-2xl">周期日历</h1>
+            <h1 className="font-display text-lg font-semibold leading-tight text-ink sm:text-xl">周期日历</h1>
             <p className="font-sc text-xs text-ink-muted">记录和预测仅供参考</p>
           </div>
           <Button size="sm" onClick={() => setEditing(true)} className="rounded-full">
@@ -322,7 +322,7 @@ export function CycleCalendarDashboard() {
           <Card className="overflow-hidden">
             <CardHeader className="gap-4 sm:flex sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle>周期日历 Dashboard</CardTitle>
+                <CardTitle>周期日历</CardTitle>
                 <CardDescription>不同阶段以连续时间带展示，已记录日期会显示小圆点。</CardDescription>
               </div>
               <CalendarToolbar
@@ -519,7 +519,7 @@ export function HeaderSummaryCards({
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="font-sc text-xs text-ink-muted">{item.label}</p>
-              <p className="mt-2 font-display text-2xl leading-tight text-ink">{item.value}</p>
+              <p className="mt-2 font-display text-xl font-semibold leading-tight text-ink">{item.value}</p>
               <p className="mt-1 font-sc text-sm text-ink-soft">{item.hint}</p>
             </div>
             <div className="grid h-11 w-11 place-items-center rounded-2xl bg-rose/10 text-rose">
@@ -546,7 +546,7 @@ function ReminderSettingsCard({ value, onChange }: { value: number; onChange: (v
             <Droplet className="h-5 w-5" />
           </div>
           <div>
-            <p className="font-display text-xl leading-tight text-ink">首页记录提醒</p>
+            <p className="font-display text-lg font-semibold leading-tight text-ink">首页记录提醒</p>
             <p className="mt-1 font-sc text-sm leading-relaxed text-ink-soft">
               预计月经开始前 {value} 天内，如果当天还没记录，首页会提醒填写。
             </p>
@@ -572,7 +572,7 @@ function ReminderSettingsCard({ value, onChange }: { value: number; onChange: (v
 export function FilterBar({ filters, onChange }: { filters: FilterState; onChange: (filters: FilterState) => void }) {
   const active = Boolean(filters.symptom || filters.hasNote || filters.periodOnly);
   return (
-    <div className="flex flex-col gap-3 rounded-3xl border border-line/60 bg-surface-raised/55 p-3 sm:flex-row sm:items-center">
+    <div className="flex flex-col gap-3 rounded-3xl border border-line/70 bg-surface-raised/80 p-3 sm:flex-row sm:items-center">
       <div className="flex items-center gap-2 text-sm font-medium text-ink">
         <Filter className="h-4 w-4 text-rose" />
         筛选
@@ -650,7 +650,7 @@ export function CalendarMonthView({
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-y-1 overflow-hidden rounded-3xl border border-line/60 bg-surface-raised/45 p-1">
+      <div className="grid grid-cols-7 gap-y-1 overflow-hidden rounded-3xl border border-line/70 bg-surface-raised/80 p-1">
         {days.map((day) => {
           const key = toISODate(day);
           return (
@@ -733,7 +733,7 @@ export function CalendarDayCell({
       <span
         className={cn(
           "relative z-10 flex h-full min-h-[64px] flex-col justify-between rounded-2xl p-2",
-          selected && "bg-surface-raised shadow-glow ring-2 ring-rose/40",
+          selected && "bg-surface-raised shadow-soft ring-2 ring-rose/35",
         )}
       >
         <span className="flex items-center justify-between gap-1">
@@ -1089,7 +1089,7 @@ export function StatsCards({ dashboard }: { dashboard: CycleDashboardOut }) {
       {items.map(([label, value]) => (
         <Card key={label} className="p-4">
           <p className="font-sc text-xs text-ink-muted">{label}</p>
-          <p className="mt-2 font-display text-2xl text-ink">{value}</p>
+          <p className="mt-2 font-display text-xl font-semibold text-ink">{value}</p>
         </Card>
       ))}
     </div>
@@ -1100,13 +1100,13 @@ export function EmptyState({ onStart }: { onStart: () => void }) {
   return (
     <Card className="overflow-hidden p-6">
       <div className="grid gap-5 md:grid-cols-[180px_1fr] md:items-center">
-        <div className="relative h-36 overflow-hidden rounded-3xl bg-gradient-to-br from-rose-100 via-sky-100 to-orange-100 dark:from-rose-400/20 dark:via-sky-400/15 dark:to-orange-400/15">
+        <div className="relative h-36 overflow-hidden rounded-3xl bg-cream-deep/80">
           <div className="absolute left-6 top-8 h-20 w-20 rounded-full border-8 border-white/75" />
           <div className="absolute bottom-7 right-6 h-10 w-10 rounded-full bg-violet-300/70" />
           <div className="absolute inset-x-5 bottom-5 h-3 rounded-full bg-white/70" />
         </div>
         <div>
-          <h2 className="font-display text-2xl text-ink">还没有周期记录</h2>
+          <h2 className="font-display text-xl font-semibold text-ink">还没有周期记录</h2>
           <p className="mt-2 font-sc text-sm leading-relaxed text-ink-soft">
             可以先记录一次经期，之后日历会根据历史记录展示参考预测。
           </p>
@@ -1126,7 +1126,7 @@ function RecordList({ logs, filteredDates, onSelect }: { logs: DailyLog[]; filte
   const recorded = logs.filter((log) => log.source === "recorded");
   if (!recorded.length) {
     return (
-      <div className="grid min-h-[280px] place-items-center rounded-3xl bg-surface-raised/50 text-center">
+      <div className="grid min-h-[280px] place-items-center rounded-3xl bg-surface-raised/80 text-center">
         <div>
           <Search className="mx-auto h-6 w-6 text-ink-muted" />
           <p className="mt-3 font-sc text-sm text-ink-soft">当前范围暂无实际记录</p>

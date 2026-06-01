@@ -1,6 +1,6 @@
 "use client";
 
-// Event detail screen with avatar-aware author rendering, stable-hover comment reactions, media stream, and submission state.
+// Event detail screen with restrained reading layout, avatar-aware authors, stable-hover reactions, media stream, and submission state.
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -309,13 +309,13 @@ function EventDetailInner() {
         }
       />
 
-      <div ref={containerRef} className="max-w-3xl mx-auto px-5 sm:px-6 pt-4 scroll-pad-bottom">
+      <div ref={containerRef} className="mx-auto max-w-3xl px-4 pt-4 sm:px-6 scroll-pad-bottom">
         {/* Hero */}
         <motion.section
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.32 }}
-          className="glass-card rounded-3xl p-6 sm:p-7"
+          className="glass-card rounded-3xl p-5 sm:p-6"
         >
           <div className="flex items-center gap-2 flex-wrap">
             <VisibilityBadge mode={event.visibility_mode} />
@@ -327,12 +327,12 @@ function EventDetailInner() {
             )}
           </div>
 
-          <h1 className="font-display text-3xl sm:text-4xl text-ink leading-snug mt-3">
+          <h1 className="mt-3 font-display text-2xl font-semibold leading-snug text-ink sm:text-3xl">
             {event.title}
           </h1>
 
           {event.description && (
-            <p className="font-sc text-[15px] text-ink-soft mt-3 leading-relaxed whitespace-pre-wrap">
+            <p className="mt-3 whitespace-pre-wrap font-sc text-[15px] leading-relaxed text-ink-soft">
               {event.description}
             </p>
           )}
@@ -627,7 +627,7 @@ function CommentBubble({
         {canReact && (
           <div
             className={cn(
-              "pointer-events-none absolute top-1/2 z-20 hidden -translate-y-1/2 gap-1 rounded-full bg-surface-raised/95 p-1 opacity-0 shadow-soft hairline transition-opacity duration-150 md:flex",
+              "pointer-events-none absolute top-1/2 z-20 hidden -translate-y-1/2 gap-1 rounded-full bg-surface-raised/95 p-1 opacity-0 shadow-soft transition-opacity duration-150 md:flex hairline",
               reactionHoverOpen && "pointer-events-auto opacity-100",
               isMine ? "right-full mr-1" : "left-full ml-1",
             )}

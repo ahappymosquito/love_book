@@ -1,6 +1,6 @@
 "use client";
 
-// Admin console for pairs, tokens, contact details, AI model config, avatar-aware users, and clipboard-safe entry links.
+// Admin console with restrained panels for pairs, tokens, contact details, AI model config, avatar-aware users, and clipboard-safe entry links.
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -157,7 +157,7 @@ export default function AdminPage() {
   return (
     <div className="min-h-dvh w-full">
       <header className="sticky top-0 z-30 frosted-bar">
-        <div className="max-w-3xl mx-auto px-5 sm:px-6 py-4 flex items-center justify-between">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 sm:px-6">
           <Link
             href="/"
             className="inline-flex items-center gap-2 text-sm font-sc text-ink-soft hover:text-rose focus-ring rounded-full px-2 py-1"
@@ -166,7 +166,7 @@ export default function AdminPage() {
             <ArrowLeft className="h-4 w-4" />
             返回
           </Link>
-          <h1 className="font-display text-lg sm:text-xl text-ink">管理控制台</h1>
+          <h1 className="font-display text-lg font-semibold text-ink sm:text-xl">管理控制台</h1>
           {adminKey ? (
             <div className="flex items-center gap-1">
               <Link
@@ -193,7 +193,7 @@ export default function AdminPage() {
         </div>
       </header>
 
-      <div className="max-w-3xl mx-auto px-5 sm:px-6 py-8 space-y-8">
+      <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6">
         <AnimatePresence mode="wait">
           {!adminKey ? (
             <motion.section
@@ -201,13 +201,13 @@ export default function AdminPage() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              className="glass-card rounded-3xl p-6 sm:p-8"
+              className="glass-card rounded-3xl p-5 sm:p-6"
             >
               <div className="flex items-center gap-3 mb-1">
                 <div className="h-10 w-10 grid place-items-center rounded-2xl bg-rose/12 text-rose-deep">
                   <KeyRound className="h-5 w-5" />
                 </div>
-                <h2 className="font-display text-2xl text-ink">管理员校验</h2>
+                <h2 className="font-display text-xl font-semibold text-ink">管理员校验</h2>
               </div>
               <p className="font-sc text-sm text-ink-soft mb-5">
                 先用 admin key 验证身份，再创建配对。
@@ -243,16 +243,16 @@ export default function AdminPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="space-y-8"
+              className="space-y-6"
             >
               {/* Create pair */}
-              <section className="glass-card rounded-3xl p-6 sm:p-8">
+              <section className="glass-card rounded-3xl p-5 sm:p-6">
                 <div className="flex items-center gap-3 mb-5">
                   <div className="h-10 w-10 grid place-items-center rounded-2xl bg-rose/12 text-rose-deep">
                     <Plus className="h-5 w-5" />
                   </div>
                   <div>
-                    <h2 className="font-display text-2xl text-ink">新建配对</h2>
+                    <h2 className="font-display text-xl font-semibold text-ink">新建配对</h2>
                     <p className="font-sc text-xs text-ink-muted">创建后会得到两条不同的 token</p>
                   </div>
                 </div>
@@ -422,7 +422,7 @@ export default function AdminPage() {
                   <div className="h-9 w-9 grid place-items-center rounded-2xl bg-peach/30 text-rose-deep">
                     <Users className="h-4 w-4" />
                   </div>
-                  <h2 className="font-display text-xl text-ink">已发出的配对</h2>
+                  <h2 className="font-display text-lg font-semibold text-ink">已发出的配对</h2>
                   <span className="font-sc text-xs text-ink-muted">{pairs.length} 对</span>
                 </div>
 
@@ -574,14 +574,14 @@ function AIConfigPanel() {
   }
 
   return (
-    <section className="glass-card rounded-3xl p-6 sm:p-8">
+    <section className="glass-card rounded-3xl p-5 sm:p-6">
       <div className="mb-5 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="grid h-10 w-10 place-items-center rounded-2xl bg-rose/12 text-rose-deep">
             <Bot className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="font-display text-2xl text-ink">AI / 模型配置</h2>
+            <h2 className="font-display text-xl font-semibold text-ink">AI / 模型配置</h2>
             <p className="font-sc text-xs text-ink-muted">先选协议，再填写对应地址和 token；高德密钥单独配置。</p>
           </div>
         </div>
@@ -730,7 +730,7 @@ function UserField({
 }) {
   return (
     <div className="space-y-2">
-      <label className="font-sc text-xs font-medium tracking-wider uppercase text-ink-muted">
+      <label className="font-sc text-xs font-medium text-ink-muted">
         {label}
       </label>
       <div className="flex items-stretch gap-2">
@@ -790,7 +790,7 @@ function TokenCard({
     <div className="rounded-2xl bg-surface-raised/80 hairline p-4 space-y-3">
       <div className="flex items-center gap-2 min-w-0">
         <Avatar user={user} size="sm" />
-        <span className="font-display text-base text-ink truncate">
+        <span className="truncate font-display text-base font-semibold text-ink">
           {user.display_name}
         </span>
       </div>
@@ -856,14 +856,14 @@ function PairRow({
   }
 
   return (
-    <li className="glass-card rounded-3xl p-5 sm:p-6 transition hover:shadow-glow space-y-3">
+    <li className="glass-card space-y-3 rounded-3xl p-5 transition sm:p-6 hover:border-ink-muted/30">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
           <Avatar user={pair.user_a} size="md" />
           <div className="font-display text-2xl text-rose">·</div>
           <Avatar user={pair.user_b} size="md" />
           <div className="ml-1 min-w-0">
-            <p className="font-display text-base text-ink truncate">
+            <p className="truncate font-display text-base font-semibold text-ink">
               {pair.user_a.display_name} <span className="text-rose">&</span>{" "}
               {pair.user_b.display_name}
             </p>

@@ -1,14 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, Inter, Noto_Sans_SC } from "next/font/google";
+// Root application layout wires global restrained diary styling, app metadata, viewport theme, fonts, and providers.
+
+import { Inter, Noto_Sans_SC } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
-
-const fraunces = Fraunces({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-  variable: "--font-fraunces",
-});
 
 const inter = Inter({
   subsets: ["latin"],
@@ -25,7 +20,7 @@ const notoSc = Noto_Sans_SC({
 
 export const metadata: Metadata = {
   title: "我们之间的小事",
-  description: "两个人的回声 · 一本只属于你们的事件书",
+  description: "两个人一起记录、安排和回看日常的小书",
   applicationName: "我们之间的小事",
 };
 
@@ -34,8 +29,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#fdf6f1" },
-    { media: "(prefers-color-scheme: dark)", color: "#1c1614" },
+    { media: "(prefers-color-scheme: light)", color: "#f8f7f5" },
+    { media: "(prefers-color-scheme: dark)", color: "#1b1918" },
   ],
 };
 
@@ -43,7 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="zh-CN"
-      className={`${fraunces.variable} ${inter.variable} ${notoSc.variable}`}
+      className={`${inter.variable} ${notoSc.variable}`}
       suppressHydrationWarning
     >
       <body className="font-body min-h-dvh antialiased">

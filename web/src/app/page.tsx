@@ -1,5 +1,7 @@
 "use client";
 
+// Login screen with token auto-login, admin entry, restrained 3D background, and focused diary access form.
+
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -119,13 +121,13 @@ export default function LoginPage() {
       {/* 3D background */}
       <PuppyScene />
 
-      {/* Decorative gradient overlay over canvas */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-cream/0 via-cream/0 to-cream/40 dark:to-cream-deep/60" />
+      {/* Soft overlay keeps the 3D scene secondary to the login task. */}
+      <div className="pointer-events-none absolute inset-0 bg-cream/55 dark:bg-cream/70" />
 
       {/* Foreground content */}
       <div className="relative z-10 min-h-dvh flex flex-col px-6 pt-[calc(env(safe-area-inset-top,0px)+1rem)] pb-[calc(env(safe-area-inset-bottom,0px)+2rem)]">
         <header className="flex items-center justify-between text-ink/80">
-          <div className="flex items-center gap-2 font-display text-base">
+          <div className="flex items-center gap-2 font-display text-base font-semibold">
             <Heart className="h-4 w-4 text-rose" fill="currentColor" />
             <span>love · book</span>
           </div>
@@ -144,26 +146,23 @@ export default function LoginPage() {
             transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
             className="w-full max-w-md"
           >
-            <div className="text-center mb-7 select-none pointer-events-none">
-              <p className="font-sc text-xs tracking-[0.4em] uppercase text-rose mb-3">
-                two hearts · one book
-              </p>
-              <h1 className="font-display text-[42px] sm:text-5xl leading-[1.05] text-ink">
+            <div className="mb-6 select-none text-center">
+              <h1 className="font-display text-4xl font-semibold leading-tight text-ink sm:text-5xl">
                 我们之间的小事
               </h1>
-              <p className="font-sc mt-3 text-sm text-ink-soft">
-                两个人的回声 · 一封从今天写起的长信
+              <p className="mx-auto mt-3 max-w-sm font-sc text-sm leading-relaxed text-ink-soft">
+                两个人一起记录、安排和回看的私密日常。
               </p>
             </div>
 
             <form
               onSubmit={onSubmit}
-              className="glass-card rounded-3xl p-6 sm:p-7 space-y-5"
+              className="glass-card space-y-5 rounded-3xl p-5 sm:p-6"
             >
               <div className="space-y-2">
                 <label
                   htmlFor="token"
-                  className="font-sc text-xs font-medium tracking-wider uppercase text-ink-muted"
+                  className="font-sc text-xs font-medium text-ink-muted"
                 >
                   你的 token
                 </label>
@@ -195,12 +194,12 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={submitting || !tokenInput.trim()}
-                className="btn-primary w-full rounded-2xl px-5 py-3.5 font-sc text-[15px] font-medium tracking-wide focus-ring inline-flex items-center justify-center gap-2 min-h-[48px]"
+                className="btn-primary inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl px-5 py-3.5 font-sc text-[15px] font-medium focus-ring"
               >
                 {submitting ? (
                   <>
                     <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                    正在牵起你的手…
+                    正在进入
                   </>
                 ) : (
                   <>
@@ -210,7 +209,7 @@ export default function LoginPage() {
                 )}
               </button>
 
-              <p className="font-sc text-[11px] leading-relaxed text-ink-muted text-center px-2">
+              <p className="px-2 text-center font-sc text-[11px] leading-relaxed text-ink-muted">
                 轻轻点一下小狗，它会摇尾巴跟你打招呼。
               </p>
             </form>

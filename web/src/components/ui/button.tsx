@@ -1,6 +1,6 @@
 "use client";
 
-// shadcn/ui-style button primitive used by the cycle dashboard for accessible, token-driven actions.
+// Shared button primitive for accessible, restrained diary UI actions across dashboards, dialogs, and forms.
 
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
@@ -8,13 +8,13 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/cn";
 
 const buttonVariants = cva(
-  "inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-2xl text-sm font-medium transition-all focus-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4",
+  "inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-2xl text-sm font-medium transition focus-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4",
   {
     variants: {
       variant: {
         default: "btn-primary",
-        secondary: "bg-cream-deep/70 text-ink hover:bg-cream-deep",
-        outline: "border border-line/70 bg-surface-raised/75 text-ink hover:bg-surface-raised",
+        secondary: "bg-cream-deep/80 text-ink hover:bg-cream-deep",
+        outline: "border border-line/80 bg-surface-raised/90 text-ink hover:border-ink-muted/30 hover:bg-surface-raised",
         ghost: "text-ink-soft hover:bg-ink/5 hover:text-ink",
         danger: "bg-red-500/10 text-red-700 hover:bg-red-500/15 dark:text-red-200",
       },

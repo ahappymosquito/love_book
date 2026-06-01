@@ -1,6 +1,6 @@
 "use client";
 
-// Sticky timeline header with logout, current user avatar display, emoji fallback, and private avatar image upload.
+// Sticky app header with restrained navigation, logout, current user avatar display, emoji fallback, and private avatar image upload.
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -71,11 +71,11 @@ export function TimelineHeader({ title, back, rightSlot }: TimelineHeaderProps) 
   return (
     <>
       <header className="sticky top-0 z-30 frosted-bar pt-[env(safe-area-inset-top,0px)]">
-        <div className="max-w-3xl mx-auto px-5 sm:px-6 h-16 flex items-center gap-3">
+        <div className="mx-auto flex h-16 max-w-5xl items-center gap-3 px-4 sm:px-6">
           {back ? (
             <Link
               href={back.href}
-              className="h-10 w-10 grid place-items-center rounded-full hover:bg-ink/5 focus-ring text-ink"
+              className="grid h-10 w-10 place-items-center rounded-full text-ink transition hover:bg-ink/5 focus-ring"
               aria-label={back.label || "返回"}
             >
               <ArrowLeft className="h-5 w-5" />
@@ -83,11 +83,11 @@ export function TimelineHeader({ title, back, rightSlot }: TimelineHeaderProps) 
           ) : (
             <button
               onClick={() => setPicking(true)}
-              className="group relative inline-flex items-center gap-2 focus-ring rounded-full pl-1 pr-3 py-1 hover:bg-ink/5 transition"
+              className="group relative inline-flex items-center gap-2 rounded-full py-1 pl-1 pr-3 transition hover:bg-ink/5 focus-ring"
               aria-label="编辑头像"
             >
               <Avatar user={me.user} size="md" />
-              <span className="absolute -bottom-0.5 -right-0.5 h-5 w-5 rounded-full bg-rose text-white grid place-items-center shadow-soft border-2 border-cream">
+              <span className="absolute -bottom-0.5 -right-0.5 grid h-5 w-5 place-items-center rounded-full border-2 border-cream bg-rose text-white shadow-soft">
                 <Pencil className="h-2.5 w-2.5" />
               </span>
             </button>
@@ -95,10 +95,10 @@ export function TimelineHeader({ title, back, rightSlot }: TimelineHeaderProps) 
 
           <div className="flex-1 min-w-0">
             {title ? (
-              <h1 className="font-display text-lg sm:text-xl text-ink truncate">{title}</h1>
+              <h1 className="truncate font-display text-lg font-semibold text-ink sm:text-xl">{title}</h1>
             ) : (
               <div>
-                <p className="font-display text-base sm:text-lg text-ink leading-tight truncate">
+                <p className="truncate font-display text-base font-semibold leading-tight text-ink sm:text-lg">
                   {me.user.display_name}
                 </p>
                 <p className="font-sc text-[11px] text-ink-muted">
@@ -116,7 +116,7 @@ export function TimelineHeader({ title, back, rightSlot }: TimelineHeaderProps) 
                 toast.success("已退出，期待再见");
                 router.replace("/");
               }}
-              className="h-10 w-10 grid place-items-center rounded-full hover:bg-ink/5 focus-ring text-ink-soft"
+              className="grid h-10 w-10 place-items-center rounded-full text-ink-soft transition hover:bg-ink/5 focus-ring"
               aria-label="退出"
             >
               <LogOut className="h-5 w-5" />

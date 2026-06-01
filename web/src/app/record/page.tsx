@@ -1,6 +1,6 @@
 "use client";
 
-// Admin login record page with avatar-aware user filters and log cards.
+// Admin login record page with restrained verification, avatar-aware filters, and dense log cards.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -97,7 +97,7 @@ export default function RecordPage() {
   return (
     <div className="min-h-dvh w-full">
       <header className="sticky top-0 z-30 frosted-bar">
-        <div className="max-w-4xl mx-auto px-5 sm:px-6 py-4 flex items-center justify-between">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 sm:px-6">
           <Link
             href={adminKey ? "/admin" : "/"}
             className="inline-flex items-center gap-2 text-sm font-sc text-ink-soft hover:text-rose focus-ring rounded-full px-2 py-1"
@@ -105,7 +105,7 @@ export default function RecordPage() {
             <ArrowLeft className="h-4 w-4" />
             返回
           </Link>
-          <h1 className="font-display text-lg sm:text-xl text-ink inline-flex items-center gap-2">
+          <h1 className="inline-flex items-center gap-2 font-display text-lg font-semibold text-ink sm:text-xl">
             <ScrollText className="h-5 w-5 text-rose-deep" />
             登录记录
           </h1>
@@ -129,18 +129,18 @@ export default function RecordPage() {
         </div>
       </header>
 
-      <div className="max-w-4xl mx-auto px-5 sm:px-6 py-8 space-y-6">
+      <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6">
         {!adminKey ? (
           <motion.section
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            className="glass-card rounded-3xl p-6 sm:p-8 max-w-md mx-auto"
+            className="glass-card mx-auto max-w-md rounded-3xl p-5 sm:p-6"
           >
             <div className="flex items-center gap-3 mb-1">
               <div className="h-10 w-10 grid place-items-center rounded-2xl bg-rose/12 text-rose-deep">
                 <KeyRound className="h-5 w-5" />
               </div>
-              <h2 className="font-display text-2xl text-ink">管理员校验</h2>
+              <h2 className="font-display text-xl font-semibold text-ink">管理员校验</h2>
             </div>
             <p className="font-sc text-sm text-ink-soft mb-5">
               请先用 admin key 验证身份，再查看所有用户的登录记录。
@@ -158,7 +158,7 @@ export default function RecordPage() {
               <button
                 type="submit"
                 disabled={verifying || !keyInput.trim()}
-                className="btn-primary w-full rounded-2xl px-5 py-3.5 font-sc text-[15px] font-medium focus-ring inline-flex items-center justify-center gap-2 min-h-[48px]"
+                className="btn-primary inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl px-5 py-3.5 font-sc text-[15px] font-medium focus-ring"
               >
                 {verifying ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -255,7 +255,7 @@ function LogCard({ log }: { log: LoginLogOut }) {
   const location =
     [log.country, log.region, log.city].filter(Boolean).join(" · ") || "未知地点";
   return (
-    <li className="glass-card rounded-3xl p-5 sm:p-6 transition hover:shadow-glow">
+    <li className="glass-card rounded-3xl p-5 transition sm:p-6 hover:border-ink-muted/30">
       <div className="flex items-start gap-3 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
           {log.user ? (
@@ -266,7 +266,7 @@ function LogCard({ log }: { log: LoginLogOut }) {
             </div>
           )}
           <div className="min-w-0">
-            <p className="font-display text-base text-ink truncate">
+            <p className="truncate font-display text-base font-semibold text-ink">
               {log.user?.display_name || `user #${log.user_id}`}
             </p>
             <p className="font-sc text-[11px] text-ink-muted inline-flex items-center gap-1">
@@ -324,8 +324,8 @@ function InfoRow({
   mono?: boolean;
 }) {
   return (
-    <div className="rounded-2xl bg-surface-raised/60 hairline px-3 py-2">
-      <div className="flex items-center gap-1.5 text-ink-muted text-[10px] uppercase tracking-wider">
+    <div className="rounded-2xl bg-surface-raised/80 px-3 py-2 hairline">
+      <div className="flex items-center gap-1.5 text-[10px] text-ink-muted">
         {icon}
         {label}
       </div>
