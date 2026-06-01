@@ -1,4 +1,4 @@
-"""Shared business logic for pair access, content visibility, media metadata, database quotes, and home reminders."""
+"""Shared business logic for pair access, comment reactions, content visibility, media metadata, database quotes, and home reminders."""
 
 import random
 from datetime import date, timedelta, timezone
@@ -9,10 +9,11 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, exists, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Comment, DefaultQuote, DeviceToken, Event, Image, Pair, Quote, User, VisibilityMode, Voice, utc_now
+from app.models import Comment, CommentReaction, DefaultQuote, DeviceToken, Event, Image, Pair, Quote, User, VisibilityMode, Voice, utc_now
 from app.schemas import (
     AnniversaryOut,
     CommentOut,
+    CommentReactionSummary,
     ContentsOut,
     EventDetail,
     EventSummary,
@@ -23,6 +24,7 @@ from app.schemas import (
 )
 from app.storage import media_file_exists
 
+COMMENT_REACTION_TYPES = ("like", "dislike")
 CHINA_TZ = timezone(timedelta(hours=8))
 HOLIDAY_INFO_URL = "https://timor.tech/api/holiday/info/{date}"
 DEFAULT_LOVE_QUOTES = [
@@ -217,6 +219,60 @@ def ensure_pair_event(db: Session, event_id: int, pair: Pair) -> Event:
     return event
 
 
+def comment_reaction_summaries(
+    db: Session,
+    comments: list[Comment],
+    user_id: int,
+) -> dict[int, list[CommentReactionSummary]]:
+    comment_ids = [comment.id for comment in comments]
+    if not comment_ids:
+        return {}
+
+    reactions = (
+        db.execute(select(CommentReaction).where(CommentReaction.comment_id.in_(comment_ids)))
+        .scalars()
+        .all()
+    )
+    counts: dict[int, dict[str, int]] = {comment_id: {} for comment_id in comment_ids}
+    mine: dict[int, set[str]] = {comment_id: set() for comment_id in comment_ids}
+    for reaction in reactions:
+        if reaction.reaction_type not in COMMENT_REACTION_TYPES:
+            continue
+        counts[reaction.comment_id][reaction.reaction_type] = (
+            counts[reaction.comment_id].get(reaction.reaction_type, 0) + 1
+        )
+        if reaction.author_id == user_id:
+            mine[reaction.comment_id].add(reaction.reaction_type)
+
+    return {
+        comment_id: [
+            CommentReactionSummary(
+                reaction_type=reaction_type,
+                count=counts[comment_id][reaction_type],
+                reacted_by_me=reaction_type in mine[comment_id],
+            )
+            for reaction_type in COMMENT_REACTION_TYPES
+            if counts[comment_id].get(reaction_type, 0) > 0
+        ]
+        for comment_id in comment_ids
+    }
+
+
+def comment_outs(db: Session, comments: list[Comment], user_id: int) -> list[CommentOut]:
+    reactions_by_comment = comment_reaction_summaries(db, comments, user_id)
+    return [
+        CommentOut(
+            id=comment.id,
+            event_id=comment.event_id,
+            author_id=comment.author_id,
+            text=comment.text,
+            created_at=comment.created_at,
+            reactions=reactions_by_comment.get(comment.id, []),
+        )
+        for comment in comments
+    ]
+
+
 def user_has_submitted_query(event_id: int, user_id: int) -> Select[tuple[bool]]:
     comment_exists = exists().where(Comment.event_id == event_id, Comment.author_id == user_id)
     voice_exists = exists().where(Voice.event_id == event_id, Voice.author_id == user_id)
@@ -256,7 +312,7 @@ def visible_contents(db: Session, event: Event, user: User, pair: Pair) -> Conte
     images = db.execute(images_query.order_by(Image.created_at, Image.id)).scalars().all()
     return ContentsOut(
         submission_state=state,
-        comments=[CommentOut.model_validate(comment) for comment in comments],
+        comments=comment_outs(db, comments, user.id),
         voices=[VoiceOut.model_validate(voice) for voice in voices],
         images=[ImageOut.model_validate(image) for image in images],
     )
@@ -279,6 +335,17 @@ def event_summary(db: Session, event: Event, user: User, pair: Pair) -> EventSum
 def event_detail(db: Session, event: Event, user: User, pair: Pair) -> EventDetail:
     summary = event_summary(db, event, user, pair)
     return EventDetail(**summary.model_dump(), contents=visible_contents(db, event, user, pair))
+
+
+def ensure_comment_visible(db: Session, comment_id: int, user: User, pair: Pair) -> Comment:
+    comment = db.get(Comment, comment_id)
+    if comment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
+    event = ensure_pair_event(db, comment.event_id, pair)
+    contents = visible_contents(db, event, user, pair)
+    if all(item.id != comment.id for item in contents.comments):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Comment is not visible yet")
+    return comment
 
 
 def ensure_voice_file_visible(db: Session, voice_id: int, user: User, pair: Pair) -> Voice:

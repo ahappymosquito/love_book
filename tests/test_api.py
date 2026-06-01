@@ -456,6 +456,72 @@ def test_public_event_contents_are_immediately_visible(client: TestClient, pair_
     data = contents.json()
     assert data["submission_state"]["unlocked"] is True
     assert [item["text"] for item in data["comments"]] == ["hello"]
+    assert data["comments"][0]["reactions"] == []
+
+
+def test_comment_reactions_switch_cancel_and_do_not_count_as_submission(
+    client: TestClient, pair_tokens: dict[str, str | int]
+) -> None:
+    token_a = str(pair_tokens["user_a_token"])
+    token_b = str(pair_tokens["user_b_token"])
+    event = client.post(
+        "/events",
+        headers=auth(token_a),
+        json={"title": "Reaction", "visibility_mode": "public"},
+    ).json()
+    comment = client.post(
+        f"/events/{event['id']}/comments",
+        headers=auth(token_a),
+        json={"text": "react to me"},
+    ).json()
+
+    liked = client.put(f"/comments/{comment['id']}/reaction", headers=auth(token_b), json={"reaction_type": "like"})
+    seen_by_a = client.get(f"/events/{event['id']}/contents", headers=auth(token_a)).json()
+    seen_by_b = client.get(f"/events/{event['id']}/contents", headers=auth(token_b)).json()
+
+    assert liked.status_code == 200
+    assert liked.json()["reactions"] == [{"reaction_type": "like", "count": 1, "reacted_by_me": True}]
+    assert seen_by_a["comments"][0]["reactions"] == [{"reaction_type": "like", "count": 1, "reacted_by_me": False}]
+    assert seen_by_b["submission_state"]["current_user_submitted"] is False
+
+    switched = client.put(
+        f"/comments/{comment['id']}/reaction",
+        headers=auth(token_b),
+        json={"reaction_type": "dislike"},
+    )
+    cancelled = client.delete(f"/comments/{comment['id']}/reaction", headers=auth(token_b))
+
+    assert switched.status_code == 200
+    assert switched.json()["reactions"] == [{"reaction_type": "dislike", "count": 1, "reacted_by_me": True}]
+    assert cancelled.status_code == 200
+    assert cancelled.json()["reactions"] == []
+
+
+def test_comment_reactions_are_pair_private(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    token_a = str(pair_tokens["user_a_token"])
+    event = client.post(
+        "/events",
+        headers=auth(token_a),
+        json={"title": "Private reaction", "visibility_mode": "public"},
+    ).json()
+    comment = client.post(
+        f"/events/{event['id']}/comments",
+        headers=auth(token_a),
+        json={"text": "same pair only"},
+    ).json()
+    other_pair = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={"user_a_display_name": "C", "user_b_display_name": "D"},
+    ).json()
+
+    response = client.put(
+        f"/comments/{comment['id']}/reaction",
+        headers=auth(other_pair["user_a_token"]),
+        json={"reaction_type": "like"},
+    )
+
+    assert response.status_code == 404
 
 
 def test_event_datetimes_are_returned_as_utc_instants(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
@@ -526,6 +592,53 @@ def test_mutual_submit_unlocks_after_each_side_submits_any_content(
     assert downloaded.content == b"mp3-bytes"
     assert downloaded.headers["content-type"].startswith("audio/mpeg")
     assert downloaded.headers["cache-control"] == "private, max-age=604800"
+
+
+def test_comment_reactions_follow_mutual_submit_visibility(
+    client: TestClient, pair_tokens: dict[str, str | int]
+) -> None:
+    token_a = str(pair_tokens["user_a_token"])
+    token_b = str(pair_tokens["user_b_token"])
+    event = client.post(
+        "/events",
+        headers=auth(token_a),
+        json={"title": "Secret reaction", "visibility_mode": "mutual_submit"},
+    ).json()
+    first_comment = client.post(
+        f"/events/{event['id']}/comments",
+        headers=auth(token_a),
+        json={"text": "hidden until both submit"},
+    ).json()
+
+    blocked = client.put(
+        f"/comments/{first_comment['id']}/reaction",
+        headers=auth(token_b),
+        json={"reaction_type": "like"},
+    )
+    before = client.get(f"/events/{event['id']}/contents", headers=auth(token_b)).json()
+
+    assert blocked.status_code == 403
+    assert before["submission_state"] == {
+        "current_user_submitted": False,
+        "counterpart_submitted": True,
+        "unlocked": False,
+    }
+    assert before["comments"] == []
+
+    client.post(f"/events/{event['id']}/comments", headers=auth(token_b), json={"text": "unlock"})
+    reacted = client.put(
+        f"/comments/{first_comment['id']}/reaction",
+        headers=auth(token_b),
+        json={"reaction_type": "like"},
+    )
+    after_a = client.get(f"/events/{event['id']}/contents", headers=auth(token_a)).json()
+    after_b = client.get(f"/events/{event['id']}/contents", headers=auth(token_b)).json()
+
+    assert reacted.status_code == 200
+    assert after_a["submission_state"]["unlocked"] is True
+    assert after_b["submission_state"]["unlocked"] is True
+    assert after_a["comments"][0]["reactions"] == [{"reaction_type": "like", "count": 1, "reacted_by_me": False}]
+    assert after_b["comments"][0]["reactions"] == [{"reaction_type": "like", "count": 1, "reacted_by_me": True}]
 
 
 def test_locked_event_email_hides_event_content(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

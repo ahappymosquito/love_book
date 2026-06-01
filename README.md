@@ -12,8 +12,8 @@
 - 管理端一次创建一对用户，并返回两个 token，支持默认永久有效或指定过期时间。
 - 普通接口使用 `Authorization: Bearer <token>` 鉴权。
 - 每个 token 直接代表一个用户身份，用户身份和 pair 关系在 token 生成时确定。
-- 两位用户都可以创建事件、提交评论、上传语音、上传图片。
-- 事件和内容写接口会在响应返回前完成数据库提交，前端创建或评论后可以立即刷新详情。
+- 两位用户都可以创建事件、提交评论、上传语音、上传图片，并对可见留言添加点赞 / 倒赞 reaction。
+- 事件、内容和留言 reaction 写接口会在响应返回前完成数据库提交，前端创建、评论或点 reaction 后可以立即刷新详情。
 - 只有 pair 内的两位用户能访问该 pair 的事件和内容。
 - 支持两种事件可见模式：
   - `public`: 事件下评论 / 语音 / 图片提交后立即对双方可见。
@@ -39,7 +39,7 @@ app/
       auth.py             当前用户接口
       quotes.py           情侣共享本地语录库接口
       events.py           事件接口
-      contents.py         评论、语音、图片和内容接口
+      contents.py         评论、留言 reaction、语音、图片和内容接口
 tests/
   test_api.py             核心接口测试
 scripts/
@@ -118,7 +118,7 @@ npm run dev
 - `/` 登录页（3D 小狗 + 玻璃登录卡，支持 `?token=` 或 `#token=` 自动登录）
 - `/admin` 管理控制台（先用 `ADMIN_KEY` 验证身份，然后创建配对 / 复制 token / 复制入口链接；入口链接按当前浏览器 origin 动态生成，复制失败会自动降级到隐藏文本框复制）
 - `/timeline` 事件列表
-- `/timeline/[id]` 事件详情（评论 / 语音 / 图片混排，底部输入栏支持文字、录音、相册）
+- `/timeline/[id]` 事件详情（评论 / 语音 / 图片混排，评论支持点赞 / 倒赞 reaction，底部输入栏支持文字、录音、相册）
 - `/create` 新建事件
 
 token 分发链接形如 `http://localhost:3000/?token=xxx` 或 `https://qrqto.club/?token=xxx`；管理端会按当前访问域名和协议动态生成，链接本身携带身份凭据，请只通过可信渠道发送。
@@ -150,6 +150,8 @@ token 由管理接口生成，默认永久有效；创建 pair 时也可以指�
 ### `public`
 
 事件下任意评论、语音或图片一旦提交，pair 内双方都能看到。
+
+可见留言支持点赞 / 倒赞 reaction。每个用户对同一留言最多保留一个 reaction，切换到另一个表情会替换原表情，再次点击已选表情会取消；reaction 只在留言下方显示表情和数量，不会触发邮件通知，也不会改变提交状态。
 
 ### `mutual_submit`
 
@@ -207,6 +209,8 @@ token 由管理接口生成，默认永久有效；创建 pair 时也可以指�
 | events | PATCH | `/events/{event_id}` | `Bearer` | 修改事件，仅创建者 |
 | events | DELETE | `/events/{event_id}` | `Bearer` | 删除事件，仅创建者 |
 | contents | POST | `/events/{event_id}/comments` | `Bearer` | 提交评论 |
+| contents | PUT | `/comments/{comment_id}/reaction` | `Bearer` | 设置或替换当前用户对留言的点赞 / 倒赞 |
+| contents | DELETE | `/comments/{comment_id}/reaction` | `Bearer` | 取消当前用户对留言的 reaction |
 | contents | POST | `/events/{event_id}/voices` | `Bearer` | 上传语音（multipart） |
 | contents | POST | `/events/{event_id}/images` | `Bearer` | 上传图片（multipart） |
 | contents | GET | `/events/{event_id}/contents` | `Bearer` | 按可见规则过滤后的内容列表 |

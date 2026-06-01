@@ -1,9 +1,10 @@
 "use client";
 
-// Event detail screen with avatar-aware author rendering, comments, media stream, and submission state.
+// Event detail screen with avatar-aware author rendering, comment reactions, media stream, and submission state.
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle2,
@@ -12,6 +13,8 @@ import {
   CalendarHeart,
   Sparkles,
   Lock,
+  ThumbsDown,
+  ThumbsUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AuthGate } from "@/components/auth-gate";
@@ -29,6 +32,8 @@ import { useAppStore } from "@/lib/store";
 import { formatAbsolute, formatRelative } from "@/lib/format";
 import type {
   CommentOut,
+  CommentReactionSummary,
+  CommentReactionType,
   EventDetail,
   ImageOut,
   UserOut,
@@ -59,6 +64,15 @@ interface PendingImage {
   createdAt: string;
 }
 type Pending = PendingComment | PendingVoice | PendingImage;
+
+const COMMENT_REACTIONS: {
+  type: CommentReactionType;
+  label: string;
+  Icon: typeof ThumbsUp;
+}[] = [
+  { type: "like", label: "点赞", Icon: ThumbsUp },
+  { type: "dislike", label: "倒赞", Icon: ThumbsDown },
+];
 
 export default function EventDetailPage() {
   return (
@@ -101,6 +115,38 @@ function EventDetailInner() {
       setEvent((prev) => (prev ? { ...prev, contents: c, submission_state: c.submission_state } : prev));
     } catch {
       // toast handled
+    }
+  }
+
+  function replaceComment(updated: CommentOut) {
+    setEvent((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        contents: {
+          ...prev.contents,
+          comments: prev.contents.comments.map((comment) => (comment.id === updated.id ? updated : comment)),
+        },
+      };
+    });
+  }
+
+  async function handleToggleCommentReaction(comment: CommentOut, reactionType: CommentReactionType) {
+    const previous = comment;
+    const selected = comment.reactions.find((reaction) => reaction.reacted_by_me)?.reaction_type;
+    const nextComment = {
+      ...comment,
+      reactions: nextReactionSummaries(comment.reactions, reactionType),
+    };
+    replaceComment(nextComment);
+    try {
+      const updated =
+        selected === reactionType
+          ? await api.deleteCommentReaction(comment.id)
+          : await api.setCommentReaction(comment.id, reactionType);
+      replaceComment(updated);
+    } catch {
+      replaceComment(previous);
     }
   }
 
@@ -396,16 +442,12 @@ function EventDetailInner() {
                     </div>
 
                     {item.kind === "comment" && (
-                      <div
-                        className={cn(
-                          "px-4 py-2.5 max-w-full font-sc text-[15px] leading-relaxed whitespace-pre-wrap break-words",
-                          isMine
-                            ? "rounded-2xl rounded-tr-md bg-rose text-white"
-                            : "rounded-2xl rounded-tl-md bg-surface-raised/85 hairline text-ink",
-                        )}
-                      >
-                        {item.data.text}
-                      </div>
+                      <CommentBubble
+                        comment={item.data}
+                        text={item.data.text}
+                        isMine={isMine}
+                        onToggleReaction={handleToggleCommentReaction}
+                      />
                     )}
                     {item.kind === "comment-pending" && (
                       <div
@@ -479,6 +521,222 @@ function EventDetailInner() {
         onCancel={() => setConfirmDelete(false)}
       />
     </div>
+  );
+}
+
+function nextReactionSummaries(
+  reactions: CommentReactionSummary[],
+  targetType: CommentReactionType,
+): CommentReactionSummary[] {
+  const selected = reactions.find((reaction) => reaction.reacted_by_me)?.reaction_type;
+  const counts = new Map<CommentReactionType, number>();
+  for (const reaction of reactions) {
+    counts.set(reaction.reaction_type, reaction.count);
+  }
+  if (selected) {
+    counts.set(selected, Math.max(0, (counts.get(selected) ?? 0) - 1));
+  }
+  const nextSelected = selected === targetType ? null : targetType;
+  if (nextSelected) {
+    counts.set(nextSelected, (counts.get(nextSelected) ?? 0) + 1);
+  }
+  return COMMENT_REACTIONS.flatMap(({ type }) => {
+    const count = counts.get(type) ?? 0;
+    return count > 0
+      ? [
+          {
+            reaction_type: type,
+            count,
+            reacted_by_me: type === nextSelected,
+          },
+        ]
+      : [];
+  });
+}
+
+function CommentBubble({
+  comment,
+  text,
+  isMine,
+  pending,
+  onToggleReaction,
+}: {
+  comment?: CommentOut;
+  text: string;
+  isMine: boolean;
+  pending?: boolean;
+  onToggleReaction?: (comment: CommentOut, reactionType: CommentReactionType) => void | Promise<void>;
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const longPressTimer = useRef<number | null>(null);
+  const selectedType = comment?.reactions.find((reaction) => reaction.reacted_by_me)?.reaction_type;
+  const canReact = Boolean(comment && onToggleReaction && !pending);
+
+  function clearLongPress() {
+    if (longPressTimer.current != null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }
+
+  function startLongPress(event: PointerEvent<HTMLDivElement>) {
+    if (!canReact || event.pointerType === "mouse") return;
+    clearLongPress();
+    longPressTimer.current = window.setTimeout(() => {
+      setPickerOpen(true);
+      longPressTimer.current = null;
+    }, 460);
+  }
+
+  function toggleReaction(reactionType: CommentReactionType) {
+    if (!comment || !onToggleReaction) return;
+    void onToggleReaction(comment, reactionType);
+    setPickerOpen(false);
+  }
+
+  return (
+    <div className={cn("max-w-full", isMine ? "items-end" : "items-start")}>
+      <div className="group/comment relative max-w-full">
+        <div
+          onPointerDown={startLongPress}
+          onPointerUp={clearLongPress}
+          onPointerCancel={clearLongPress}
+          onPointerLeave={clearLongPress}
+          onContextMenu={(event) => {
+            if (canReact) event.preventDefault();
+          }}
+          className={cn(
+            "px-4 py-2.5 max-w-full font-sc text-[15px] leading-relaxed whitespace-pre-wrap break-words select-text",
+            pending && "opacity-70",
+            isMine
+              ? "rounded-2xl rounded-tr-md bg-rose text-white"
+              : "rounded-2xl rounded-tl-md bg-surface-raised/85 hairline text-ink",
+          )}
+        >
+          {text}
+          {pending && <span className="ml-2 text-[10px] opacity-80">发送中...</span>}
+        </div>
+
+        {canReact && (
+          <div
+            className={cn(
+              "pointer-events-none absolute top-1/2 z-20 hidden -translate-y-1/2 gap-1 rounded-full bg-surface-raised/95 p-1 opacity-0 shadow-soft hairline transition-opacity duration-150 group-hover/comment:pointer-events-auto group-hover/comment:opacity-100 group-focus-within/comment:pointer-events-auto group-focus-within/comment:opacity-100 md:flex",
+              isMine ? "right-full mr-2" : "left-full ml-2",
+            )}
+          >
+            {COMMENT_REACTIONS.map((reaction) => (
+              <ReactionIconButton
+                key={reaction.type}
+                reaction={reaction}
+                selected={selectedType === reaction.type}
+                onClick={() => toggleReaction(reaction.type)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {comment && comment.reactions.length > 0 && (
+        <div className={cn("mt-1 flex flex-wrap gap-1.5 px-1", isMine ? "justify-end" : "justify-start")}>
+          {comment.reactions.map((reaction) => {
+            const config = COMMENT_REACTIONS.find((item) => item.type === reaction.reaction_type);
+            if (!config) return null;
+            const Icon = config.Icon;
+            return (
+              <button
+                key={reaction.reaction_type}
+                type="button"
+                onClick={() => toggleReaction(reaction.reaction_type)}
+                disabled={!canReact}
+                className={cn(
+                  "inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 text-xs font-medium transition-colors focus-ring",
+                  reaction.reacted_by_me
+                    ? "bg-rose/18 text-rose-deep"
+                    : "bg-surface-raised/80 text-ink-soft hairline",
+                  canReact ? "cursor-pointer hover:bg-rose/12" : "cursor-default",
+                )}
+                aria-pressed={reaction.reacted_by_me}
+                aria-label={`${config.label} ${reaction.count}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span>{reaction.count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <AnimatePresence>
+        {pickerOpen && canReact && (
+          <motion.div
+            className="fixed inset-0 z-50 md:hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-label="选择留言表情"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/30"
+              aria-label="关闭表情选择"
+              onClick={() => setPickerOpen(false)}
+            />
+            <motion.div
+              initial={{ y: 32 }}
+              animate={{ y: 0 }}
+              exit={{ y: 24 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              className="absolute inset-x-0 bottom-0 rounded-t-3xl bg-surface-raised p-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] shadow-glow hairline"
+            >
+              <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-line" />
+              <div className="flex items-center justify-center gap-4">
+                {COMMENT_REACTIONS.map((reaction) => (
+                  <ReactionIconButton
+                    key={reaction.type}
+                    reaction={reaction}
+                    selected={selectedType === reaction.type}
+                    onClick={() => toggleReaction(reaction.type)}
+                    large
+                  />
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function ReactionIconButton({
+  reaction,
+  selected,
+  onClick,
+  large,
+}: {
+  reaction: (typeof COMMENT_REACTIONS)[number];
+  selected: boolean;
+  onClick: () => void;
+  large?: boolean;
+}) {
+  const Icon = reaction.Icon;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "grid place-items-center rounded-full transition-colors focus-ring",
+        large ? "h-14 w-14" : "h-9 w-9",
+        selected ? "bg-rose text-white" : "bg-cream-deep/70 text-ink-soft hover:bg-rose/12 hover:text-rose-deep",
+      )}
+      aria-label={reaction.label}
+      aria-pressed={selected}
+      title={reaction.label}
+    >
+      <Icon className={cn(large ? "h-6 w-6" : "h-4 w-4")} />
+    </button>
   );
 }
 

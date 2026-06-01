@@ -1,4 +1,4 @@
-// Shared TypeScript contracts for API payloads, avatar-aware user state, events, todo boards, admin AI config, cycles, and reminders.
+// Shared TypeScript contracts for API payloads, avatar-aware user state, events, comment reactions, todo boards, admin AI config, cycles, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
 export type TodoCategory = "food" | "play";
@@ -40,6 +40,14 @@ export interface EventSummary {
   submission_state: SubmissionState;
 }
 
+export type CommentReactionType = "like" | "dislike";
+
+export interface CommentReactionSummary {
+  reaction_type: CommentReactionType;
+  count: number;
+  reacted_by_me: boolean;
+}
+
 export interface CommentOut {
   type: "comment";
   id: number;
@@ -47,6 +55,7 @@ export interface CommentOut {
   author_id: number;
   text: string;
   created_at: string;
+  reactions: CommentReactionSummary[];
 }
 
 export interface VoiceOut {

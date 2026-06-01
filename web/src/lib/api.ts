@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated user, private avatars, admin AI config, todo, events, quotes, cycles, and media requests.
+// Browser API client for authenticated user, private avatars, admin AI config, todo, events, quotes, cycles, comment reactions, and media requests.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -10,6 +10,7 @@ import type {
   AdminAIConfigOut,
   AIProtocol,
   CommentOut,
+  CommentReactionType,
   ContentsOut,
   CycleDashboardOut,
   DailyLog,
@@ -329,6 +330,15 @@ export const api = {
     apiRequest<CommentOut>(`/events/${eventId}/comments`, {
       method: "POST",
       json: { text },
+    }),
+  setCommentReaction: (commentId: number, reactionType: CommentReactionType) =>
+    apiRequest<CommentOut>(`/comments/${commentId}/reaction`, {
+      method: "PUT",
+      json: { reaction_type: reactionType },
+    }),
+  deleteCommentReaction: (commentId: number) =>
+    apiRequest<CommentOut>(`/comments/${commentId}/reaction`, {
+      method: "DELETE",
     }),
   postVoice: (eventId: number, file: Blob, durationMs?: number) => {
     const fd = new FormData();

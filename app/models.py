@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair timelines, todo boards, media keys, quotes, AI settings, and login logs."""
+"""SQLAlchemy models for pair timelines, comment reactions, todo boards, media keys, quotes, AI settings, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -290,6 +290,21 @@ class Comment(Base):
     author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    author: Mapped[User] = relationship()
+    reactions: Mapped[list["CommentReaction"]] = relationship(cascade="all, delete-orphan")
+
+
+class CommentReaction(Base):
+    __tablename__ = "comment_reactions"
+    __table_args__ = (UniqueConstraint("comment_id", "author_id", name="uq_comment_reaction_comment_author"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    comment_id: Mapped[int] = mapped_column(ForeignKey("comments.id"), nullable=False, index=True)
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    reaction_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
     author: Mapped[User] = relationship()
 

@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, admin, events, media, todo boards, AI config, cycle, and reminder APIs."""
+"""Pydantic schemas for auth, admin, events, comment reactions, media, todo boards, AI config, cycle, and reminder APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -159,6 +159,19 @@ class CommentCreate(APIModel):
     text: str = Field(min_length=1)
 
 
+CommentReactionType = Literal["like", "dislike"]
+
+
+class CommentReactionCreate(APIModel):
+    reaction_type: CommentReactionType
+
+
+class CommentReactionSummary(APIModel):
+    reaction_type: CommentReactionType
+    count: int
+    reacted_by_me: bool = False
+
+
 class CommentOut(APIModel):
     type: Literal["comment"] = "comment"
     id: int
@@ -166,6 +179,7 @@ class CommentOut(APIModel):
     author_id: int
     text: str
     created_at: datetime
+    reactions: list[CommentReactionSummary] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

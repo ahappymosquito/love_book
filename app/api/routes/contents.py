@@ -1,4 +1,4 @@
-"""Content route handlers for comments, local MP3 voice/image storage, and filtered media downloads.
+"""Content route handlers for comments, comment reactions, local MP3 voice/image storage, and filtered media downloads.
 
 Creation endpoints commit before returning so detail pages can refresh content immediately after a submit.
 """
@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_pair_for_user
@@ -14,11 +15,13 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.emailer import notify_comment_created
 from app.media import MediaProcessingError, make_image_thumbnail, normalize_voice_to_mp3
-from app.models import Comment, Image, User, Voice
-from app.schemas import CommentCreate, CommentOut, ContentsOut, ImageOut, VoiceOut
+from app.models import Comment, CommentReaction, Image, User, Voice
+from app.schemas import CommentCreate, CommentOut, CommentReactionCreate, ContentsOut, ImageOut, VoiceOut
 from app.services import (
     active_token_for_user,
+    comment_outs,
     counterpart,
+    ensure_comment_visible,
     ensure_image_file_visible,
     ensure_pair_event,
     ensure_voice_file_visible,
@@ -67,7 +70,67 @@ def create_comment(
         comment_text=comment.text,
         content_unlocked=content_unlocked,
     )
-    return CommentOut.model_validate(comment)
+    return comment_outs(db, [comment], current_user.id)[0]
+
+
+@router.put("/comments/{comment_id}/reaction", response_model=CommentOut)
+def set_comment_reaction(
+    comment_id: int,
+    payload: CommentReactionCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CommentOut:
+    pair = get_pair_for_user(db, current_user.id)
+    comment = ensure_comment_visible(db, comment_id, current_user, pair)
+    reaction = (
+        db.execute(
+            select(CommentReaction).where(
+                CommentReaction.comment_id == comment.id,
+                CommentReaction.author_id == current_user.id,
+            )
+        )
+        .scalars()
+        .one_or_none()
+    )
+    if reaction is None:
+        reaction = CommentReaction(
+            comment_id=comment.id,
+            author_id=current_user.id,
+            reaction_type=payload.reaction_type,
+        )
+        db.add(reaction)
+    else:
+        reaction.reaction_type = payload.reaction_type
+    db.flush()
+    db.commit()
+    db.refresh(comment)
+    return comment_outs(db, [comment], current_user.id)[0]
+
+
+@router.delete("/comments/{comment_id}/reaction", response_model=CommentOut)
+def delete_comment_reaction(
+    comment_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CommentOut:
+    pair = get_pair_for_user(db, current_user.id)
+    comment = ensure_comment_visible(db, comment_id, current_user, pair)
+    reaction = (
+        db.execute(
+            select(CommentReaction).where(
+                CommentReaction.comment_id == comment.id,
+                CommentReaction.author_id == current_user.id,
+            )
+        )
+        .scalars()
+        .one_or_none()
+    )
+    if reaction is not None:
+        db.delete(reaction)
+        db.flush()
+    db.commit()
+    db.refresh(comment)
+    return comment_outs(db, [comment], current_user.id)[0]
 
 
 @router.post("/events/{event_id}/voices", response_model=VoiceOut, status_code=status.HTTP_201_CREATED)
