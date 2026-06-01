@@ -1,4 +1,4 @@
-"""AMap MCP subprocess client that calls restaurant search/detail tools through npx at runtime."""
+"""AMap MCP subprocess client that calls restaurant search/detail tools through npx with configurable keys."""
 
 from __future__ import annotations
 
@@ -80,13 +80,19 @@ async def _send_message(stream: asyncio.StreamWriter, payload: dict[str, Any]) -
     await stream.drain()
 
 
-async def _call_tool_async(tool_name: str, arguments: dict[str, Any], timeout: float = 20.0) -> Any:
+async def _call_tool_async(
+    tool_name: str,
+    arguments: dict[str, Any],
+    amap_key: str | None = None,
+    timeout: float = 20.0,
+) -> Any:
     settings = get_settings()
-    if not settings.amap_maps_api_key:
+    effective_key = (amap_key or settings.amap_maps_api_key).strip()
+    if not effective_key:
         raise AmapMCPError("AMAP_MAPS_API_KEY is not configured")
 
     env = os.environ.copy()
-    env["AMAP_MAPS_API_KEY"] = settings.amap_maps_api_key
+    env["AMAP_MAPS_API_KEY"] = effective_key
     process = await asyncio.create_subprocess_exec(
         "npx",
         "-y",
@@ -141,25 +147,34 @@ async def _call_tool_async(tool_name: str, arguments: dict[str, Any], timeout: f
             process.kill()
 
 
-def call_amap_tool(tool_name: str, arguments: dict[str, Any]) -> Any:
-    return asyncio.run(_call_tool_async(tool_name, arguments))
+def call_amap_tool(tool_name: str, arguments: dict[str, Any], amap_key: str | None = None) -> Any:
+    return asyncio.run(_call_tool_async(tool_name, arguments, amap_key=amap_key))
 
 
-def search_restaurants(keyword: str, city: str | None = None) -> list[dict[str, Any]]:
+def search_restaurants(keyword: str, city: str | None = None, amap_key: str | None = None) -> list[dict[str, Any]]:
     args: dict[str, Any] = {"keywords": keyword}
     if city:
         args["city"] = city
-    return _pois_from_payload(call_amap_tool("maps_text_search", args))
+    return _pois_from_payload(call_amap_tool("maps_text_search", args, amap_key=amap_key))
 
 
-def around_restaurants(location: str, radius_m: int, keyword: str = "餐厅") -> list[dict[str, Any]]:
+def around_restaurants(
+    location: str,
+    radius_m: int,
+    keyword: str = "餐厅",
+    amap_key: str | None = None,
+) -> list[dict[str, Any]]:
     return _pois_from_payload(
-        call_amap_tool("maps_around_search", {"location": location, "radius": str(radius_m), "keywords": keyword})
+        call_amap_tool(
+            "maps_around_search",
+            {"location": location, "radius": str(radius_m), "keywords": keyword},
+            amap_key=amap_key,
+        )
     )
 
 
-def restaurant_detail(amap_poi_id: str) -> dict[str, Any] | None:
-    payload = call_amap_tool("maps_search_detail", {"id": amap_poi_id})
+def restaurant_detail(amap_poi_id: str, amap_key: str | None = None) -> dict[str, Any] | None:
+    payload = call_amap_tool("maps_search_detail", {"id": amap_poi_id}, amap_key=amap_key)
     if isinstance(payload, dict):
         if isinstance(payload.get("poi"), dict):
             return payload["poi"]

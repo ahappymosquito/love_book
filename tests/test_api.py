@@ -1138,7 +1138,7 @@ def test_todo_schedule_commits_and_sends_email(client: TestClient, monkeypatch: 
 def test_todo_restaurant_search_and_create_use_amap_mcp(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "app.amap_mcp.search_restaurants",
-        lambda keyword, city=None: [
+        lambda keyword, city=None, amap_key=None: [
             {
                 "amap_poi_id": "B001",
                 "name": "小馆",
@@ -1152,7 +1152,7 @@ def test_todo_restaurant_search_and_create_use_amap_mcp(client: TestClient, pair
             }
         ],
     )
-    monkeypatch.setattr("app.amap_mcp.restaurant_detail", lambda poi_id: {"id": poi_id, "rating": "4.8"})
+    monkeypatch.setattr("app.amap_mcp.restaurant_detail", lambda poi_id, amap_key=None: {"id": poi_id, "rating": "4.8"})
 
     search = client.post(
         "/todos/restaurants/search",
@@ -1175,7 +1175,7 @@ def test_todo_restaurant_search_and_create_use_amap_mcp(client: TestClient, pair
 
 
 def test_todo_restaurant_detail_is_checked_in_after_comment_or_image(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("app.amap_mcp.restaurant_detail", lambda poi_id: {"id": poi_id})
+    monkeypatch.setattr("app.amap_mcp.restaurant_detail", lambda poi_id, amap_key=None: {"id": poi_id})
     item = client.post(
         "/todos/restaurants",
         headers=auth(str(pair_tokens["user_a_token"])),
@@ -1214,27 +1214,40 @@ def test_todo_restaurant_detail_is_checked_in_after_comment_or_image(client: Tes
     assert client.get(f"/todo-images/{image_id}/thumb", headers=auth(str(pair_tokens["user_a_token"]))).status_code == 200
 
 
-def test_admin_ai_config_masks_keys_and_saves_model(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_admin_ai_config_edits_keys_lists_models_and_saves_model(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     settings = get_settings()
     settings.llm_api_key = "secret-token-1234"
     settings.amap_maps_api_key = "amap-secret-5678"
     settings.llm_model = "mimo-v2.5-pro"
-    monkeypatch.setattr("app.api.routes.admin.list_models", lambda protocol: ["mimo-v2.5-pro", "other-model"])
+    monkeypatch.setattr("app.api.routes.admin.list_models", lambda db, protocol: ["mimo-v2.5-pro", "other-model"])
 
     config = client.get("/admin/ai-config", headers={"X-Admin-Key": "test-admin-key"})
     assert config.status_code == 200
+    assert config.json()["api_key"] == "secret-token-1234"
     assert config.json()["api_key_preview"] == "secr***1234"
+    assert config.json()["amap_api_key"] == "amap-secret-5678"
     assert config.json()["amap_key_preview"] == "amap***5678"
 
     updated = client.patch(
         "/admin/ai-config",
         headers={"X-Admin-Key": "test-admin-key"},
-        json={"protocol": "openai", "selected_model": "other-model"},
+        json={
+            "protocol": "anthropic",
+            "selected_model": "other-model",
+            "openai_base_url": "https://openai.example/v1",
+            "anthropic_base_url": "https://anthropic.example",
+            "api_key": "custom-token",
+            "amap_api_key": "custom-amap",
+        },
     )
     models = client.get("/admin/ai-config/models", headers={"X-Admin-Key": "test-admin-key"})
     tested = client.post("/admin/ai-config/test", headers={"X-Admin-Key": "test-admin-key"})
 
     assert updated.status_code == 200
+    assert updated.json()["protocol"] == "anthropic"
     assert updated.json()["selected_model"] == "other-model"
+    assert updated.json()["anthropic_base_url"] == "https://anthropic.example"
+    assert updated.json()["api_key"] == "custom-token"
+    assert updated.json()["amap_api_key"] == "custom-amap"
     assert models.json()["models"] == ["mimo-v2.5-pro", "other-model"]
     assert tested.json()["ok"] is True

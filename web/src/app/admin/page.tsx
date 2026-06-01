@@ -478,11 +478,16 @@ export default function AdminPage() {
 function AIConfigPanel() {
   const [config, setConfig] = useState<AdminAIConfigOut | null>(null);
   const [protocol, setProtocol] = useState<AIProtocol>("openai");
+  const [openaiBaseUrl, setOpenaiBaseUrl] = useState("");
+  const [anthropicBaseUrl, setAnthropicBaseUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [amapApiKey, setAmapApiKey] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [models, setModels] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [modelMessage, setModelMessage] = useState("");
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
@@ -490,6 +495,10 @@ function AIConfigPanel() {
       const next = await api.getAdminAIConfig();
       setConfig(next);
       setProtocol(next.protocol);
+      setOpenaiBaseUrl(next.openai_base_url);
+      setAnthropicBaseUrl(next.anthropic_base_url);
+      setApiKey(next.api_key);
+      setAmapApiKey(next.amap_api_key);
       setSelectedModel(next.selected_model || next.env_model);
     } finally {
       setLoading(false);
@@ -500,37 +509,67 @@ function AIConfigPanel() {
     void loadConfig();
   }, [loadConfig]);
 
+  const activeBaseUrl = protocol === "openai" ? openaiBaseUrl : anthropicBaseUrl;
+
+  function configPayload(model = selectedModel) {
+    return {
+      protocol,
+      selected_model: model.trim(),
+      openai_base_url: openaiBaseUrl.trim(),
+      anthropic_base_url: anthropicBaseUrl.trim(),
+      api_key: apiKey.trim(),
+      amap_api_key: amapApiKey.trim(),
+    };
+  }
+
   async function loadModels() {
     setLoading(true);
+    setModelMessage("");
     try {
+      await api.updateAdminAIConfig(configPayload());
       const result = await api.listAdminAIModels(protocol);
       setModels(result.models);
+      setModelMessage(`已获取 ${result.models.length} 个模型`);
       if (!selectedModel && result.models[0]) setSelectedModel(result.models[0]);
-      toast.success("模型列表已更新");
+      toast.success(`模型列表已更新：${result.models.length} 个`);
     } finally {
       setLoading(false);
     }
   }
 
-  async function saveConfig() {
-    if (!selectedModel.trim()) return;
+  async function saveConfig(model = selectedModel, showToast = true) {
     setSaving(true);
     try {
-      const next = await api.updateAdminAIConfig({ protocol, selected_model: selectedModel.trim() });
+      const next = await api.updateAdminAIConfig(configPayload(model));
       setConfig(next);
-      toast.success("模型配置已保存");
+      if (showToast) toast.success("模型配置已保存");
+      return next;
     } finally {
       setSaving(false);
     }
   }
 
-  async function testConnection() {
+  async function testConnection(showToast = true) {
     setTesting(true);
     try {
+      await saveConfig(selectedModel, false);
       const result = await api.testAdminAIConfig();
-      toast.success(result.message || "连接测试通过");
+      if (showToast) toast.success(result.message || "连接测试通过");
+      return result;
     } finally {
       setTesting(false);
+    }
+  }
+
+  async function chooseModel(model: string) {
+    setSelectedModel(model);
+    if (!model) return;
+    try {
+      await saveConfig(model, false);
+      const result = await api.testAdminAIConfig();
+      toast.success(result.message || "模型已选择，连接测试通过");
+    } catch {
+      // toast handled by api client
     }
   }
 
@@ -543,7 +582,7 @@ function AIConfigPanel() {
           </div>
           <div>
             <h2 className="font-display text-2xl text-ink">AI / 模型配置</h2>
-            <p className="font-sc text-xs text-ink-muted">密钥来自服务器 .env，页面只保存协议和选中模型。</p>
+            <p className="font-sc text-xs text-ink-muted">先选协议，再填写对应地址和 token；高德密钥单独配置。</p>
           </div>
         </div>
         <button type="button" onClick={loadConfig} className="grid h-10 w-10 place-items-center rounded-full hover:bg-white/70 focus-ring" aria-label="刷新配置">
@@ -553,8 +592,8 @@ function AIConfigPanel() {
 
       {config && (
         <div className="mb-4 grid gap-2 rounded-2xl bg-surface-raised/65 p-4 text-xs font-sc text-ink-soft hairline sm:grid-cols-2">
-          <span>OpenAI: {config.openai_base_url}</span>
-          <span>Anthropic: {config.anthropic_base_url}</span>
+          <span>当前协议：{config.protocol === "openai" ? "OpenAI" : "Anthropic"}</span>
+          <span>当前模型：{config.selected_model || "未选择"}</span>
           <span>LLM Key: {config.has_api_key ? config.api_key_preview : "未配置"}</span>
           <span>高德 Key: {config.has_amap_key ? config.amap_key_preview : "未配置"}</span>
         </div>
@@ -566,7 +605,12 @@ function AIConfigPanel() {
             <button
               key={item}
               type="button"
-              onClick={() => setProtocol(item)}
+              onClick={() => {
+                setProtocol(item);
+                setModels([]);
+                setModelMessage("");
+                setSelectedModel("");
+              }}
               className={cn(
                 "min-h-11 rounded-2xl px-4 font-sc text-sm hairline focus-ring",
                 protocol === item ? "bg-rose/10 text-rose-deep" : "bg-surface-raised/65 text-ink-soft",
@@ -577,32 +621,85 @@ function AIConfigPanel() {
           ))}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="space-y-2">
+          <label className="font-sc text-xs font-medium text-ink-muted">
+            {protocol === "openai" ? "OpenAI 地址" : "Anthropic 地址"}
+          </label>
           <input
             className="input-field"
-            value={selectedModel}
-            onChange={(event) => setSelectedModel(event.target.value)}
-            placeholder="模型 ID"
-            list="admin-ai-models"
-            maxLength={200}
+            value={activeBaseUrl}
+            onChange={(event) =>
+              protocol === "openai" ? setOpenaiBaseUrl(event.target.value) : setAnthropicBaseUrl(event.target.value)
+            }
+            placeholder={protocol === "openai" ? "https://example.com/v1" : "https://example.com/anthropic"}
+            maxLength={500}
           />
-          <datalist id="admin-ai-models">
+        </div>
+
+        <div className="space-y-2">
+          <label className="font-sc text-xs font-medium text-ink-muted">
+            {protocol === "openai" ? "OpenAI Token" : "Anthropic Token"}
+          </label>
+          <input
+            className="input-field font-mono text-sm"
+            type="password"
+            value={apiKey}
+            onChange={(event) => setApiKey(event.target.value)}
+            placeholder="填写模型服务 token"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="font-sc text-xs font-medium text-ink-muted">高德 AMAP_MAPS_API_KEY</label>
+          <input
+            className="input-field font-mono text-sm"
+            type="password"
+            value={amapApiKey}
+            onChange={(event) => setAmapApiKey(event.target.value)}
+            placeholder="填写高德 Web 服务 Key"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={loadModels}
+          disabled={loading || !activeBaseUrl.trim() || !apiKey.trim()}
+          className="btn-ghost min-h-12 w-full rounded-2xl px-4 font-sc text-sm inline-flex items-center justify-center gap-2 focus-ring"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          获取模型列表
+        </button>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <label className="font-sc text-xs font-medium text-ink-muted">选择模型</label>
+            <span className="font-sc text-xs text-ink-muted">{modelMessage || `已载入 ${models.length} 个模型`}</span>
+          </div>
+          <select
+            className="input-field"
+            value={selectedModel}
+            onChange={(event) => void chooseModel(event.target.value)}
+            disabled={models.length === 0}
+          >
+            <option value="">请先获取模型列表</option>
             {models.map((model) => (
-              <option key={model} value={model} />
+              <option key={model} value={model}>
+                {model}
+              </option>
             ))}
-          </datalist>
-          <button type="button" onClick={loadModels} disabled={loading} className="btn-ghost min-h-12 rounded-2xl px-4 font-sc text-sm inline-flex items-center justify-center gap-2 focus-ring">
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            获取模型
-          </button>
+          </select>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={saveConfig} disabled={saving || !selectedModel.trim()} className="btn-primary min-h-11 rounded-2xl px-4 font-sc text-sm inline-flex items-center gap-2 focus-ring">
+          <button type="button" onClick={() => void saveConfig()} disabled={saving} className="btn-primary min-h-11 rounded-2xl px-4 font-sc text-sm inline-flex items-center gap-2 focus-ring">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            保存选择
+            保存配置
           </button>
-          <button type="button" onClick={testConnection} disabled={testing} className="btn-ghost min-h-11 rounded-2xl px-4 font-sc text-sm inline-flex items-center gap-2 focus-ring">
+          <button type="button" onClick={() => void testConnection()} disabled={testing} className="btn-ghost min-h-11 rounded-2xl px-4 font-sc text-sm inline-flex items-center gap-2 focus-ring">
             {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             测试连接
           </button>

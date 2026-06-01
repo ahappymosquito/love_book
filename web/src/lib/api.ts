@@ -199,7 +199,14 @@ export const api = {
   },
   getAdminAIConfig: () =>
     apiRequest<AdminAIConfigOut>("/admin/ai-config", { withAdmin: true, withAuth: false }),
-  updateAdminAIConfig: (payload: { protocol: AIProtocol; selected_model: string }) =>
+  updateAdminAIConfig: (payload: {
+    protocol: AIProtocol;
+    selected_model: string;
+    openai_base_url: string;
+    anthropic_base_url: string;
+    api_key: string;
+    amap_api_key: string;
+  }) =>
     apiRequest<AdminAIConfigOut>("/admin/ai-config", {
       method: "PATCH",
       json: payload,

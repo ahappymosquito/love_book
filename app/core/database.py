@@ -1,4 +1,4 @@
-"""Database setup, sessions, default quote seeding, and lightweight migrations including user avatar media columns."""
+"""Database setup, sessions, default quote seeding, and lightweight migrations for media, todo, AI, and avatars."""
 
 from collections.abc import Generator
 
@@ -153,6 +153,26 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         "images",
         "storage_backend",
         {"default": "VARCHAR(50) NOT NULL DEFAULT 'local'"},
+    ),
+    (
+        "ai_settings",
+        "openai_base_url",
+        {"default": "VARCHAR(500) NOT NULL DEFAULT ''"},
+    ),
+    (
+        "ai_settings",
+        "anthropic_base_url",
+        {"default": "VARCHAR(500) NOT NULL DEFAULT ''"},
+    ),
+    (
+        "ai_settings",
+        "api_key",
+        {"default": "VARCHAR(4000) NOT NULL DEFAULT ''"},
+    ),
+    (
+        "ai_settings",
+        "amap_api_key",
+        {"default": "VARCHAR(200) NOT NULL DEFAULT ''"},
     ),
 ]
 

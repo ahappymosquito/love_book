@@ -468,8 +468,10 @@ class AdminAIConfigOut(APIModel):
     env_model: str
     openai_base_url: str
     anthropic_base_url: str
+    api_key: str
     api_key_preview: str
     has_api_key: bool
+    amap_api_key: str
     amap_key_preview: str
     has_amap_key: bool
     updated_at: datetime | None = None
@@ -477,7 +479,11 @@ class AdminAIConfigOut(APIModel):
 
 class AdminAIConfigUpdate(APIModel):
     protocol: AIProtocol
-    selected_model: str = Field(min_length=1, max_length=200)
+    selected_model: str = Field(default="", max_length=200)
+    openai_base_url: str = Field(min_length=1, max_length=500)
+    anthropic_base_url: str = Field(min_length=1, max_length=500)
+    api_key: str = Field(default="", max_length=4000)
+    amap_api_key: str = Field(default="", max_length=200)
 
 
 class AdminAIModelListOut(APIModel):

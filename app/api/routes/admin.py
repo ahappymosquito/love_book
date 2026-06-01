@@ -187,23 +187,35 @@ def list_login_logs(
 def get_admin_ai_config(db: Session = Depends(get_db)) -> AdminAIConfigOut:
     settings = get_settings()
     row = get_ai_setting(db)
+    api_key = row.api_key or settings.llm_api_key
+    amap_api_key = row.amap_api_key or settings.amap_maps_api_key
     return AdminAIConfigOut(
         protocol=row.protocol,
         selected_model=row.selected_model or settings.llm_model,
         env_model=settings.llm_model,
-        openai_base_url=settings.llm_openai_base_url,
-        anthropic_base_url=settings.llm_anthropic_base_url,
-        api_key_preview=preview_secret(settings.llm_api_key),
-        has_api_key=bool(settings.llm_api_key),
-        amap_key_preview=preview_secret(settings.amap_maps_api_key),
-        has_amap_key=bool(settings.amap_maps_api_key),
+        openai_base_url=row.openai_base_url or settings.llm_openai_base_url,
+        anthropic_base_url=row.anthropic_base_url or settings.llm_anthropic_base_url,
+        api_key=api_key,
+        api_key_preview=preview_secret(api_key),
+        has_api_key=bool(api_key),
+        amap_api_key=amap_api_key,
+        amap_key_preview=preview_secret(amap_api_key),
+        has_amap_key=bool(amap_api_key),
         updated_at=row.updated_at,
     )
 
 
 @router.patch("/ai-config", response_model=AdminAIConfigOut, dependencies=[Depends(require_admin_key)])
 def patch_admin_ai_config(payload: AdminAIConfigUpdate, db: Session = Depends(get_db)) -> AdminAIConfigOut:
-    update_ai_setting(db, payload.protocol, payload.selected_model)
+    update_ai_setting(
+        db,
+        protocol=payload.protocol,
+        selected_model=payload.selected_model,
+        openai_base_url=payload.openai_base_url,
+        anthropic_base_url=payload.anthropic_base_url,
+        api_key=payload.api_key,
+        amap_api_key=payload.amap_api_key,
+    )
     db.commit()
     return get_admin_ai_config(db)
 
@@ -213,7 +225,7 @@ def get_admin_ai_models(protocol: AIProtocol | None = None, db: Session = Depend
     row = get_ai_setting(db)
     target_protocol = protocol or row.protocol
     try:
-        return AdminAIModelListOut(models=list_models(target_protocol))
+        return AdminAIModelListOut(models=list_models(db, target_protocol))
     except (RuntimeError, httpx.HTTPError) as exc:
         raise HTTPException(status_code=502, detail=f"Model list request failed: {exc}") from exc
 
@@ -222,7 +234,7 @@ def get_admin_ai_models(protocol: AIProtocol | None = None, db: Session = Depend
 def test_admin_ai_config(db: Session = Depends(get_db)) -> AdminAIConnectionTestOut:
     row = get_ai_setting(db)
     try:
-        models = list_models(row.protocol)
+        models = list_models(db, row.protocol)
     except (RuntimeError, httpx.HTTPError) as exc:
         raise HTTPException(status_code=502, detail=f"AI connection test failed: {exc}") from exc
     selected = row.selected_model or get_settings().llm_model

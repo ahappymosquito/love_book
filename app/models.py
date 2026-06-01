@@ -252,6 +252,10 @@ class AISetting(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
     protocol: Mapped[AIProtocol] = mapped_column(Enum(AIProtocol), default=AIProtocol.openai, nullable=False)
     selected_model: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    openai_base_url: Mapped[str] = mapped_column(String(500), nullable=False, default="", server_default="")
+    anthropic_base_url: Mapped[str] = mapped_column(String(500), nullable=False, default="", server_default="")
+    api_key: Mapped[str] = mapped_column(String(4000), nullable=False, default="", server_default="")
+    amap_api_key: Mapped[str] = mapped_column(String(200), nullable=False, default="", server_default="")
     updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 

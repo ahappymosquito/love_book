@@ -43,7 +43,7 @@
 - Todo 数据独立于时间线事件，不自动创建或更新 `/timeline` 事件。
 - Todo 项目按 pair 双方共享，分为 `food` 吃饭和 `play` 玩乐；默认玩乐项目为“唱歌、台球、看电影、拼乐高”。
 - 日期安排写接口必须在响应返回前完成数据库提交，并向另一方发送邮件通知；邮件展示日期、板块、项目和 `/todo?date=YYYY-MM-DD` 入口。
-- 餐厅搜索和详情解析通过后端运行 `npx -y @amap/amap-maps-mcp-server` 调用高德 MCP，密钥只从 `.env` / 环境变量 `AMAP_MAPS_API_KEY` 读取。
+- 餐厅搜索和详情解析通过后端运行 `npx -y @amap/amap-maps-mcp-server` 调用高德 MCP，优先使用管理端保存的高德 key，未保存时回退 `.env` / 环境变量 `AMAP_MAPS_API_KEY`。
 - 餐厅有评论或图片即视为吃饭打卡完成。
 - Todo 图片写入 `MEDIA_ROOT/todo/images/...`，数据库只保存 `todo_images.storage_key` / `todo_images.thumb_storage_key`，不得写入数据库 BLOB。
 - 随机抽奖支持人均、城市/区域、附近 1/3/5/10km 筛选；附近筛选由浏览器定位提供经纬度，定位失败不得阻断其它抽奖方式。
@@ -51,8 +51,9 @@
 
 ## Admin AI 配置约定
 
-- Admin AI 配置为全站唯一；管理端只保存协议和选中模型，不保存或显示完整密钥。
-- `.env` / 服务器环境变量维护 `LLM_OPENAI_BASE_URL`、`LLM_ANTHROPIC_BASE_URL`、`LLM_API_KEY`、`LLM_PROTOCOL`、`LLM_MODEL`。
+- Admin AI 配置为全站唯一；管理端可保存协议、对应服务地址、token、选中模型和高德 key，`.env` / 服务器环境变量作为初始默认和兜底。
+- 管理端先选择 OpenAI 或 Anthropic，再编辑当前协议对应地址和 token；获取模型列表后需要在下拉框展示模型数量，选择模型后自动测试连接，并保留手动测试连接按钮。
+- `.env` / 服务器环境变量维护 `LLM_OPENAI_BASE_URL`、`LLM_ANTHROPIC_BASE_URL`、`LLM_API_KEY`、`LLM_PROTOCOL`、`LLM_MODEL`、`AMAP_MAPS_API_KEY` 的默认值。
 - OpenAI 协议获取模型列表走 `{LLM_OPENAI_BASE_URL}/models`；Anthropic 协议走 `{LLM_ANTHROPIC_BASE_URL}/v1/models`。
 - `.env.example` 只能放占位值，不得提交真实高德 key、LLM token、数据库密码或 SMTP 授权码。
 

@@ -38,6 +38,6 @@
 ## Todo / 高德 / LLM 配置
 
 - `/todo` 需要后端和前端同时启动，前端入口在 `/timeline` 首页标题区右侧。
-- `.env` 需要配置 `AMAP_MAPS_API_KEY`，用于餐厅搜索、详情解析和附近抽奖。
-- 管理端 AI 配置使用 `.env` 中的 `LLM_OPENAI_BASE_URL`、`LLM_ANTHROPIC_BASE_URL`、`LLM_API_KEY`、`LLM_PROTOCOL`、`LLM_MODEL`。页面只保存协议和模型 ID，不保存密钥。
+- `.env` 可配置 `AMAP_MAPS_API_KEY`，用于餐厅搜索、详情解析和附近抽奖；管理端也可以单独覆盖并保存高德 key。
+- 管理端 AI 配置使用 `.env` 中的 `LLM_OPENAI_BASE_URL`、`LLM_ANTHROPIC_BASE_URL`、`LLM_API_KEY`、`LLM_PROTOCOL`、`LLM_MODEL` 作为初始默认。页面可保存协议、对应地址、token 和选中模型；获取模型列表后会在下拉框展示模型数量，选择模型会自动测试连接。
 - 本地测试可用 `python -m pytest`；如果 Windows 默认临时目录无权限，可先设置 `TMP` / `TEMP` 到项目内 `.pytest_tmp`。

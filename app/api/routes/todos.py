@@ -12,6 +12,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app import amap_mcp
+from app.ai_config import effective_amap_key
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -291,7 +292,10 @@ def search_restaurants(
 ) -> TodoRestaurantSearchOut:
     get_pair_for_user(db, current_user.id)
     try:
-        candidates = [TodoRestaurantCandidate(**candidate) for candidate in amap_mcp.search_restaurants(payload.keyword, payload.city)]
+        candidates = [
+            TodoRestaurantCandidate(**candidate)
+            for candidate in amap_mcp.search_restaurants(payload.keyword, payload.city, effective_amap_key(db))
+        ]
     except amap_mcp.AmapMCPError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return TodoRestaurantSearchOut(candidates=candidates)
@@ -310,7 +314,7 @@ def create_restaurant_item(
     parse_error = None
     if candidate.amap_poi_id:
         try:
-            detail = amap_mcp.restaurant_detail(candidate.amap_poi_id)
+            detail = amap_mcp.restaurant_detail(candidate.amap_poi_id, effective_amap_key(db))
             if detail:
                 raw = detail
         except amap_mcp.AmapMCPError as exc:
@@ -369,7 +373,7 @@ def restaurant_lottery(
         return TodoLotteryOut(item=_item_out(db, random.choice(items)))
     if payload.location and payload.radius_km:
         try:
-            candidates = amap_mcp.around_restaurants(payload.location, payload.radius_km * 1000)
+            candidates = amap_mcp.around_restaurants(payload.location, payload.radius_km * 1000, amap_key=effective_amap_key(db))
         except amap_mcp.AmapMCPError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         if candidates:

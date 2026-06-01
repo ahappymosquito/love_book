@@ -61,11 +61,13 @@ vim .env
 | `MEDIA_ROOT` | `/app/media` | 图片和语音媒体根目录，Docker 中挂载 `love_book_media` volume |
 | `MEDIA_STORAGE` | `local` | 当前图片存储后端 |
 | `SMTP_*` | 邮件服务配置 | 用于事件 / 评论通知 |
-| `AMAP_MAPS_API_KEY` | 高德 Web 服务 Key | `/todo` 餐厅搜索、详情解析和附近抽奖使用 |
-| `LLM_OPENAI_BASE_URL` / `LLM_ANTHROPIC_BASE_URL` | 模型服务地址 | 管理端获取模型列表和测试连接使用 |
-| `LLM_API_KEY` | 模型服务 Key | 只放服务器 env，不在管理端明文显示 |
-| `LLM_PROTOCOL` / `LLM_MODEL` | `openai` / 模型 ID | 初始全站模型配置 |
+| `AMAP_MAPS_API_KEY` | 高德 Web 服务 Key | `/todo` 餐厅搜索、详情解析和附近抽奖使用；管理端可覆盖保存 |
+| `LLM_OPENAI_BASE_URL` / `LLM_ANTHROPIC_BASE_URL` | 模型服务地址 | 管理端获取模型列表和测试连接使用；管理端可覆盖保存 |
+| `LLM_API_KEY` | 模型服务 Key | 初始模型 token；管理端可覆盖保存 |
+| `LLM_PROTOCOL` / `LLM_MODEL` | `openai` / 模型 ID | 初始全站模型配置；管理端可覆盖保存 |
 前端生产请求通过 `NEXT_PUBLIC_API_BASE=/api` 走同源 Caddy 反代。管理端复制入口链接不再依赖 `NEXT_PUBLIC_APP_URL`，因此换域名或 HTTP/HTTPS 协议时不需要为了复制链接重建前端。
+
+管理端 AI / 模型配置会写入数据库，包含协议、OpenAI / Anthropic 地址、token、选中模型和高德 key。迁移服务器时需要和业务数据一起备份数据库；`.env` 仍作为首次初始化和配置缺失时的兜底来源。
 
 ## 4. 部署命令
 

@@ -325,8 +325,10 @@ export interface AdminAIConfigOut {
   env_model: string;
   openai_base_url: string;
   anthropic_base_url: string;
+  api_key: string;
   api_key_preview: string;
   has_api_key: boolean;
+  amap_api_key: string;
   amap_key_preview: string;
   has_amap_key: boolean;
   updated_at: string | null;
