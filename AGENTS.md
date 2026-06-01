@@ -11,8 +11,8 @@
 ## 当前约定
 
 - 本地开发一键启动脚本为 [start_dev.bat](C:\RPA\code\love_book\start_dev.bat)。
-- 前端默认按 [PRODUCT.md](C:\RPA\code\love_book\PRODUCT.md) 和 [DESIGN.md](C:\RPA\code\love_book\DESIGN.md) 的 product register 设计上下文执行；整体气质为“亲密、安静、可信”。
-- 前端视觉基线是克制的私密日记型产品 UI：中性背景、清晰边界、紧凑阴影、玫瑰色只用于主操作/选中/重要状态；避免大面积粉色渐变、装饰玻璃拟态、过圆卡片和厚阴影。
+- 前端默认按 [PRODUCT.md](C:\RPA\code\love_book\PRODUCT.md) 和 [DESIGN.md](C:\RPA\code\love_book\DESIGN.md) 的 product register 设计上下文执行；整体气质为“活力、可爱、热情、可信”。
+- 前端视觉基线是恋爱手账型产品 UI：莓果粉为主色，橙色承载热情和重点，薄荷用于完成和正向状态；避免清冷灰后台、装饰玻璃拟态、渐变文字和低对比彩色文本。
 - `start_dev.bat --install` 会先安装后端 `requirements.txt` 和前端 `web/package.json` 依赖，再启动本地开发服务。
 - 直接执行 `start_dev.bat` 只启动服务，不重复安装依赖。
 - 事件、评论、语音、图片等写接口必须在响应返回前完成数据库提交，避免前端立即刷新时读到未提交数据。

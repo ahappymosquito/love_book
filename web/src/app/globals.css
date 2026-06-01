@@ -1,4 +1,4 @@
-/* Global theme tokens, restrained app surfaces, reusable controls, inputs, and focus styles for the private diary UI. */
+/* Global theme tokens, lively scrapbook surfaces, reusable controls, inputs, and focus styles for the couple diary UI. */
 
 @tailwind base;
 @tailwind components;
@@ -6,48 +6,48 @@
 
 @layer base {
   :root {
-    --ink: 42 37 35;
-    --ink-soft: 75 66 62;
-    --ink-muted: 112 101 96;
-    --cream: 248 247 245;
-    --cream-deep: 237 233 229;
-    --rose: 169 86 102;
-    --rose-soft: 225 195 198;
-    --rose-deep: 126 57 72;
-    --peach: 217 166 148;
-    --peach-deep: 181 106 88;
-    --sage: 122 148 128;
-    --surface: 253 252 250;
-    --surface-raised: 255 255 255;
-    --surface-glass: 253 252 250;
-    --line: 220 214 208;
-    --focus: 169 86 102;
+    --ink: 64 31 42;
+    --ink-soft: 115 58 72;
+    --ink-muted: 148 89 99;
+    --cream: 255 247 238;
+    --cream-deep: 255 226 214;
+    --rose: 226 68 118;
+    --rose-soft: 255 190 210;
+    --rose-deep: 177 35 82;
+    --peach: 255 175 105;
+    --peach-deep: 231 103 63;
+    --sage: 78 184 143;
+    --surface: 255 252 247;
+    --surface-raised: 255 255 253;
+    --surface-glass: 255 248 243;
+    --line: 248 190 181;
+    --focus: 226 68 118;
 
     --bg-grad:
-      linear-gradient(180deg, rgb(248 247 245) 0%, rgb(241 238 234) 100%);
+      linear-gradient(135deg, rgb(255 244 235) 0%, rgb(255 237 245) 42%, rgb(239 255 244) 100%);
   }
 
   @media (prefers-color-scheme: dark) {
     :root {
-      --ink: 246 241 237;
-      --ink-soft: 214 204 197;
-      --ink-muted: 169 157 149;
-      --cream: 27 25 24;
-      --cream-deep: 21 20 19;
-      --rose: 220 132 149;
-      --rose-soft: 103 64 73;
-      --rose-deep: 247 184 195;
-      --peach: 193 126 107;
-      --peach-deep: 226 157 136;
-      --sage: 128 158 136;
-      --surface: 33 31 30;
-      --surface-raised: 42 39 37;
-      --surface-glass: 33 31 30;
-      --line: 68 62 58;
-      --focus: 220 132 149;
+      --ink: 255 239 234;
+      --ink-soft: 246 205 202;
+      --ink-muted: 222 166 170;
+      --cream: 43 24 35;
+      --cream-deep: 31 18 28;
+      --rose: 255 119 163;
+      --rose-soft: 123 55 82;
+      --rose-deep: 255 169 194;
+      --peach: 255 176 103;
+      --peach-deep: 255 138 95;
+      --sage: 111 218 174;
+      --surface: 56 32 45;
+      --surface-raised: 70 39 54;
+      --surface-glass: 56 32 45;
+      --line: 126 72 84;
+      --focus: 255 119 163;
 
       --bg-grad:
-        linear-gradient(180deg, rgb(27 25 24) 0%, rgb(22 21 20) 100%);
+        linear-gradient(135deg, rgb(43 24 35) 0%, rgb(64 31 47) 48%, rgb(28 54 45) 100%);
     }
   }
 
@@ -79,10 +79,11 @@
     inset: 0;
     z-index: -1;
     background:
-      linear-gradient(90deg, rgb(var(--line) / 0.12) 1px, transparent 1px),
-      linear-gradient(180deg, rgb(var(--line) / 0.10) 1px, transparent 1px);
-    background-size: 44px 44px;
-    opacity: 0.42;
+      linear-gradient(90deg, rgb(var(--rose) / 0.08) 1px, transparent 1px),
+      linear-gradient(180deg, rgb(var(--peach) / 0.08) 1px, transparent 1px),
+      linear-gradient(135deg, transparent 0%, rgb(var(--sage) / 0.08) 100%);
+    background-size: 38px 38px, 38px 38px, cover;
+    opacity: 0.8;
   }
 
   ::selection {
@@ -116,28 +117,33 @@
 
 @layer components {
   .glass-card {
-    background: rgb(var(--surface-raised) / 0.92);
-    border: 1px solid rgb(var(--line) / 0.72);
-    box-shadow: 0 1px 2px rgb(42 37 35 / 0.05);
+    background: linear-gradient(180deg, rgb(var(--surface-raised) / 0.96), rgb(var(--surface-glass) / 0.9));
+    border: 1px solid rgb(var(--line) / 0.78);
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.75) inset,
+      0 12px 28px -22px rgb(var(--rose) / 0.62),
+      0 2px 8px -6px rgb(var(--peach-deep) / 0.3);
   }
 
   @media (prefers-color-scheme: dark) {
     .glass-card {
-      background: rgb(var(--surface-raised) / 0.9);
-      border-color: rgb(var(--line) / 0.7);
-      box-shadow: 0 1px 2px rgb(0 0 0 / 0.32);
+      background: linear-gradient(180deg, rgb(var(--surface-raised) / 0.94), rgb(var(--surface-glass) / 0.86));
+      border-color: rgb(var(--line) / 0.72);
+      box-shadow:
+        0 1px 0 rgb(255 255 255 / 0.06) inset,
+        0 14px 34px -24px rgb(0 0 0 / 0.65);
     }
   }
 
   .frosted-bar {
-    background: rgb(var(--surface) / 0.94);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgb(var(--line) / 0.74);
+    background: rgb(var(--surface) / 0.88);
+    backdrop-filter: blur(16px) saturate(145%);
+    -webkit-backdrop-filter: blur(16px) saturate(145%);
+    border-bottom: 1px solid rgb(var(--line) / 0.68);
   }
 
   .hairline {
-    border: 1px solid rgb(var(--line) / 0.55);
+    border: 1px solid rgb(var(--line) / 0.62);
   }
 
   .pill {
@@ -150,17 +156,17 @@
   }
 
   .btn-primary {
-    background: rgb(var(--rose-deep));
+    background: linear-gradient(135deg, rgb(var(--rose)) 0%, rgb(var(--peach-deep)) 100%);
     color: white;
-    transition: transform 160ms ease, background 160ms ease, box-shadow 160ms ease;
-    box-shadow: 0 1px 2px rgb(42 37 35 / 0.12);
+    transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+    box-shadow: 0 10px 22px -14px rgb(var(--rose) / 0.92);
   }
   .btn-primary:hover {
-    background: rgb(var(--rose));
-    box-shadow: 0 2px 6px rgb(42 37 35 / 0.14);
+    filter: saturate(1.08) brightness(1.03);
+    box-shadow: 0 16px 30px -18px rgb(var(--rose) / 0.98);
   }
   .btn-primary:active {
-    transform: scale(0.98);
+    transform: translateY(1px) scale(0.99);
   }
   .btn-primary:disabled {
     opacity: 0.55;
@@ -169,25 +175,26 @@
   }
 
   .btn-ghost {
-    background: rgb(var(--surface-raised) / 0.84);
-    color: rgb(var(--ink));
-    border: 1px solid rgb(var(--line) / 0.74);
-    transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+    background: rgb(var(--surface-raised) / 0.78);
+    color: rgb(var(--ink-soft));
+    border: 1px solid rgb(var(--line) / 0.72);
+    transition: transform 160ms ease, background 160ms ease, border-color 160ms ease, color 160ms ease;
   }
   .btn-ghost:hover {
     background: rgb(var(--surface-raised));
-    border-color: rgb(var(--ink-muted) / 0.28);
+    border-color: rgb(var(--rose) / 0.35);
+    color: rgb(var(--rose-deep));
   }
   .btn-ghost:active {
-    transform: scale(0.98);
+    transform: translateY(1px) scale(0.99);
   }
 
   .input-field {
     width: 100%;
-    background: rgb(var(--surface-raised) / 0.94);
+    background: rgb(var(--surface-raised) / 0.88);
     border: 1px solid rgb(var(--line) / 0.82);
-    border-radius: 0.85rem;
-    padding: 0.78rem 0.9rem;
+    border-radius: 1.1rem;
+    padding: 0.85rem 1rem;
     font-size: 1rem;
     color: rgb(var(--ink));
     transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
@@ -195,15 +202,15 @@
   .input-field:focus {
     outline: none;
     border-color: rgb(var(--focus) / 0.72);
-    box-shadow: 0 0 0 3px rgb(var(--focus) / 0.2);
+    box-shadow: 0 0 0 4px rgb(var(--focus) / 0.18);
   }
   .input-field::placeholder {
-    color: rgb(var(--ink-muted) / 0.92);
+    color: rgb(var(--ink-muted) / 0.86);
   }
 
   .focus-ring:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgb(var(--focus) / 0.32);
+    box-shadow: 0 0 0 4px rgb(var(--focus) / 0.28);
   }
 
   .scroll-pad-bottom {

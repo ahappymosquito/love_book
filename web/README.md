@@ -42,7 +42,7 @@ npm run start
 
 | 路由 | 说明 |
 | --- | --- |
-| `/` | 三维小狗背景 + 克制登录表单，支持 `?token=` 或 `#token=` 自动登录 |
+| `/` | 三维小狗背景 + 明亮手账感登录表单，支持 `?token=` 或 `#token=` 自动登录 |
 | `/admin` | 管理控制台：先用 admin key 验证，再创建配对、选择 token 有效期、复制 token / 入口链接；Clipboard API 失败时自动降级复制 |
 | `/timeline` | 当前用户的事件流，含纪念日、语录、todo / 周期入口和月份分组 |
 | `/timeline/[id]` | 事件详情，合并的内容流（评论 / 语音气泡 / 图片缩略），底部输入栏支持文字 / 按住说话 / 图片 |
@@ -52,10 +52,10 @@ npm run start
 
 ## 设计基线
 
-- 产品默认按根目录 [`PRODUCT.md`](../PRODUCT.md) 和 [`DESIGN.md`](../DESIGN.md) 执行，气质为“亲密、安静、可信”。
-- 中性背景 + 玫瑰色主操作 / 选中状态，避免大面积粉色渐变、装饰玻璃拟态、过圆卡片和厚阴影。
-- Inter + Noto Sans SC via `next/font/google`；`font-display` 也指向克制 sans-serif 栈。
-- `glass-card` 是普通高可读面板：清晰边界、紧凑阴影、浅色/深色模式同步。
+- 产品默认按根目录 [`PRODUCT.md`](../PRODUCT.md) 和 [`DESIGN.md`](../DESIGN.md) 执行，气质为“活力、可爱、热情、可信”。
+- 莓果粉主操作、橙色热情重点、薄荷正向状态、奶油色可读面板，避免清冷灰后台和低对比彩色文本。
+- Inter + Noto Sans SC via `next/font/google`；`font-display` 指向友好的 sans-serif 栈。
+- `glass-card` 是明亮手账面板：温暖边界、软彩色阴影、浅色/深色模式同步。
 - 触控目标 ≥44px，焦点状态可见，遵守 `prefers-reduced-motion`。
 
 ## 主要实现点

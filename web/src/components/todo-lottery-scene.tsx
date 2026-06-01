@@ -40,7 +40,7 @@ export function TodoLotteryScene({ spinning }: { spinning: boolean }) {
   }, []);
   const active = spinning && !reducedMotion;
   return (
-    <div className="h-40 w-full overflow-hidden rounded-2xl bg-surface-raised/70 hairline" aria-hidden="true">
+    <div className="h-40 w-full overflow-hidden rounded-2xl bg-peach/18 hairline" aria-hidden="true">
       <Canvas camera={{ position: [0, 0, 4], fov: 42 }} dpr={[1, 1.6]}>
         <ambientLight intensity={1.8} />
         <pointLight position={[3, 3, 4]} intensity={2.8} />

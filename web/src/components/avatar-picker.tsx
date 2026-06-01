@@ -85,7 +85,7 @@ export function AvatarPicker({
                   type="button"
                   onClick={onDeleteImage}
                   disabled={!hasImage || uploading || !onDeleteImage}
-                  className="min-h-12 rounded-2xl bg-surface-raised/70 hairline text-ink-soft transition hover:bg-cream-deep/70 disabled:opacity-45 focus-ring inline-flex items-center justify-center gap-2 font-sc text-sm"
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-peach/16 font-sc text-sm text-ink-soft transition hover:bg-peach/26 disabled:opacity-45 focus-ring hairline"
                 >
                   <Trash2 className="h-4 w-4" />
                   清除图片
@@ -116,7 +116,7 @@ export function AvatarPicker({
                     }}
                     className={cn(
                       "h-16 w-full rounded-2xl text-3xl grid place-items-center transition-all focus-ring",
-                      "bg-surface-raised/70 hairline",
+                      "bg-peach/12 hairline",
                       active
                         ? "ring-2 ring-rose ring-offset-2 ring-offset-cream scale-[1.03]"
                         : "hover:scale-[1.04] active:scale-95",

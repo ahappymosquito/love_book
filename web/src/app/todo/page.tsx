@@ -1,6 +1,6 @@
 "use client";
 
-// Pair-shared todo board with restrained date scheduling, AMap restaurant parsing, lottery, and check-in details.
+// Pair-shared todo board with lively date scheduling, AMap restaurant parsing, lottery, and check-in details.
 
 import Link from "next/link";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
@@ -170,7 +170,7 @@ function TodoInner() {
           />
         </section>
 
-        <section className="mb-5 rounded-3xl bg-surface-raised/90 p-4 hairline">
+        <section className="mb-5 rounded-3xl bg-peach/18 p-4 hairline">
           <div className="mb-3 flex items-center gap-2">
             <CalendarDays className="h-4 w-4 text-rose-deep" />
             <h2 className="font-display text-lg font-semibold text-ink">{selectedDate} 的安排</h2>
@@ -187,7 +187,7 @@ function TodoInner() {
                     key={schedule.id}
                     type="button"
                     onClick={() => removeSchedule(schedule.id)}
-                    className="pill inline-flex min-h-10 items-center gap-1.5 bg-rose/10 text-rose-deep focus-ring"
+                    className="pill inline-flex min-h-10 items-center gap-1.5 bg-peach/30 text-rose-deep focus-ring"
                     aria-label={`移除 ${item.title}`}
                   >
                     {item.category === "food" ? <Utensils className="h-3.5 w-3.5" /> : <Music2 className="h-3.5 w-3.5" />}
@@ -284,7 +284,7 @@ function DateBoard({
               onClick={() => onPick(date)}
               className={cn(
                 "relative grid aspect-square min-h-11 place-items-center rounded-2xl font-sc text-sm transition focus-ring",
-                selected ? "bg-rose text-white shadow-soft" : "bg-surface-raised/90 text-ink hover:bg-surface-raised",
+                selected ? "bg-rose text-white shadow-soft" : "bg-surface-raised/90 text-ink hover:bg-peach/16",
                 hasSchedule && !selected ? "ring-2 ring-rose/35 text-rose-deep" : "",
               )}
             >
@@ -332,7 +332,7 @@ function TodoSection({
         aria-expanded={expanded}
       >
         <span className="flex items-center gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-2xl bg-rose/12 text-rose-deep">{icon}</span>
+          <span className="grid h-10 w-10 place-items-center rounded-2xl bg-peach/28 text-rose-deep">{icon}</span>
           <span>
             <span className="block font-display text-lg font-semibold text-ink">{title}</span>
             <span className="font-sc text-xs text-ink-muted">{items.length} 个项目</span>
@@ -344,7 +344,7 @@ function TodoSection({
         <div className="space-y-3 border-t border-line/60 p-4">
           {extra}
           {items.length === 0 ? (
-            <p className="rounded-2xl bg-surface-raised/55 p-4 font-sc text-sm text-ink-muted">
+            <p className="rounded-2xl bg-peach/14 p-4 font-sc text-sm text-ink-muted">
               {category === "food" ? "还没有餐厅，先搜索一家想吃的。" : "还没有想玩的项目。"}
             </p>
           ) : (
@@ -383,15 +383,15 @@ function TodoItemCard({
 }) {
   const restaurant = item.restaurant;
   return (
-    <article className="rounded-2xl bg-surface-raised/70 p-4 hairline">
+    <article className="rounded-2xl bg-surface-raised/82 p-4 transition hover:bg-peach/12 hairline">
       <div className="flex items-start justify-between gap-3">
         <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left focus-ring rounded-xl">
           <h3 className="font-display text-base font-semibold leading-tight text-ink">{item.title}</h3>
           {restaurant ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
               <StatusPill status={restaurant.parse_status} />
-              {restaurant.per_capita != null && <span className="pill bg-cream-deep/70 text-ink-soft">人均 {restaurant.per_capita}</span>}
-              {item.checked_in && <span className="pill bg-sage/20 text-ink-soft">已打卡</span>}
+              {restaurant.per_capita != null && <span className="pill bg-peach/24 text-ink-soft">人均 {restaurant.per_capita}</span>}
+              {item.checked_in && <span className="pill bg-sage/22 text-ink-soft">已打卡</span>}
             </div>
           ) : item.note ? (
             <p className="mt-1 line-clamp-2 font-sc text-sm text-ink-soft">{item.note}</p>
@@ -423,9 +423,9 @@ function TodoItemCard({
 }
 
 function StatusPill({ status }: { status: string }) {
-  if (status === "resolved") return <span className="pill bg-sage/20 text-ink-soft">已完成解析</span>;
+  if (status === "resolved") return <span className="pill bg-sage/22 text-ink-soft">已完成解析</span>;
   if (status === "failed") return <span className="pill bg-red-100 text-red-700">解析失败</span>;
-  return <span className="pill bg-cream-deep/70 text-ink-muted">解析中</span>;
+  return <span className="pill bg-peach/20 text-ink-muted">解析中</span>;
 }
 
 function PlayCreator({ onCreated }: { onCreated: () => void }) {
@@ -489,7 +489,7 @@ function RestaurantCreator({ onCreated }: { onCreated: () => void }) {
   }
 
   return (
-    <div className="rounded-2xl bg-surface-raised/60 p-3 hairline">
+    <div className="rounded-2xl bg-peach/14 p-3 hairline">
       <form onSubmit={search} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_120px_48px]">
         <input className="input-field" value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索餐厅名或关键词" maxLength={100} />
         <input className="input-field" value={city} onChange={(event) => setCity(event.target.value)} placeholder="城市" maxLength={100} />
@@ -504,7 +504,7 @@ function RestaurantCreator({ onCreated }: { onCreated: () => void }) {
               type="button"
               key={`${candidate.amap_poi_id || candidate.name}-${index}`}
               onClick={() => setSelected(candidate)}
-              className={cn("w-full rounded-2xl p-3 text-left font-sc transition hairline focus-ring", selected === candidate ? "bg-rose/10 text-rose-deep" : "bg-white/55 text-ink-soft hover:bg-white/80")}
+              className={cn("w-full rounded-2xl p-3 text-left font-sc transition hairline focus-ring", selected === candidate ? "bg-peach/28 text-rose-deep" : "bg-white/60 text-ink-soft hover:bg-peach/16")}
             >
               <span className="block font-medium text-ink">{candidate.name}</span>
               <span className="mt-1 block text-xs">{candidate.address || candidate.city || "暂无地址"}</span>
@@ -586,7 +586,7 @@ function RestaurantLottery({ onCreated, onOpen }: { onCreated: () => void; onOpe
         <SegmentedBudget value={budget} onChange={setBudget} />
         <div className="grid grid-cols-2 gap-2">
           {[1, 3, 5, 10].map((value) => (
-            <button key={value} type="button" onClick={() => locate(value)} className={cn("btn-ghost min-h-11 rounded-2xl px-3 font-sc text-sm focus-ring", radius === value && "bg-rose/10 text-rose-deep")}>
+            <button key={value} type="button" onClick={() => locate(value)} className={cn("btn-ghost min-h-11 rounded-2xl px-3 font-sc text-sm focus-ring", radius === value && "bg-peach/28 text-rose-deep")}>
               附近 {value}km
             </button>
           ))}
@@ -597,13 +597,13 @@ function RestaurantLottery({ onCreated, onOpen }: { onCreated: () => void; onOpe
           开始抽
         </button>
         {winner && (
-          <button type="button" onClick={() => onOpen(winner.id)} className="w-full rounded-2xl bg-surface-raised/75 p-4 text-left hairline focus-ring">
+          <button type="button" onClick={() => onOpen(winner.id)} className="w-full rounded-2xl bg-peach/18 p-4 text-left hairline focus-ring">
             <span className="font-display text-base font-semibold text-ink">{winner.title}</span>
             <span className="mt-1 block font-sc text-xs text-ink-muted">点开查看详情</span>
           </button>
         )}
         {candidate && (
-          <div className="rounded-2xl bg-surface-raised/75 p-4 hairline">
+          <div className="rounded-2xl bg-peach/18 p-4 hairline">
             <p className="font-display text-base font-semibold text-ink">{candidate.name}</p>
             <p className="mt-1 font-sc text-xs text-ink-muted">{candidate.address || candidate.city}</p>
             <button type="button" onClick={saveCandidate} className="btn-primary mt-3 min-h-11 rounded-2xl px-4 font-sc text-sm focus-ring">保存这家</button>
@@ -626,7 +626,7 @@ function SegmentedBudget({ value, onChange }: { value: [number | null, number | 
       {options.map(([label, option]) => {
         const selected = value[0] === option[0] && value[1] === option[1];
         return (
-          <button key={label} type="button" onClick={() => onChange(option)} className={cn("btn-ghost min-h-11 rounded-2xl px-3 font-sc text-sm focus-ring", selected && "bg-rose/10 text-rose-deep")}>
+          <button key={label} type="button" onClick={() => onChange(option)} className={cn("btn-ghost min-h-11 rounded-2xl px-3 font-sc text-sm focus-ring", selected && "bg-peach/28 text-rose-deep")}>
             {label}
           </button>
         );
@@ -694,11 +694,11 @@ function TodoDetailPanel({ itemId, onClose, onChanged }: { itemId: number; onClo
               <div>
                 <h3 className="mb-2 font-sc text-sm font-medium text-ink">双方评论</h3>
                 {detail.comments.length === 0 ? (
-                  <p className="rounded-2xl bg-cream-deep/45 p-4 font-sc text-sm text-ink-muted">还没有评论，写一句就算完成一次打卡。</p>
+                  <p className="rounded-2xl bg-peach/16 p-4 font-sc text-sm text-ink-muted">还没有评论，写一句就算完成一次打卡。</p>
                 ) : (
                   <ul className="space-y-2">
                     {detail.comments.map((item) => (
-                      <li key={item.id} className="rounded-2xl bg-cream-deep/45 p-4">
+                      <li key={item.id} className="rounded-2xl bg-peach/16 p-4">
                         <p className="whitespace-pre-wrap break-words font-sc text-sm text-ink">{item.text}</p>
                         <p className="mt-2 font-sc text-[11px] text-ink-muted">{formatRelative(item.created_at)}</p>
                       </li>
@@ -709,7 +709,7 @@ function TodoDetailPanel({ itemId, onClose, onChanged }: { itemId: number; onClo
               <div>
                 <h3 className="mb-2 font-sc text-sm font-medium text-ink">照片</h3>
                 {detail.images.length === 0 ? (
-                  <p className="rounded-2xl bg-cream-deep/45 p-4 font-sc text-sm text-ink-muted">还没有照片。</p>
+                  <p className="rounded-2xl bg-peach/16 p-4 font-sc text-sm text-ink-muted">还没有照片。</p>
                 ) : (
                   <div className="grid grid-cols-3 gap-2">
                     {detail.images.map((image) => <TodoImageThumb key={image.id} image={image} />)}

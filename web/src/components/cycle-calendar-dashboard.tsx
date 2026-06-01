@@ -1,6 +1,6 @@
 "use client";
 
-// CycleCalendarDashboard implements the authenticated shared pair cycle calendar with restrained dashboard layout,
+// CycleCalendarDashboard implements the authenticated shared pair cycle calendar with warm scrapbook dashboard layout,
 // reminder timing settings, filters, statistics, quick daily logging, and mobile detail panels backed by /cycles.
 
 import Link from "next/link";
@@ -111,7 +111,7 @@ const phaseMeta: Record<CyclePhase, { name: string; short: string; desc: string;
     name: "未判断",
     short: "未",
     desc: "等待更多记录",
-    chip: "bg-cream-deep/70 text-ink-soft",
+    chip: "bg-peach/18 text-ink-soft",
     band: "bg-transparent",
     dot: "bg-line",
   },
@@ -470,7 +470,7 @@ function CalendarToolbar({
           今天
         </Button>
       </div>
-      <div className="grid grid-cols-3 rounded-2xl bg-cream-deep/55 p-1">
+      <div className="grid grid-cols-3 rounded-2xl bg-peach/18 p-1">
         {[
           ["month", CalendarDays, "月视图"],
           ["week", Moon, "周视图"],
@@ -522,7 +522,7 @@ export function HeaderSummaryCards({
               <p className="mt-2 font-display text-xl font-semibold leading-tight text-ink">{item.value}</p>
               <p className="mt-1 font-sc text-sm text-ink-soft">{item.hint}</p>
             </div>
-            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-rose/10 text-rose">
+            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-peach/28 text-rose">
               <item.icon className="h-5 w-5" />
             </div>
           </div>
@@ -542,7 +542,7 @@ function ReminderSettingsCard({ value, onChange }: { value: number; onChange: (v
     <Card className="p-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-start gap-3">
-          <div className="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-rose/10 text-rose">
+          <div className="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-peach/28 text-rose">
             <Droplet className="h-5 w-5" />
           </div>
           <div>
@@ -552,7 +552,7 @@ function ReminderSettingsCard({ value, onChange }: { value: number; onChange: (v
             </p>
           </div>
         </div>
-        <label className="flex min-w-[220px] items-center gap-3 rounded-2xl bg-surface-raised/60 px-4 py-3">
+        <label className="flex min-w-[220px] items-center gap-3 rounded-2xl bg-peach/14 px-4 py-3">
           <span className="font-sc text-sm text-ink-soft">提前</span>
           <input
             type="number"
@@ -572,7 +572,7 @@ function ReminderSettingsCard({ value, onChange }: { value: number; onChange: (v
 export function FilterBar({ filters, onChange }: { filters: FilterState; onChange: (filters: FilterState) => void }) {
   const active = Boolean(filters.symptom || filters.hasNote || filters.periodOnly);
   return (
-    <div className="flex flex-col gap-3 rounded-3xl border border-line/70 bg-surface-raised/80 p-3 sm:flex-row sm:items-center">
+    <div className="flex flex-col gap-3 rounded-3xl border border-line/70 bg-peach/12 p-3 sm:flex-row sm:items-center">
       <div className="flex items-center gap-2 text-sm font-medium text-ink">
         <Filter className="h-4 w-4 text-rose" />
         筛选
@@ -615,7 +615,7 @@ function Toggle({ active, children, onClick }: { active: boolean; children: Reac
       onClick={onClick}
       className={cn(
         "min-h-11 whitespace-nowrap rounded-2xl border px-3 text-sm transition focus-ring",
-        active ? "border-rose/50 bg-rose/12 text-rose-deep" : "border-line/70 bg-surface text-ink-soft",
+        active ? "border-rose/50 bg-peach/28 text-rose-deep" : "border-line/70 bg-surface text-ink-soft",
       )}
     >
       {children}
@@ -650,7 +650,7 @@ export function CalendarMonthView({
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-y-1 overflow-hidden rounded-3xl border border-line/70 bg-surface-raised/80 p-1">
+      <div className="grid grid-cols-7 gap-y-1 overflow-hidden rounded-3xl border border-line/70 bg-surface-raised/88 p-1">
         {days.map((day) => {
           const key = toISODate(day);
           return (
@@ -764,7 +764,7 @@ export function PhaseLegend() {
         {(Object.keys(phaseMeta) as CyclePhase[])
           .filter((phase) => phase !== "unknown")
           .map((phase) => (
-            <div key={phase} className="flex items-start gap-3 rounded-2xl bg-surface-raised/55 p-3">
+            <div key={phase} className="flex items-start gap-3 rounded-2xl bg-peach/12 p-3">
               <span className={cn("mt-1 h-4 w-4 rounded-md", phaseMeta[phase].band)} />
               <div>
                 <p className="font-sc text-sm font-medium text-ink">{phaseMeta[phase].name}</p>
@@ -854,7 +854,7 @@ function InfoGrid({ log }: { log: DailyLog }) {
   return (
     <dl className="grid gap-3">
       {items.map(([label, value]) => (
-        <div key={label} className="rounded-2xl bg-surface-raised/60 p-3">
+        <div key={label} className="rounded-2xl bg-peach/12 p-3">
           <dt className="font-sc text-xs text-ink-muted">{label}</dt>
           <dd className="mt-1 font-sc text-sm leading-relaxed text-ink">{value}</dd>
         </div>
@@ -1049,7 +1049,7 @@ export function CycleTimeline({ stats }: { stats: CycleDashboardOut["stats"] }) 
         <CardDescription>横向时间轴展示一个完整周期，圆点为今天。</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="relative h-4 overflow-hidden rounded-full bg-cream-deep">
+        <div className="relative h-4 overflow-hidden rounded-full bg-peach/20">
           <div className="flex h-full">
             {segments.map((seg) => (
               <div key={seg.phase} className={phaseMeta[seg.phase].band} style={{ width: `${(seg.days / stats.average_cycle_length) * 100}%` }} />
@@ -1100,7 +1100,7 @@ export function EmptyState({ onStart }: { onStart: () => void }) {
   return (
     <Card className="overflow-hidden p-6">
       <div className="grid gap-5 md:grid-cols-[180px_1fr] md:items-center">
-        <div className="relative h-36 overflow-hidden rounded-3xl bg-cream-deep/80">
+        <div className="relative h-36 overflow-hidden rounded-3xl bg-peach/20">
           <div className="absolute left-6 top-8 h-20 w-20 rounded-full border-8 border-white/75" />
           <div className="absolute bottom-7 right-6 h-10 w-10 rounded-full bg-violet-300/70" />
           <div className="absolute inset-x-5 bottom-5 h-3 rounded-full bg-white/70" />
@@ -1126,7 +1126,7 @@ function RecordList({ logs, filteredDates, onSelect }: { logs: DailyLog[]; filte
   const recorded = logs.filter((log) => log.source === "recorded");
   if (!recorded.length) {
     return (
-      <div className="grid min-h-[280px] place-items-center rounded-3xl bg-surface-raised/80 text-center">
+      <div className="grid min-h-[280px] place-items-center rounded-3xl bg-peach/14 text-center">
         <div>
           <Search className="mx-auto h-6 w-6 text-ink-muted" />
           <p className="mt-3 font-sc text-sm text-ink-soft">当前范围暂无实际记录</p>
@@ -1142,7 +1142,7 @@ function RecordList({ logs, filteredDates, onSelect }: { logs: DailyLog[]; filte
           type="button"
           onClick={() => onSelect(log.date)}
           className={cn(
-            "flex w-full items-center justify-between rounded-2xl border border-line/60 bg-surface-raised/60 p-4 text-left transition hover:-translate-y-0.5 focus-ring",
+            "flex w-full items-center justify-between rounded-2xl border border-line/60 bg-surface-raised/78 p-4 text-left transition hover:bg-peach/12 focus-ring",
             filteredDates.has(log.date) && "ring-2 ring-rose/40",
           )}
         >

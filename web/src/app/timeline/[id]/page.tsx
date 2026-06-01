@@ -1,6 +1,6 @@
 "use client";
 
-// Event detail screen with restrained reading layout, avatar-aware authors, stable-hover reactions, media stream, and submission state.
+// Event detail screen with warm scrapbook reading layout, avatar-aware authors, stable-hover reactions, media stream, and submission state.
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -320,14 +320,14 @@ function EventDetailInner() {
           <div className="flex items-center gap-2 flex-wrap">
             <VisibilityBadge mode={event.visibility_mode} />
             {event.occurred_at && (
-              <span className="pill bg-cream-deep/70 text-ink-soft inline-flex items-center gap-1.5">
+              <span className="pill inline-flex items-center gap-1.5 bg-peach/22 text-ink-soft">
                 <CalendarHeart className="h-3 w-3" />
                 {formatAbsolute(event.occurred_at)}
               </span>
             )}
           </div>
 
-          <h1 className="mt-3 font-display text-2xl font-semibold leading-snug text-ink sm:text-3xl">
+          <h1 className="mt-3 font-display text-2xl font-bold leading-snug text-ink sm:text-3xl">
             {event.title}
           </h1>
 
@@ -367,7 +367,7 @@ function EventDetailInner() {
         </motion.section>
 
         {locked && (
-          <div className="mt-4 rounded-2xl bg-rose/8 hairline px-4 py-3 flex items-start gap-3">
+          <div className="mt-4 flex items-start gap-3 rounded-2xl bg-peach/20 px-4 py-3 hairline">
             <Lock className="h-4 w-4 text-rose-deep mt-0.5" />
             <p className="font-sc text-xs text-ink-soft leading-relaxed">
               这是一条「双方提交后可见」的记录。等你们都写下一点，就会一起解开。
@@ -376,7 +376,7 @@ function EventDetailInner() {
         )}
 
         {submission.unlocked && event.contents.comments.length + event.contents.voices.length + event.contents.images.length > 0 && (
-          <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-sage/15 text-sage text-xs font-sc">
+          <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-sage/18 px-4 py-2 font-sc text-xs text-ink-soft">
             <Sparkles className="h-3 w-3" />
             已解锁双方的全部内容
           </div>
@@ -454,8 +454,8 @@ function EventDetailInner() {
                         className={cn(
                           "px-4 py-2.5 max-w-full font-sc text-[15px] leading-relaxed whitespace-pre-wrap break-words opacity-70",
                           isMine
-                            ? "rounded-2xl rounded-tr-md bg-rose text-white"
-                            : "rounded-2xl rounded-tl-md bg-surface-raised/85 hairline text-ink",
+                            ? "rounded-2xl rounded-tr-md bg-rose text-white shadow-soft"
+                            : "rounded-2xl rounded-tl-md bg-peach/18 text-ink hairline",
                         )}
                       >
                         {item.data.text}
@@ -616,8 +616,8 @@ function CommentBubble({
             "px-4 py-2.5 max-w-full font-sc text-[15px] leading-relaxed whitespace-pre-wrap break-words select-text",
             pending && "opacity-70",
             isMine
-              ? "rounded-2xl rounded-tr-md bg-rose text-white"
-              : "rounded-2xl rounded-tl-md bg-surface-raised/85 hairline text-ink",
+              ? "rounded-2xl rounded-tr-md bg-rose text-white shadow-soft"
+              : "rounded-2xl rounded-tl-md bg-peach/18 text-ink hairline",
           )}
         >
           {text}
@@ -667,7 +667,7 @@ function CommentBubble({
                   "inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 text-xs font-medium transition-colors focus-ring",
                   reaction.reacted_by_me
                     ? "bg-rose/18 text-rose-deep"
-                    : "bg-surface-raised/80 text-ink-soft hairline",
+                    : "bg-peach/20 text-ink-soft hairline",
                   canReact ? "cursor-pointer hover:bg-rose/12" : "cursor-default",
                 )}
                 aria-pressed={reaction.reacted_by_me}
@@ -744,7 +744,7 @@ function ReactionIconButton({
       className={cn(
         "grid place-items-center rounded-full transition-colors focus-ring",
         large ? "h-14 w-14" : "h-9 w-9",
-        selected ? "bg-rose text-white" : "bg-cream-deep/70 text-ink-soft hover:bg-rose/12 hover:text-rose-deep",
+        selected ? "bg-rose text-white" : "bg-peach/24 text-ink-soft hover:bg-rose/12 hover:text-rose-deep",
       )}
       aria-label={reaction.label}
       aria-pressed={selected}
@@ -768,7 +768,7 @@ function SubmissionTile({
     <div
       className={cn(
         "rounded-2xl p-4 hairline",
-        submitted ? "bg-sage/10" : "bg-cream-deep/40",
+        submitted ? "bg-sage/18" : "bg-peach/18",
       )}
     >
       <div className="flex items-center gap-3">

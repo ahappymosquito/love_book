@@ -1,6 +1,6 @@
 "use client";
 
-// Admin console with restrained panels for pairs, tokens, contact details, AI model config, avatar-aware users, and clipboard-safe entry links.
+// Admin console with lively scrapbook panels for pairs, tokens, contact details, AI model config, avatar-aware users, and clipboard-safe entry links.
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -204,7 +204,7 @@ export default function AdminPage() {
               className="glass-card rounded-3xl p-5 sm:p-6"
             >
               <div className="flex items-center gap-3 mb-1">
-                <div className="h-10 w-10 grid place-items-center rounded-2xl bg-rose/12 text-rose-deep">
+                <div className="h-10 w-10 grid place-items-center rounded-2xl bg-peach/30 text-rose-deep">
                   <KeyRound className="h-5 w-5" />
                 </div>
                 <h2 className="font-display text-xl font-semibold text-ink">管理员校验</h2>
@@ -248,7 +248,7 @@ export default function AdminPage() {
               {/* Create pair */}
               <section className="glass-card rounded-3xl p-5 sm:p-6">
                 <div className="flex items-center gap-3 mb-5">
-                  <div className="h-10 w-10 grid place-items-center rounded-2xl bg-rose/12 text-rose-deep">
+                  <div className="h-10 w-10 grid place-items-center rounded-2xl bg-peach/30 text-rose-deep">
                     <Plus className="h-5 w-5" />
                   </div>
                   <div>
@@ -281,7 +281,7 @@ export default function AdminPage() {
                     />
                   </div>
 
-                  <div className="rounded-2xl bg-surface-raised/65 hairline p-4 space-y-2">
+                  <div className="rounded-2xl bg-peach/14 p-4 space-y-2 hairline">
                     <label className="flex items-center gap-2 text-ink font-sc text-sm font-medium">
                       <CalendarHeart className="h-4 w-4 text-rose-deep" />
                       情侣日期
@@ -297,7 +297,7 @@ export default function AdminPage() {
                     </p>
                   </div>
 
-                  <div className="rounded-2xl bg-surface-raised/65 hairline p-4 space-y-3">
+                  <div className="rounded-2xl bg-peach/14 p-4 space-y-3 hairline">
                     <div className="flex items-center gap-2 text-ink">
                       <CalendarClock className="h-4 w-4 text-rose-deep" />
                       <span className="font-sc text-sm font-medium">token 有效期</span>
@@ -306,7 +306,7 @@ export default function AdminPage() {
                       <label
                         className={cn(
                           "rounded-2xl hairline px-4 py-3 cursor-pointer transition",
-                          tokenExpiryMode === "never" ? "bg-rose/10 text-rose-deep" : "bg-cream-deep/30 text-ink-soft",
+                          tokenExpiryMode === "never" ? "bg-peach/28 text-rose-deep" : "bg-peach/12 text-ink-soft",
                         )}
                       >
                         <input
@@ -323,7 +323,7 @@ export default function AdminPage() {
                       <label
                         className={cn(
                           "rounded-2xl hairline px-4 py-3 cursor-pointer transition",
-                          tokenExpiryMode === "custom" ? "bg-rose/10 text-rose-deep" : "bg-cream-deep/30 text-ink-soft",
+                          tokenExpiryMode === "custom" ? "bg-peach/28 text-rose-deep" : "bg-peach/12 text-ink-soft",
                         )}
                       >
                         <input
@@ -381,7 +381,7 @@ export default function AdminPage() {
                       exit={{ opacity: 0, y: 8, height: 0 }}
                       className="mt-6 overflow-hidden"
                     >
-                      <div className="rounded-2xl bg-cream-deep/60 hairline p-5 space-y-4">
+                      <div className="space-y-4 rounded-2xl bg-peach/18 p-5 hairline">
                         <div className="flex items-center gap-2 font-sc text-sm text-rose-deep">
                           <Check className="h-4 w-4" />
                           <span>配对已就绪 · pair #{created.pair_id}</span>
@@ -577,7 +577,7 @@ function AIConfigPanel() {
     <section className="glass-card rounded-3xl p-5 sm:p-6">
       <div className="mb-5 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-2xl bg-rose/12 text-rose-deep">
+          <div className="grid h-10 w-10 place-items-center rounded-2xl bg-peach/30 text-rose-deep">
             <Bot className="h-5 w-5" />
           </div>
           <div>
@@ -591,7 +591,7 @@ function AIConfigPanel() {
       </div>
 
       {config && (
-        <div className="mb-4 grid gap-2 rounded-2xl bg-surface-raised/65 p-4 text-xs font-sc text-ink-soft hairline sm:grid-cols-2">
+        <div className="mb-4 grid gap-2 rounded-2xl bg-peach/12 p-4 text-xs font-sc text-ink-soft hairline sm:grid-cols-2">
           <span>当前协议：{config.protocol === "openai" ? "OpenAI" : "Anthropic"}</span>
           <span>当前模型：{config.selected_model || "未选择"}</span>
           <span>LLM Key: {config.has_api_key ? config.api_key_preview : "未配置"}</span>
@@ -613,7 +613,7 @@ function AIConfigPanel() {
               }}
               className={cn(
                 "min-h-11 rounded-2xl px-4 font-sc text-sm hairline focus-ring",
-                protocol === item ? "bg-rose/10 text-rose-deep" : "bg-surface-raised/65 text-ink-soft",
+                protocol === item ? "bg-peach/28 text-rose-deep" : "bg-surface-raised/72 text-ink-soft",
               )}
             >
               {item === "openai" ? "OpenAI 协议" : "Anthropic 协议"}
@@ -738,7 +738,7 @@ function UserField({
           type="button"
           onClick={onPickAvatar}
           className={cn(
-            "flex-none h-12 w-12 rounded-2xl text-2xl grid place-items-center hairline bg-surface-raised/70",
+            "flex-none h-12 w-12 rounded-2xl text-2xl grid place-items-center hairline bg-peach/18",
             "transition hover:scale-[1.04] focus-ring",
           )}
           aria-label={`${label} 的头像`}
@@ -787,14 +787,14 @@ function TokenCard({
   onCopy: (text: string, label: string) => void;
 }) {
   return (
-    <div className="rounded-2xl bg-surface-raised/80 hairline p-4 space-y-3">
+    <div className="space-y-3 rounded-2xl bg-peach/12 p-4 hairline">
       <div className="flex items-center gap-2 min-w-0">
         <Avatar user={user} size="sm" />
         <span className="truncate font-display text-base font-semibold text-ink">
           {user.display_name}
         </span>
       </div>
-      <p className="font-mono text-[11px] break-all text-ink-soft bg-cream-deep/40 rounded-xl p-2 leading-relaxed">
+      <p className="rounded-xl bg-peach/16 p-2 font-mono text-[11px] leading-relaxed text-ink-soft break-all">
         {token}
       </p>
       <p className={cn("font-sc text-[11px]", tokenExpiryClass(expiresAt))}>
@@ -856,7 +856,7 @@ function PairRow({
   }
 
   return (
-    <li className="glass-card space-y-3 rounded-3xl p-5 transition sm:p-6 hover:border-ink-muted/30">
+    <li className="glass-card space-y-3 rounded-3xl p-5 transition sm:p-6 hover:border-rose/35">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
           <Avatar user={pair.user_a} size="md" />

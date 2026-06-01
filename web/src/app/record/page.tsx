@@ -1,6 +1,6 @@
 "use client";
 
-// Admin login record page with restrained verification, avatar-aware filters, and dense log cards.
+// Admin login record page with lively verification, avatar-aware filters, and dense log cards.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -137,7 +137,7 @@ export default function RecordPage() {
             className="glass-card mx-auto max-w-md rounded-3xl p-5 sm:p-6"
           >
             <div className="flex items-center gap-3 mb-1">
-              <div className="h-10 w-10 grid place-items-center rounded-2xl bg-rose/12 text-rose-deep">
+              <div className="h-10 w-10 grid place-items-center rounded-2xl bg-peach/30 text-rose-deep">
                 <KeyRound className="h-5 w-5" />
               </div>
               <h2 className="font-display text-xl font-semibold text-ink">管理员校验</h2>
@@ -239,7 +239,7 @@ function FilterChip({
         "rounded-full px-3 py-1.5 text-xs font-sc transition focus-ring",
         active
           ? "bg-rose text-white shadow-soft"
-          : "bg-cream-deep/40 text-ink-soft hover:bg-cream-deep/70",
+          : "bg-peach/16 text-ink-soft hover:bg-peach/26",
       )}
     >
       {label}
@@ -255,13 +255,13 @@ function LogCard({ log }: { log: LoginLogOut }) {
   const location =
     [log.country, log.region, log.city].filter(Boolean).join(" · ") || "未知地点";
   return (
-    <li className="glass-card rounded-3xl p-5 transition sm:p-6 hover:border-ink-muted/30">
+    <li className="glass-card rounded-3xl p-5 transition sm:p-6 hover:border-rose/35">
       <div className="flex items-start gap-3 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
           {log.user ? (
             <Avatar user={log.user} size="md" />
           ) : (
-            <div className="h-12 w-12 rounded-2xl bg-cream-deep/50 grid place-items-center text-ink-muted">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-peach/18 text-ink-muted">
               ?
             </div>
           )}
@@ -301,7 +301,7 @@ function LogCard({ log }: { log: LoginLogOut }) {
           <summary className="cursor-pointer font-sc text-[11px] text-ink-muted hover:text-rose-deep">
             原始 User-Agent
           </summary>
-          <p className="mt-2 font-mono text-[11px] break-all text-ink-soft bg-cream-deep/40 rounded-xl p-3 leading-relaxed">
+          <p className="mt-2 rounded-xl bg-peach/16 p-3 font-mono text-[11px] leading-relaxed text-ink-soft break-all">
             {log.user_agent}
           </p>
         </details>
@@ -324,7 +324,7 @@ function InfoRow({
   mono?: boolean;
 }) {
   return (
-    <div className="rounded-2xl bg-surface-raised/80 px-3 py-2 hairline">
+    <div className="rounded-2xl bg-peach/12 px-3 py-2 hairline">
       <div className="flex items-center gap-1.5 text-[10px] text-ink-muted">
         {icon}
         {label}

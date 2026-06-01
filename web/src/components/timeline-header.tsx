@@ -1,6 +1,6 @@
 "use client";
 
-// Sticky app header with restrained navigation, logout, current user avatar display, emoji fallback, and private avatar image upload.
+// Sticky app header with lively scrapbook navigation, logout, current user avatar display, emoji fallback, and private avatar image upload.
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";

@@ -1,6 +1,6 @@
 "use client";
 
-// Login screen with token auto-login, admin entry, restrained 3D background, and focused diary access form.
+// Login screen with token auto-login, admin entry, lively 3D puppy background, and bright scrapbook access form.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -121,19 +121,19 @@ export default function LoginPage() {
       {/* 3D background */}
       <PuppyScene />
 
-      {/* Soft overlay keeps the 3D scene secondary to the login task. */}
-      <div className="pointer-events-none absolute inset-0 bg-cream/55 dark:bg-cream/70" />
+      {/* Warm overlay keeps the puppy visible while preserving form contrast. */}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-cream/20 via-cream/35 to-cream/70 dark:from-cream/35 dark:via-cream/55 dark:to-cream/82" />
 
       {/* Foreground content */}
       <div className="relative z-10 min-h-dvh flex flex-col px-6 pt-[calc(env(safe-area-inset-top,0px)+1rem)] pb-[calc(env(safe-area-inset-bottom,0px)+2rem)]">
-        <header className="flex items-center justify-between text-ink/80">
-          <div className="flex items-center gap-2 font-display text-base font-semibold">
+        <header className="flex items-center justify-between text-ink/85">
+          <div className="inline-flex items-center gap-2 rounded-full bg-surface-raised/70 px-3 py-2 font-display text-base font-semibold shadow-soft hairline">
             <Heart className="h-4 w-4 text-rose" fill="currentColor" />
             <span>love · book</span>
           </div>
           <Link
             href="/admin"
-            className="font-sc text-xs text-ink-muted hover:text-rose transition-colors focus-ring rounded-full px-2 py-1"
+            className="rounded-full bg-surface-raised/70 px-3 py-2 font-sc text-xs text-rose-deep transition-colors hover:bg-rose/10 focus-ring hairline"
           >
             管理员入口 →
           </Link>
@@ -147,11 +147,12 @@ export default function LoginPage() {
             className="w-full max-w-md"
           >
             <div className="mb-6 select-none text-center">
-              <h1 className="font-display text-4xl font-semibold leading-tight text-ink sm:text-5xl">
+              <p className="mb-2 font-sc text-xs font-semibold text-rose-deep">莓果小书 · 两个人专属</p>
+              <h1 className="font-display text-4xl font-bold leading-tight text-ink sm:text-5xl">
                 我们之间的小事
               </h1>
               <p className="mx-auto mt-3 max-w-sm font-sc text-sm leading-relaxed text-ink-soft">
-                两个人一起记录、安排和回看的私密日常。
+                把心动、约会和日常小计划，写成热乎乎的一本书。
               </p>
             </div>
 
@@ -199,7 +200,7 @@ export default function LoginPage() {
                 {submitting ? (
                   <>
                     <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                    正在进入
+                    正在翻开小书
                   </>
                 ) : (
                   <>

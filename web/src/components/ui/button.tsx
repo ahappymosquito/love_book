@@ -1,6 +1,6 @@
 "use client";
 
-// Shared button primitive for accessible, restrained diary UI actions across dashboards, dialogs, and forms.
+// Shared button primitive for accessible, lively scrapbook UI actions across dashboards, dialogs, and forms.
 
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
@@ -13,10 +13,10 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "btn-primary",
-        secondary: "bg-cream-deep/80 text-ink hover:bg-cream-deep",
-        outline: "border border-line/80 bg-surface-raised/90 text-ink hover:border-ink-muted/30 hover:bg-surface-raised",
-        ghost: "text-ink-soft hover:bg-ink/5 hover:text-ink",
-        danger: "bg-red-500/10 text-red-700 hover:bg-red-500/15 dark:text-red-200",
+        secondary: "bg-peach/25 text-rose-deep hover:bg-peach/35",
+        outline: "border border-line/80 bg-surface-raised/90 text-ink hover:border-rose/35 hover:bg-rose/8",
+        ghost: "text-ink-soft hover:bg-rose/8 hover:text-rose-deep",
+        danger: "bg-red-500/12 text-red-700 hover:bg-red-500/18 dark:text-red-100",
       },
       size: {
         default: "px-4 py-2.5",

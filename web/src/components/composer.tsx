@@ -253,7 +253,7 @@ export function Composer({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={disabled || recording}
-              className="h-11 w-11 flex-none grid place-items-center rounded-2xl bg-cream-deep/40 hover:bg-cream-deep/70 text-rose-deep focus-ring disabled:opacity-40"
+              className="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-peach/18 text-rose-deep hover:bg-peach/30 disabled:opacity-40 focus-ring"
               aria-label="发送图片"
             >
               <ImageIcon className="h-5 w-5" />
@@ -368,7 +368,7 @@ function RecordingBar({
       <div
         className={cn(
           "flex-1 flex items-center gap-3 px-3 py-2 rounded-2xl transition",
-          willCancel ? "bg-rose/15" : "bg-rose/10",
+          willCancel ? "bg-rose/15" : "bg-peach/18",
         )}
       >
         <span className="relative h-3 w-3 flex-none">

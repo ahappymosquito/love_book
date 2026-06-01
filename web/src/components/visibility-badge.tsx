@@ -11,8 +11,8 @@ export function VisibilityBadge({ mode }: { mode: VisibilityMode }) {
       className={cn(
         "pill inline-flex items-center gap-1.5",
         isPublic
-          ? "bg-sage/15 text-sage"
-          : "bg-rose/12 text-rose-deep dark:text-rose",
+          ? "bg-sage/18 text-ink-soft"
+          : "bg-peach/28 text-rose-deep dark:text-rose",
       )}
     >
       {isPublic ? <Eye className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
@@ -47,7 +47,7 @@ export function SubmissionBadge({
   const total =
     Number(state.current_user_submitted) + Number(state.counterpart_submitted);
   return (
-    <span className="pill inline-flex items-center gap-1.5 bg-ink/5 text-ink-soft">
+    <span className="pill inline-flex items-center gap-1.5 bg-peach/18 text-ink-soft">
       <Hourglass className="h-3 w-3" />
       {total === 0 ? "等待双方" : "等待对方提交"}
     </span>

@@ -9,10 +9,10 @@ import { cn } from "@/lib/cn";
 const badgeVariants = cva("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium", {
   variants: {
     variant: {
-      default: "bg-rose/10 text-rose-deep",
-      muted: "bg-cream-deep/80 text-ink-soft",
+      default: "bg-rose/14 text-rose-deep",
+      muted: "bg-peach/22 text-ink-soft",
       outline: "border border-line/80 bg-surface-raised/85 text-ink-soft",
-      success: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-200",
+      success: "bg-sage/18 text-ink-soft dark:text-sage",
     },
   },
   defaultVariants: {

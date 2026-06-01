@@ -1,6 +1,6 @@
 "use client";
 
-// Event creation form with restrained inputs, date selection, visibility controls, and authenticated submission.
+// Event creation form with lively scrapbook inputs, date selection, visibility controls, and authenticated submission.
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -60,9 +60,10 @@ function CreateInner() {
           className="glass-card space-y-6 rounded-3xl p-5 sm:p-6"
         >
           <div>
-            <h1 className="font-display text-2xl font-semibold leading-tight text-ink">记下这一笔</h1>
+            <p className="mb-1 font-sc text-xs font-semibold text-rose-deep">写进今天的小贴纸</p>
+            <h1 className="font-display text-2xl font-bold leading-tight text-ink">记下这一笔</h1>
             <p className="mt-2 font-sc text-sm leading-relaxed text-ink-soft">
-              标题先写清楚，细节可以慢慢补。
+              标题先写清楚，细节可以慢慢补，像在手账上贴一页。
             </p>
           </div>
 
@@ -181,15 +182,15 @@ function VisibilityCard({
       className={cn(
         "rounded-2xl p-4 text-left transition focus-ring hairline",
         active
-          ? "bg-rose/10 ring-2 ring-rose/35"
-          : "bg-surface-raised/85 hover:bg-surface-raised",
+          ? "bg-peach/24 ring-2 ring-rose/35"
+          : "bg-surface-raised/85 hover:bg-peach/14",
       )}
     >
       <div className="flex items-center gap-2 font-sc text-sm font-medium text-ink">
         <span
           className={cn(
             "h-7 w-7 grid place-items-center rounded-full",
-            active ? "bg-rose text-white" : "bg-ink/5 text-ink-soft",
+            active ? "bg-rose text-white" : "bg-peach/24 text-rose-deep",
           )}
         >
           {icon}

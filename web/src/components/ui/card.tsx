@@ -1,6 +1,6 @@
 "use client";
 
-// Shared card primitives for restrained app panels, dashboard summaries, forms, and statistics.
+// Shared card primitives for lively scrapbook panels, dashboard summaries, forms, and statistics.
 
 import * as React from "react";
 import { cn } from "@/lib/cn";

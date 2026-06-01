@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home screen showing restrained pair reminders, avatar-aware authors, todo/cycle entries, month groups, and shortcuts.
+// Timeline home screen showing lively pair reminders, avatar-aware authors, todo/cycle entries, month groups, and shortcuts.
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -256,7 +256,8 @@ function TimelineInner() {
       <div className="mx-auto max-w-5xl px-4 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)] pt-6 sm:px-6">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h2 className="font-display text-2xl font-semibold leading-tight text-ink sm:text-3xl">
+            <p className="mb-1 font-sc text-xs font-semibold text-rose-deep">今天也要收集一点甜</p>
+            <h2 className="font-display text-2xl font-bold leading-tight text-ink sm:text-3xl">
               我们的甜蜜小事
             </h2>
             <p className="mt-2 max-w-xl font-sc text-sm leading-relaxed text-ink-soft">
@@ -266,7 +267,7 @@ function TimelineInner() {
           <div className="flex flex-none items-center gap-2">
             <Link
               href="/todo"
-              className="grid h-11 w-11 place-items-center rounded-full border border-line/80 bg-surface-raised/90 text-rose-deep transition hover:bg-surface-raised focus-ring"
+              className="grid h-11 w-11 place-items-center rounded-full bg-peach/30 text-rose-deep transition hover:bg-peach/45 focus-ring hairline"
               aria-label="进入 todo 看板"
               title="todo 看板"
             >
@@ -274,7 +275,7 @@ function TimelineInner() {
             </Link>
             <Link
               href="/cycle"
-              className="grid h-11 w-11 place-items-center rounded-full border border-line/80 bg-surface-raised/90 text-rose-deep transition hover:bg-surface-raised focus-ring"
+              className="grid h-11 w-11 place-items-center rounded-full bg-sage/20 text-ink-soft transition hover:bg-sage/30 focus-ring hairline"
               aria-label="进入月经周期记录"
               title="月经周期记录"
             >
@@ -389,7 +390,7 @@ function AnniversaryCard({
     >
       <div className="min-w-0">
         <div className="flex items-start justify-between gap-3">
-          <p className="min-w-0 flex-1 break-words font-display text-xl font-semibold leading-tight text-ink sm:text-2xl">
+          <p className="min-w-0 flex-1 break-words font-display text-xl font-bold leading-tight text-ink sm:text-2xl">
             {userName} 和 {counterpartName} 在一起第 {data.days_together} 天
           </p>
           <div className="flex flex-none items-center gap-1">
@@ -397,7 +398,7 @@ function AnniversaryCard({
               type="button"
               onClick={onRefreshQuote}
               disabled={quoteRefreshing}
-              className="grid h-9 w-9 place-items-center rounded-full text-ink-muted transition hover:bg-white/70 hover:text-rose-deep disabled:cursor-not-allowed disabled:opacity-50 focus-ring"
+              className="grid h-9 w-9 place-items-center rounded-full text-rose-deep transition hover:bg-rose/10 disabled:cursor-not-allowed disabled:opacity-50 focus-ring"
               aria-label="刷新语录"
             >
               <RefreshCw className={`h-4 w-4 ${quoteRefreshing ? "animate-spin" : ""}`} />
@@ -405,7 +406,7 @@ function AnniversaryCard({
             <button
               type="button"
               onClick={quoteEditorOpen ? onCloseQuoteEditor : onOpenQuoteEditor}
-              className="grid h-9 w-9 place-items-center rounded-full text-ink-muted transition hover:bg-white/70 hover:text-rose-deep focus-ring"
+              className="grid h-9 w-9 place-items-center rounded-full text-rose-deep transition hover:bg-peach/25 focus-ring"
               aria-label={quoteEditorOpen ? "收起语录编辑" : "编辑语录库"}
             >
               {quoteEditorOpen ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
@@ -481,7 +482,7 @@ function QuoteEditor({
           quotes.map((quote) => (
             <div
               key={quote.id}
-              className="flex items-start gap-3 rounded-2xl bg-cream-deep/45 px-4 py-3"
+              className="flex items-start gap-3 rounded-2xl bg-peach/18 px-4 py-3"
             >
               <p className="min-w-0 flex-1 break-words font-sc text-sm leading-relaxed text-ink-soft">
                 {quote.text}
@@ -504,7 +505,7 @@ function QuoteEditor({
 function ReminderPill({ item }: { item: ReminderItem }) {
   const Icon = item.type === "anniversary" ? Sparkles : item.type === "love_festival" ? Gift : CalendarHeart;
   return (
-    <span className="pill bg-rose/10 text-rose-deep inline-flex items-center gap-1.5">
+    <span className="pill inline-flex items-center gap-1.5 bg-peach/28 text-rose-deep">
       <Icon className="h-3.5 w-3.5" />
       {item.label}
     </span>
@@ -531,10 +532,10 @@ function MonthEventGroup({
         aria-expanded={expanded}
       >
         <div>
-          <h3 className="font-display text-lg font-semibold leading-tight text-ink">{monthLabel(month)}</h3>
+          <h3 className="font-display text-lg font-bold leading-tight text-ink">{monthLabel(month)}</h3>
           <p className="mt-1 font-sc text-xs text-ink-muted">{events.length} 件小事</p>
         </div>
-        <span className="grid h-10 w-10 flex-none place-items-center rounded-full bg-surface-raised/70 text-ink-soft">
+        <span className="grid h-10 w-10 flex-none place-items-center rounded-full bg-rose/10 text-rose-deep">
           {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </span>
       </button>
@@ -576,7 +577,7 @@ function CycleCheckInPrompt({
         aria-label="周期记录提醒"
       >
         <div className="flex items-start gap-4">
-          <div className="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-rose/12 text-rose-deep">
+          <div className="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-peach/30 text-rose-deep">
             <Droplet className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
@@ -619,7 +620,7 @@ function EventCard({ evt, nested = false }: { evt: EventSummary; nested?: boolea
     >
       <article
         className={`rounded-3xl p-5 transition-colors group-active:translate-y-0 sm:p-6 ${
-          nested ? "bg-surface-raised/60" : "glass-card"
+          nested ? "bg-surface-raised/72 hover:bg-peach/12 hairline" : "glass-card"
         }`}
       >
         <header className="flex items-start gap-3">
@@ -631,7 +632,7 @@ function EventCard({ evt, nested = false }: { evt: EventSummary; nested?: boolea
                 {formatRelative(evt.created_at)}
               </span>
             </p>
-            <h3 className="mt-0.5 truncate font-display text-lg font-semibold leading-snug text-ink">
+            <h3 className="mt-0.5 truncate font-display text-lg font-bold leading-snug text-ink">
               {evt.title}
             </h3>
           </div>
@@ -647,7 +648,7 @@ function EventCard({ evt, nested = false }: { evt: EventSummary; nested?: boolea
           <VisibilityBadge mode={evt.visibility_mode} />
           <SubmissionBadge state={evt.submission_state} mode={evt.visibility_mode} />
           {evt.occurred_at && (
-            <span className="pill bg-cream-deep/70 text-ink-soft inline-flex items-center gap-1">
+            <span className="pill inline-flex items-center gap-1 bg-peach/22 text-ink-soft">
               <span className="h-1 w-1 rounded-full bg-rose" />
               {formatAbsolute(evt.occurred_at, false)}
             </span>
@@ -684,7 +685,7 @@ function ListSkeleton() {
 function EmptyState() {
   return (
     <div className="glass-card rounded-3xl px-6 py-12 text-center">
-      <div className="mx-auto h-14 w-14 grid place-items-center rounded-full bg-rose/10 text-rose mb-4">
+      <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-peach/30 text-rose">
         <BookHeart className="h-6 w-6" />
       </div>
       <p className="font-display text-lg font-semibold text-ink">还是空白的一页</p>

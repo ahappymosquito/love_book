@@ -14,19 +14,19 @@ The product gives two people a private shared place to write events, exchange co
 
 ## Brand Personality
 
-亲密、安静、可信. The product should feel like a private diary that has product discipline: warm enough for intimate records, quiet enough for repeated use, and reliable enough for sensitive data and admin workflows.
+活力、可爱、热情、可信. The product should feel like a bright couple scrapbook with product discipline: cheerful enough for memories and plans, playful enough to feel personal, and reliable enough for sensitive data and admin workflows.
 
 ## Anti-references
 
-Avoid the AI pink glass-card look: heavy warm gradients, large blur panels, over-rounded cards, soft oversized shadows, decorative motion, and unclear low-contrast text. Also avoid making the user-facing app feel like a cold enterprise backend or a childish sticker-heavy scrapbook.
+Avoid cold neutral dashboards, lifeless gray panels, and overly quiet admin tooling. Also avoid the AI pink glass-card look: blurred panels, generic purple-blue gradients, gradient text, low-contrast pastel copy, random decoration, and childish sticker overload.
 
 ## Design Principles
 
-- Keep warmth in content, microcopy, and small accents; keep the interface restrained.
+- Let color carry warmth and energy through a berry, orange, and mint palette.
 - Make primary tasks obvious: log in, write a memory, read a detail, add content, schedule a plan, record a cycle day, copy an entry link.
 - Preserve trust through readable contrast, predictable controls, stable layout, and clear states.
-- Use the same component vocabulary across the pair app and admin surfaces.
-- Let motion explain state changes only; do not make people wait for decoration.
+- Use the same cute, rounded, colorful component vocabulary across the pair app and admin surfaces.
+- Use motion for lively feedback and celebratory moments only; do not delay core tasks.
 
 ## Accessibility & Inclusion
 

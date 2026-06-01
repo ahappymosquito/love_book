@@ -1,6 +1,6 @@
 "use client";
 
-// Radix Dialog based sheet for restrained mobile and side panels with accessible close controls.
+// Radix Dialog based sheet for warm mobile and side panels with accessible close controls.
 
 import * as Dialog from "@radix-ui/react-dialog";
 import type React from "react";
