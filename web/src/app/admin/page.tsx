@@ -739,7 +739,7 @@ function UserField({
           onClick={onPickAvatar}
           className={cn(
             "flex-none h-12 w-12 rounded-2xl text-2xl grid place-items-center hairline bg-peach/18",
-            "transition hover:scale-[1.04] focus-ring",
+            "transition focus-ring",
           )}
           aria-label={`${label} 的头像`}
         >

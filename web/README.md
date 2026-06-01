@@ -52,10 +52,10 @@ npm run start
 
 ## 设计基线
 
-- 产品默认按根目录 [`PRODUCT.md`](../PRODUCT.md) 和 [`DESIGN.md`](../DESIGN.md) 执行，气质为“活力、可爱、热情、可信”。
-- 莓果粉主操作、橙色热情重点、薄荷正向状态、奶油色可读面板，避免清冷灰后台和低对比彩色文本。
+- 产品默认按根目录 [`PRODUCT.md`](../PRODUCT.md) 和 [`DESIGN.md`](../DESIGN.md) 执行，气质为“温暖、可爱、舒服、可信”。
+- 低饱和玫瑰主操作、暖桃重点、鼠尾草薄荷正向状态、奶油色可读面板，避免晃眼高饱和色、清冷灰后台和低对比彩色文本。
 - Inter + Noto Sans SC via `next/font/google`；`font-display` 指向友好的 sans-serif 栈。
-- `glass-card` 是明亮手账面板：温暖边界、软彩色阴影、浅色/深色模式同步。
+- `glass-card` 是柔和手账面板：温暖边界、低对比彩色阴影、浅色/深色模式同步。
 - 触控目标 ≥44px，焦点状态可见，遵守 `prefers-reduced-motion`。
 
 ## 主要实现点

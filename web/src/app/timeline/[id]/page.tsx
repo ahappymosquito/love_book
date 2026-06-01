@@ -627,7 +627,7 @@ function CommentBubble({
         {canReact && (
           <div
             className={cn(
-              "pointer-events-none absolute top-1/2 z-20 hidden -translate-y-1/2 gap-1 rounded-full bg-surface-raised/95 p-1 opacity-0 shadow-soft transition-opacity duration-150 md:flex hairline",
+              "pointer-events-none absolute top-1/2 z-20 hidden -translate-y-1/2 gap-1 rounded-full bg-surface-raised/95 p-1 opacity-0 shadow-soft transition-opacity duration-200 md:flex hairline",
               reactionHoverOpen && "pointer-events-auto opacity-100",
               isMine ? "right-full mr-1" : "left-full ml-1",
             )}
@@ -702,7 +702,7 @@ function CommentBubble({
               initial={{ y: 32 }}
               animate={{ y: 0 }}
               exit={{ y: 24 }}
-              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
               className="absolute inset-x-0 bottom-0 rounded-t-3xl bg-surface-raised p-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] shadow-glow hairline"
             >
               <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-line" />

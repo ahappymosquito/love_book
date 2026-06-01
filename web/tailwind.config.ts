@@ -1,6 +1,6 @@
 import type { Config } from "tailwindcss";
 
-// Tailwind theme extension exposes the lively berry, orange, and mint Love Book design tokens used across app and admin surfaces.
+// Tailwind theme extension exposes the soft rose, peach, and sage Love Book design tokens used across app and admin surfaces.
 
 const config: Config = {
   content: ["./src/**/*.{ts,tsx,mdx}"],
@@ -47,8 +47,8 @@ const config: Config = {
         "3xl": "1.5rem",
       },
       boxShadow: {
-        soft: "0 8px 18px -14px rgba(226, 68, 118, 0.72), 0 1px 2px rgba(64, 31, 42, 0.08)",
-        glow: "0 18px 40px -26px rgba(226, 68, 118, 0.85), 0 8px 22px -18px rgba(231, 103, 63, 0.55)",
+        soft: "0 8px 18px -15px rgba(196, 93, 119, 0.42), 0 1px 2px rgba(61, 43, 45, 0.08)",
+        glow: "0 16px 38px -28px rgba(196, 93, 119, 0.52), 0 8px 22px -20px rgba(204, 120, 86, 0.32)",
       },
       keyframes: {
         "fade-up": {
@@ -61,7 +61,7 @@ const config: Config = {
         },
       },
       animation: {
-        "fade-up": "fade-up 0.4s ease-out both",
+        "fade-up": "fade-up 0.46s cubic-bezier(0.22, 1, 0.36, 1) both",
         shimmer: "shimmer 1.6s linear infinite",
       },
     },

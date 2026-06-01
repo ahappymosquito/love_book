@@ -56,7 +56,7 @@ export function AvatarPicker({
             initial={{ y: 80, opacity: 0, scale: 0.98 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 80, opacity: 0, scale: 0.98 }}
-            transition={{ type: "spring", stiffness: 360, damping: 32 }}
+            transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
           >
             <div className="mx-auto h-1.5 w-10 rounded-full bg-line/60 mb-5 sm:hidden" />
             <div className="flex items-center justify-between mb-5">
@@ -115,11 +115,11 @@ export function AvatarPicker({
                       onClose();
                     }}
                     className={cn(
-                      "h-16 w-full rounded-2xl text-3xl grid place-items-center transition-all focus-ring",
+                      "h-16 w-full rounded-2xl text-3xl grid place-items-center transition focus-ring",
                       "bg-peach/12 hairline",
                       active
-                        ? "ring-2 ring-rose ring-offset-2 ring-offset-cream scale-[1.03]"
-                        : "hover:scale-[1.04] active:scale-95",
+                        ? "ring-2 ring-rose ring-offset-2 ring-offset-cream"
+                        : "hover:bg-peach/22 active:bg-peach/28",
                     )}
                     aria-pressed={active}
                   >

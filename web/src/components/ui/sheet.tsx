@@ -29,7 +29,7 @@ export function SheetContent({
           initial={{ opacity: 0, y: side === "bottom" ? 32 : 0, x: side === "right" ? 32 : 0 }}
           animate={{ opacity: 1, y: 0, x: 0 }}
           exit={{ opacity: 0, y: side === "bottom" ? 24 : 0, x: side === "right" ? 24 : 0 }}
-          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
           className={cn(
             "fixed z-50 bg-surface-raised text-ink shadow-glow outline-none hairline",
             side === "bottom"

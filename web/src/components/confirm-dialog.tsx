@@ -55,7 +55,7 @@ export function ConfirmDialog({
             initial={{ y: 60, opacity: 0, scale: 0.96 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 60, opacity: 0, scale: 0.96 }}
-            transition={{ type: "spring", stiffness: 380, damping: 30 }}
+            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
           >
             <div className="mx-auto h-1.5 w-10 rounded-full bg-line/60 mb-5 sm:hidden" />
             <h3 className="font-display text-xl text-ink mb-2">{title}</h3>

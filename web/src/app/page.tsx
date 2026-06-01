@@ -147,7 +147,7 @@ export default function LoginPage() {
             className="w-full max-w-md"
           >
             <div className="mb-6 select-none text-center">
-              <p className="mb-2 font-sc text-xs font-semibold text-rose-deep">莓果小书 · 两个人专属</p>
+              <p className="mb-2 font-sc text-xs font-semibold text-rose-deep">暖暖小书 · 两个人专属</p>
               <h1 className="font-display text-4xl font-bold leading-tight text-ink sm:text-5xl">
                 我们之间的小事
               </h1>

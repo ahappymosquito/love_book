@@ -91,7 +91,7 @@ export function ImageThumb({
       disabled={!url || opening}
       className={cn(
         "relative h-44 w-44 rounded-2xl overflow-hidden bg-line/30 hairline focus-ring",
-        "transition active:scale-[0.98]",
+        "transition duration-200 ease-out active:scale-[0.995]",
         className,
       )}
       aria-label="查看大图"
