@@ -1,6 +1,6 @@
 "use client";
 
-// Event detail screen with avatar-aware author rendering, comment reactions, media stream, and submission state.
+// Event detail screen with avatar-aware author rendering, stable-hover comment reactions, media stream, and submission state.
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -568,6 +568,7 @@ function CommentBubble({
   onToggleReaction?: (comment: CommentOut, reactionType: CommentReactionType) => void | Promise<void>;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [reactionHoverOpen, setReactionHoverOpen] = useState(false);
   const longPressTimer = useRef<number | null>(null);
   const selectedType = comment?.reactions.find((reaction) => reaction.reacted_by_me)?.reaction_type;
   const canReact = Boolean(comment && onToggleReaction && !pending);
@@ -596,7 +597,13 @@ function CommentBubble({
 
   return (
     <div className={cn("max-w-full", isMine ? "items-end" : "items-start")}>
-      <div className="group/comment relative max-w-full">
+      <div
+        className="relative max-w-full"
+        onMouseEnter={() => {
+          if (canReact) setReactionHoverOpen(true);
+        }}
+        onMouseLeave={() => setReactionHoverOpen(false)}
+      >
         <div
           onPointerDown={startLongPress}
           onPointerUp={clearLongPress}
@@ -620,10 +627,18 @@ function CommentBubble({
         {canReact && (
           <div
             className={cn(
-              "pointer-events-none absolute top-1/2 z-20 hidden -translate-y-1/2 gap-1 rounded-full bg-surface-raised/95 p-1 opacity-0 shadow-soft hairline transition-opacity duration-150 group-hover/comment:pointer-events-auto group-hover/comment:opacity-100 group-focus-within/comment:pointer-events-auto group-focus-within/comment:opacity-100 md:flex",
-              isMine ? "right-full mr-2" : "left-full ml-2",
+              "pointer-events-none absolute top-1/2 z-20 hidden -translate-y-1/2 gap-1 rounded-full bg-surface-raised/95 p-1 opacity-0 shadow-soft hairline transition-opacity duration-150 md:flex",
+              reactionHoverOpen && "pointer-events-auto opacity-100",
+              isMine ? "right-full mr-1" : "left-full ml-1",
             )}
           >
+            <span
+              aria-hidden="true"
+              className={cn(
+                "absolute top-0 h-full w-3",
+                isMine ? "-right-3" : "-left-3",
+              )}
+            />
             {COMMENT_REACTIONS.map((reaction) => (
               <ReactionIconButton
                 key={reaction.type}

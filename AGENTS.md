@@ -16,6 +16,7 @@
 - 事件、评论、语音、图片等写接口必须在响应返回前完成数据库提交，避免前端立即刷新时读到未提交数据。
 - Timeline 留言 reaction 只支持当前 allowlist 内的表情，初期为点赞和倒赞；同一用户对同一留言最多保留一个 reaction，点另一个会替换，点已选会取消。
 - Timeline 留言 reaction 只显示在可见留言下方的表情和数量；reaction 不计入 `mutual_submit` 的提交状态，不触发邮件通知，也不能让未解锁的隐藏留言提前可见或可操作。
+- Timeline 桌面端留言 reaction 操作条必须保留从气泡移动到按钮的 hover 桥接区域，避免鼠标移过去时菜单立即消失。
 - 语音文件必须转为 MP3 后写入 `MEDIA_ROOT` 本地媒体目录，数据库只保存 `voices.storage_key`，不得再为新语音写入 `voices.data`；旧语音记录没有 storage key 且没有数据库数据时按不可播放处理。
 - 移动端图片上传入口不得强制 `capture` 调用相机，优先使用系统图片选择器以兼容 iPhone 相册选择。
 - 图片上传需要把原图和缩略图写入 `MEDIA_ROOT` 本地媒体目录，数据库只保存 `images.storage_key` / `images.thumb_storage_key`，不得再为新图片写入 `images.data` / `images.thumb_data`。
