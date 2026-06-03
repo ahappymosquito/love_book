@@ -1,6 +1,6 @@
 "use client";
 
-// Transparent bottom-nav create action exposing a cute rotating Three.js plus model with reduced-motion fallback.
+// Transparent bottom-nav create action exposing a larger floating and rotating Three.js plus model with reduced-motion fallback.
 
 import Link from "next/link";
 import { Canvas, useFrame } from "@react-three/fiber";
@@ -38,14 +38,15 @@ function CreatePlusModel({ active, reduced }: { active: boolean; reduced: boolea
 
   useFrame((state, delta) => {
     if (reduced || !groupRef.current) return;
-    groupRef.current.rotation.z += delta * 0.72;
-    groupRef.current.rotation.y += delta * 0.38;
-    const scale = 1 + Math.sin(state.clock.elapsedTime * 2.2) * 0.025;
+    groupRef.current.rotation.z += delta * 1.18;
+    groupRef.current.rotation.y += delta * 0.64;
+    groupRef.current.position.y = Math.sin(state.clock.elapsedTime * 2.4) * 0.14;
+    const scale = 1.14 + Math.sin(state.clock.elapsedTime * 2.2) * 0.035;
     groupRef.current.scale.setScalar(scale);
   });
 
   return (
-    <group ref={groupRef} rotation={reduced ? [0.18, -0.32, -0.16] : [0.18, 0, 0]}>
+    <group ref={groupRef} rotation={reduced ? [0.18, -0.32, -0.16] : [0.18, 0, 0]} scale={reduced ? 1.14 : 1}>
       <group scale={active ? 1.06 : 1}>
         <RoundedBox args={[1.35, 0.42, 0.38]} radius={0.18} smoothness={8}>
           <meshStandardMaterial color={active ? "#9f3f5c" : "#c45d77"} roughness={0.45} metalness={0.05} />
@@ -81,7 +82,7 @@ export function CreateNavAction({ active }: { active: boolean }) {
     <Link
       href="/create"
       className={cn(
-        "group relative mx-auto -mt-11 grid h-[76px] w-[76px] place-items-center rounded-2xl bg-transparent text-white transition duration-200 focus-ring active:translate-y-0.5",
+        "group relative mx-auto -mt-12 grid h-[84px] w-[84px] place-items-center rounded-2xl bg-transparent text-white transition duration-200 focus-ring active:translate-y-0.5",
         active ? "scale-105" : "hover:scale-[1.03]",
       )}
       aria-label="记一笔"
@@ -89,9 +90,9 @@ export function CreateNavAction({ active }: { active: boolean }) {
     >
       <Canvas
         aria-hidden="true"
-        className="absolute inset-[-10px]"
+        className="absolute inset-[-14px]"
         gl={{ alpha: true }}
-        camera={{ position: [0, 0, 4.2], fov: 38 }}
+        camera={{ position: [0, 0, 3.85], fov: 38 }}
         dpr={[1, 1.5]}
         frameloop={reduced ? "demand" : "always"}
       >
