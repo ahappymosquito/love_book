@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home screen showing pair reminders, avatar-aware authors, month groups, cycle prompts, and bottom-nav-friendly content spacing.
+// Timeline home screen showing pair reminders, avatar-aware authors, month groups, cycle prompts, and clean bottom-nav-first navigation.
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -12,8 +12,6 @@ import {
   ChevronRight,
   Droplet,
   Gift,
-  ListTodo,
-  Moon,
   Plus,
   RefreshCw,
   Sparkles,
@@ -212,7 +210,7 @@ function TimelineInner() {
       <TimelineHeader />
 
       <div className="mx-auto max-w-5xl px-4 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)] pt-6 sm:px-6">
-        <div className="mb-6 flex items-start justify-between gap-4">
+        <div className="mb-6">
           <div className="min-w-0">
             <p className="mb-1 font-sc text-xs font-semibold text-rose-deep">今天也要收集一点甜</p>
             <h2 className="font-display text-2xl font-bold leading-tight text-ink sm:text-3xl">
@@ -221,24 +219,6 @@ function TimelineInner() {
             <p className="mt-2 max-w-xl font-sc text-sm leading-relaxed text-ink-soft">
               把心动、想念和日常收进同一本书，也把下一次约定安排好。
             </p>
-          </div>
-          <div className="flex flex-none items-center gap-2">
-            <Link
-              href="/todo"
-              className="grid h-11 w-11 place-items-center rounded-full bg-peach/30 text-rose-deep transition hover:bg-peach/45 focus-ring hairline"
-              aria-label="进入 todo 看板"
-              title="todo 看板"
-            >
-              <ListTodo className="h-5 w-5" />
-            </Link>
-            <Link
-              href="/cycle"
-              className="grid h-11 w-11 place-items-center rounded-full bg-sage/20 text-ink-soft transition hover:bg-sage/30 focus-ring hairline"
-              aria-label="进入月经周期记录"
-              title="月经周期记录"
-            >
-              <Moon className="h-5 w-5" />
-            </Link>
           </div>
         </div>
 
