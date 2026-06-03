@@ -1,9 +1,8 @@
 "use client";
 
-// Animated bottom-nav create action with a cute rotating Three.js plus model and reduced-motion static fallback.
+// Transparent bottom-nav create action exposing a cute rotating Three.js plus model with reduced-motion fallback.
 
 import Link from "next/link";
-import { Plus } from "lucide-react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { RoundedBox } from "@react-three/drei";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -82,15 +81,16 @@ export function CreateNavAction({ active }: { active: boolean }) {
     <Link
       href="/create"
       className={cn(
-        "group relative mx-auto -mt-9 grid h-[68px] w-[68px] place-items-center overflow-hidden rounded-full text-white shadow-glow transition duration-200 focus-ring active:translate-y-0.5",
-        active ? "bg-rose-deep" : "bg-rose hover:brightness-[1.03]",
+        "group relative mx-auto -mt-11 grid h-[76px] w-[76px] place-items-center rounded-2xl bg-transparent text-white transition duration-200 focus-ring active:translate-y-0.5",
+        active ? "scale-105" : "hover:scale-[1.03]",
       )}
       aria-label="记一笔"
       aria-current={active ? "page" : undefined}
     >
       <Canvas
         aria-hidden="true"
-        className="absolute inset-0"
+        className="absolute inset-[-10px]"
+        gl={{ alpha: true }}
         camera={{ position: [0, 0, 4.2], fov: 38 }}
         dpr={[1, 1.5]}
         frameloop={reduced ? "demand" : "always"}
@@ -99,8 +99,6 @@ export function CreateNavAction({ active }: { active: boolean }) {
         <directionalLight position={[1.5, 2.2, 3]} intensity={2.25} />
         <CreatePlusModel active={active} reduced={reduced} />
       </Canvas>
-      <span className="absolute inset-[9px] rounded-full bg-white/12 ring-1 ring-white/30" aria-hidden="true" />
-      <Plus className="relative z-10 h-7 w-7 drop-shadow-sm transition duration-200 group-hover:scale-105" />
     </Link>
   );
 }

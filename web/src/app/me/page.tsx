@@ -1,6 +1,6 @@
 "use client";
 
-// Compact profile settings page with inline identity editing and unified shared/default quote rows.
+// Compact profile settings page with inline identity editing and equal-width shared/default quote rows.
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
@@ -291,14 +291,14 @@ function MeInner() {
                 </button>
               </form>
 
-              <div className="mt-4 max-h-[320px] space-y-2 overflow-y-auto pr-1">
+              <div className="mt-4 grid max-h-[320px] gap-2 overflow-y-auto pr-1">
                 {quotes === null ? (
                   <QuoteMessage>正在读取共享语录...</QuoteMessage>
                 ) : quotes.length === 0 ? (
                   <QuoteMessage>还没有自定义语录。</QuoteMessage>
                 ) : (
                   quotes.map((quote) => (
-                    <div key={quote.id} className="flex items-start gap-3 rounded-2xl bg-peach/12 px-4 py-3 hairline">
+                    <div key={quote.id} className="flex w-full items-start gap-3 rounded-2xl bg-peach/12 px-4 py-3 hairline">
                       <p className="min-w-0 flex-1 break-words font-sc text-sm leading-relaxed text-ink">
                         {quote.text}
                       </p>
@@ -320,7 +320,7 @@ function MeInner() {
                   defaultQuotes.map((quote) => (
                     <p
                       key={quote.id}
-                      className="break-words rounded-2xl bg-sage/10 px-4 py-3 font-sc text-sm leading-relaxed text-ink-soft hairline"
+                      className="w-full break-words rounded-2xl bg-sage/10 px-4 py-3 font-sc text-sm leading-relaxed text-ink-soft hairline"
                     >
                       {quote.text}
                     </p>
@@ -384,5 +384,5 @@ function QuotePanelHeader({
 }
 
 function QuoteMessage({ children }: { children: ReactNode }) {
-  return <p className="rounded-2xl bg-peach/14 px-4 py-3 font-sc text-sm leading-relaxed text-ink-muted">{children}</p>;
+  return <p className="w-full rounded-2xl bg-peach/14 px-4 py-3 font-sc text-sm leading-relaxed text-ink-muted hairline">{children}</p>;
 }
