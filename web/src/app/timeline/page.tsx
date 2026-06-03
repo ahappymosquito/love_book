@@ -1,28 +1,23 @@
 "use client";
 
-// Timeline home screen showing lively pair reminders, avatar-aware authors, todo/cycle entries, month groups, and shortcuts.
+// Timeline home screen showing pair reminders, avatar-aware authors, month groups, cycle prompts, and bottom-nav-friendly content spacing.
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   BookHeart,
   CalendarHeart,
-  Check,
   ChevronDown,
   ChevronRight,
   Droplet,
   Gift,
   ListTodo,
   Moon,
-  Pencil,
   Plus,
   RefreshCw,
   Sparkles,
-  Trash2,
-  X,
 } from "lucide-react";
-import { toast } from "sonner";
 import { AuthGate } from "@/components/auth-gate";
 import { TimelineHeader } from "@/components/timeline-header";
 import { Avatar } from "@/components/avatar";
@@ -36,7 +31,7 @@ import {
   isCycleReminderDismissed,
   readCycleReminderDays,
 } from "@/lib/cycle-reminder";
-import type { AnniversaryOut, CycleDashboardOut, EventSummary, QuoteOut, ReminderItem } from "@/lib/types";
+import type { AnniversaryOut, CycleDashboardOut, EventSummary, ReminderItem } from "@/lib/types";
 
 const LOCAL_REMINDER_QUOTES = [
   "我说伤心了怎么办 小狗说忘忘忘忘忘忘",
@@ -118,10 +113,6 @@ function TimelineInner() {
   const me = useAppStore((s) => s.me);
   const [events, setEvents] = useState<EventSummary[] | null>(null);
   const [anniversary, setAnniversary] = useState<AnniversaryOut | null>(null);
-  const [quotes, setQuotes] = useState<QuoteOut[] | null>(null);
-  const [quoteText, setQuoteText] = useState("");
-  const [quoteSaving, setQuoteSaving] = useState(false);
-  const [quoteEditorOpen, setQuoteEditorOpen] = useState(false);
   const [quoteRefreshing, setQuoteRefreshing] = useState(false);
   const [cycleDashboard, setCycleDashboard] = useState<CycleDashboardOut | null>(null);
   const [cyclePromptDismissed, setCyclePromptDismissed] = useState(false);
@@ -135,7 +126,6 @@ function TimelineInner() {
     if (!me) return;
     setAnniversary(immediateAnniversary(me.love_started_on));
     void loadAnniversary(me.love_started_on);
-    void loadQuotes();
     const today = todayDateOnly();
     const range = reminderRange(today);
     void api
@@ -187,14 +177,6 @@ function TimelineInner() {
     }
   }
 
-  async function loadQuotes() {
-    try {
-      setQuotes(await api.listQuotes());
-    } catch {
-      setQuotes([]);
-    }
-  }
-
   function toggleMonth(month: string) {
     setExpandedMonths((prev) => {
       const next = new Set(prev);
@@ -211,30 +193,6 @@ function TimelineInner() {
     if (!me || !cyclePrompt) return;
     dismissCycleReminder(me.pair_id, cyclePrompt.today);
     setCyclePromptDismissed(true);
-  }
-
-  async function createQuote(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const text = quoteText.trim();
-    if (!text) return;
-    setQuoteSaving(true);
-    try {
-      await api.createQuote(text);
-      setQuoteText("");
-      toast.success("语录已添加");
-      await loadQuotes();
-      await loadAnniversary(me!.love_started_on);
-      setQuoteEditorOpen(false);
-    } finally {
-      setQuoteSaving(false);
-    }
-  }
-
-  async function deleteQuote(id: number) {
-    await api.deleteQuote(id);
-    toast.success("语录已删除");
-    await loadQuotes();
-    await loadAnniversary(me!.love_started_on);
   }
 
   async function refreshAnniversary() {
@@ -289,20 +247,8 @@ function TimelineInner() {
             data={anniversary}
             userName={me.user.display_name}
             counterpartName={me.counterpart.display_name}
-            quotes={quotes}
-            quoteText={quoteText}
-            quoteSaving={quoteSaving}
-            quoteEditorOpen={quoteEditorOpen}
             quoteRefreshing={quoteRefreshing}
-            onQuoteTextChange={setQuoteText}
-            onCreateQuote={createQuote}
-            onDeleteQuote={deleteQuote}
             onRefreshQuote={refreshAnniversary}
-            onOpenQuoteEditor={() => setQuoteEditorOpen(true)}
-            onCloseQuoteEditor={() => {
-              setQuoteText("");
-              setQuoteEditorOpen(false);
-            }}
           />
         )}
 
@@ -333,14 +279,6 @@ function TimelineInner() {
         />
       )}
 
-      <Link
-        href="/create"
-        className="btn-primary fixed bottom-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] right-5 z-30 inline-flex min-h-[52px] items-center gap-2 rounded-full py-3.5 pl-5 pr-6 font-sc text-sm font-medium focus-ring"
-        aria-label="记一笔新事"
-      >
-        <Plus className="h-4 w-4" />
-        记一笔
-      </Link>
     </div>
   );
 }
@@ -349,32 +287,14 @@ function AnniversaryCard({
   data,
   userName,
   counterpartName,
-  quotes,
-  quoteText,
-  quoteSaving,
-  quoteEditorOpen,
   quoteRefreshing,
-  onQuoteTextChange,
-  onCreateQuote,
-  onDeleteQuote,
   onRefreshQuote,
-  onOpenQuoteEditor,
-  onCloseQuoteEditor,
 }: {
   data: AnniversaryOut;
   userName: string;
   counterpartName: string;
-  quotes: QuoteOut[] | null;
-  quoteText: string;
-  quoteSaving: boolean;
-  quoteEditorOpen: boolean;
   quoteRefreshing: boolean;
-  onQuoteTextChange: (text: string) => void;
-  onCreateQuote: (event: FormEvent<HTMLFormElement>) => void;
-  onDeleteQuote: (id: number) => void;
   onRefreshQuote: () => void;
-  onOpenQuoteEditor: () => void;
-  onCloseQuoteEditor: () => void;
 }) {
   const items = [
     ...data.anniversary_items,
@@ -403,14 +323,6 @@ function AnniversaryCard({
             >
               <RefreshCw className={`h-4 w-4 ${quoteRefreshing ? "animate-spin" : ""}`} />
             </button>
-            <button
-              type="button"
-              onClick={quoteEditorOpen ? onCloseQuoteEditor : onOpenQuoteEditor}
-              className="grid h-9 w-9 place-items-center rounded-full text-rose-deep transition hover:bg-peach/25 focus-ring"
-              aria-label={quoteEditorOpen ? "收起语录编辑" : "编辑语录库"}
-            >
-              {quoteEditorOpen ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-            </button>
           </div>
         </div>
         <p className="font-sc text-sm text-ink-soft mt-2 leading-relaxed">
@@ -423,82 +335,8 @@ function AnniversaryCard({
             ))}
           </div>
         )}
-        {quoteEditorOpen && (
-          <QuoteEditor
-            quotes={quotes}
-            quoteText={quoteText}
-            quoteSaving={quoteSaving}
-            onQuoteTextChange={onQuoteTextChange}
-            onCreateQuote={onCreateQuote}
-            onDeleteQuote={onDeleteQuote}
-          />
-        )}
       </div>
     </motion.section>
-  );
-}
-
-function QuoteEditor({
-  quotes,
-  quoteText,
-  quoteSaving,
-  onQuoteTextChange,
-  onCreateQuote,
-  onDeleteQuote,
-}: {
-  quotes: QuoteOut[] | null;
-  quoteText: string;
-  quoteSaving: boolean;
-  onQuoteTextChange: (text: string) => void;
-  onCreateQuote: (event: FormEvent<HTMLFormElement>) => void;
-  onDeleteQuote: (id: number) => void;
-}) {
-  return (
-    <div className="mt-5 border-t border-line/70 pt-4">
-      <form onSubmit={onCreateQuote} className="mt-4 flex gap-2">
-        <input
-          value={quoteText}
-          onChange={(event) => onQuoteTextChange(event.target.value)}
-          maxLength={500}
-          placeholder="写一句想随机出现的话"
-          className="min-w-0 flex-1 rounded-2xl border border-line/80 bg-white/70 px-4 py-3 font-sc text-sm text-ink outline-none transition focus:border-rose/50"
-        />
-        <button
-          type="submit"
-          disabled={quoteSaving || !quoteText.trim()}
-          className="grid h-12 w-12 flex-none place-items-center rounded-2xl bg-rose text-white shadow-soft transition hover:bg-rose-deep disabled:cursor-not-allowed disabled:opacity-50 focus-ring"
-          aria-label="保存语录"
-        >
-          <Check className="h-4 w-4" />
-        </button>
-      </form>
-
-      <div className="mt-4 space-y-2">
-        {quotes === null ? (
-          <p className="font-sc text-sm text-ink-muted">正在读取语录...</p>
-        ) : quotes.length === 0 ? (
-          <p className="font-sc text-sm text-ink-muted">还没有自定义语录，普通日会先使用默认语录。</p>
-        ) : (
-          quotes.map((quote) => (
-            <div
-              key={quote.id}
-              className="flex items-start gap-3 rounded-2xl bg-peach/18 px-4 py-3"
-            >
-              <p className="min-w-0 flex-1 break-words font-sc text-sm leading-relaxed text-ink-soft">
-                {quote.text}
-              </p>
-              <button
-                onClick={() => onDeleteQuote(quote.id)}
-                className="grid h-8 w-8 flex-none place-items-center rounded-full text-ink-muted transition hover:bg-white/70 hover:text-rose-deep focus-ring"
-                aria-label="删除语录"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
   );
 }
 

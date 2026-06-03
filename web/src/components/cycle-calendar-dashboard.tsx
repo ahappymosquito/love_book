@@ -1,7 +1,7 @@
 "use client";
 
 // CycleCalendarDashboard implements the authenticated shared pair cycle calendar with warm scrapbook dashboard layout,
-// reminder timing settings, filters, statistics, quick daily logging, and mobile detail panels backed by /cycles.
+// reminder timing settings, filters, statistics, quick daily logging, mobile detail panels, and bottom-nav-safe spacing backed by /cycles.
 
 import Link from "next/link";
 import {
@@ -277,7 +277,7 @@ export function CycleCalendarDashboard() {
   }
 
   return (
-    <div className="min-h-dvh w-full pb-[calc(env(safe-area-inset-bottom,0px)+5.5rem)] md:pb-10">
+    <div className="min-h-dvh w-full pb-[calc(env(safe-area-inset-bottom,0px)+9rem)]">
       <header className="sticky top-0 z-30 frosted-bar">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <Link href="/timeline" className="btn-ghost inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-sm focus-ring">

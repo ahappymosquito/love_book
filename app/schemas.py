@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, admin, events, comment reactions, media, todo boards, AI config, cycle, and reminder APIs."""
+"""Pydantic schemas for auth, editable user profiles, admin, events, comment reactions, media, todo boards, AI config, cycle, and reminder APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -33,6 +33,7 @@ class UserOut(APIModel):
 class MeUpdate(APIModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=100)
     avatar: str | None = Field(default=None, max_length=64)
+    email: str | None = Field(default=None, max_length=255)
 
 
 class AdminAuthRequest(APIModel):

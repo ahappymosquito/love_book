@@ -1,6 +1,6 @@
 "use client";
 
-// Event creation form with lively scrapbook inputs, date selection, visibility controls, and authenticated submission.
+// Event creation form with lively scrapbook inputs, date selection, visibility controls, authenticated submission, and bottom-nav-safe spacing.
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -52,7 +52,7 @@ function CreateInner() {
     <div className="min-h-dvh w-full">
       <TimelineHeader back={{ href: "/timeline" }} title="记一笔" />
 
-      <div className="mx-auto max-w-2xl px-4 pb-[calc(env(safe-area-inset-bottom,0px)+3rem)] pt-6 sm:px-6">
+      <div className="mx-auto max-w-2xl px-4 pb-[calc(env(safe-area-inset-bottom,0px)+9rem)] pt-6 sm:px-6">
         <motion.form
           onSubmit={onSubmit}
           initial={{ opacity: 0, y: 8 }}

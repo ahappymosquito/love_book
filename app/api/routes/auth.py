@@ -1,4 +1,4 @@
-"""Authenticated user routes for profile, avatar upload, pair context, login logs, and home reminders."""
+"""Authenticated user routes for editable profile details, avatar upload, pair context, login logs, and home reminders."""
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy.orm import Session
@@ -14,6 +14,17 @@ from app.services import build_anniversary, counterpart, pair_love_started_on
 from app.storage import MediaStorageError, build_avatar_storage_key, write_media_file
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _clean_email(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    if "@" not in value or len(value) > 255:
+        raise HTTPException(status_code=422, detail="邮箱格式不正确")
+    return value
 
 
 @router.get("/me", response_model=MeOut)
@@ -47,6 +58,8 @@ def update_me(
         current_user.display_name = data["display_name"]
     if "avatar" in data and data["avatar"] is not None:
         current_user.avatar = data["avatar"]
+    if "email" in data:
+        current_user.email = _clean_email(data["email"])
     db.flush()
     db.commit()
     db.refresh(current_user)

@@ -1,6 +1,6 @@
 "use client";
 
-// Pair-shared todo board with lively date scheduling, AMap restaurant parsing, lottery, and check-in details.
+// Pair-shared todo board with lively date scheduling, AMap restaurant parsing, lottery, check-in details, and bottom-nav-safe spacing.
 
 import Link from "next/link";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
@@ -148,7 +148,7 @@ function TodoInner() {
         }
       />
 
-      <main className="mx-auto max-w-6xl px-4 pb-[calc(env(safe-area-inset-bottom,0px)+4rem)] pt-5 sm:px-6">
+      <main className="mx-auto max-w-6xl px-4 pb-[calc(env(safe-area-inset-bottom,0px)+9rem)] pt-5 sm:px-6">
         <section className="mb-5">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>

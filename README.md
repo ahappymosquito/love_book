@@ -117,8 +117,9 @@ npm run dev
 
 - `/` 登录页（3D 小狗背景 + 明亮手账感登录表单，支持 `?token=` 或 `#token=` 自动登录）
 - `/admin` 管理控制台（先用 `ADMIN_KEY` 验证身份，然后创建配对 / 复制 token / 复制入口链接；入口链接按当前浏览器 origin 动态生成，复制失败会自动降级到隐藏文本框复制）
-- `/timeline` 事件列表（纪念日、语录、todo / 周期入口、月份分组和创建入口）
+- `/timeline` 事件列表（纪念日、当前话语、月份分组和底边栏导航）
 - `/timeline/[id]` 事件详情（评论 / 语音 / 图片混排，评论支持点赞 / 倒赞 reaction，底部输入栏支持文字、录音、相册）
+- `/me` 我的页面（当前用户头像、用户名、邮箱和共享语录管理）
 - `/create` 新建事件
 - `/todo` 共享 todo 看板（吃饭 / 玩乐、日期安排、餐厅搜索、随机抽奖和打卡详情）
 - `/cycle` 周期日历 Dashboard（月 / 周 / 列表视图、筛选、提醒设置和移动端详情面板）
@@ -204,7 +205,7 @@ token 由管理接口生成，默认永久有效；创建 pair 时也可以指�
 | admin | POST | `/admin/pairs` | `X-Admin-Key` | 创建一对用户并签发两个 token，可选过期时间 |
 | admin | GET | `/admin/pairs` | `X-Admin-Key` | 列出全部配对及其 token |
 | auth | GET | `/auth/me` | `Bearer` | 获取当前用户、对方、pair_id |
-| auth | PATCH | `/auth/me` | `Bearer` | 修改自己的昵称或头像 |
+| auth | PATCH | `/auth/me` | `Bearer` | 修改自己的昵称、邮箱或 emoji 头像 |
 | auth | POST | `/auth/me/avatar` | `Bearer` | 上传自己的图片头像（multipart） |
 | auth | DELETE | `/auth/me/avatar` | `Bearer` | 清除自己的图片头像，回退 emoji/首字 |
 | users | GET | `/users/{user_id}/avatar` | `Bearer` 或 `X-Admin-Key` | 下载私有图片头像，同 pair 或管理员可读 |
@@ -406,7 +407,7 @@ Authorization: Bearer token-for-alice
 | `display_name` | 否 | 新昵称，1 到 100 字符。 |
 | `avatar` | 否 | 新头像（emoji 或短字符串），最长 64。 |
 
-成功响应是更新后的用户对象，与 `GET /auth/me` 中 `user` 字段结构相同。
+成功响应是更新后的用户对象，与 `GET /auth/me` 中 `user` 字段结构相同。当前用户可更新 `display_name`、`avatar` 和 `email`；`email` 空字符串会按 `null` 保存。
 
 ### 5.1 上传、清除和读取图片头像
 
@@ -441,7 +442,7 @@ Content-Type: multipart/form-data
 
 `GET /quotes`、`POST /quotes`、`DELETE /quotes/{quote_id}`
 
-语录库按 pair 共享，双方都可以查看、添加和删除。首页 `/auth/anniversary` 在普通日会从当前 pair 的数据库语录和 `default_quotes` 全站共享兜底语录表合并后的随机池中取一句。应用启动和普通日读取时都会自动补齐默认语录。新增和删除接口都会在响应返回前提交数据库，前端保存后可以立即刷新读到最新内容。
+语录库按 pair 共享，双方都可以查看、添加和删除。首页 `/auth/anniversary` 在普通日会从当前 pair 的数据库语录和 `default_quotes` 全站共享兜底语录表合并后的随机池中取一句。应用启动和普通日读取时都会自动补齐默认语录。新增和删除接口都会在响应返回前提交数据库，前端保存后可以立即刷新读到最新内容。前端语录管理集中在 `/me`，Timeline 首页只展示当前纪念日话语和刷新入口。
 
 新增请求体：
 
@@ -836,6 +837,7 @@ python -m pytest tests -q
 - 创建 pair 时可设置 `love_started_on` 情侣日期；旧数据未设置时回退到 pair 创建日期。
 - 登录后的 `/timeline` 会调用 `GET /auth/anniversary`，展示“双方昵称在一起第 N 天”、520/1314/整月纪念、固定恋爱节日、中国大陆节假日/调休信息和普通日本地语录。
 - `/timeline` 事件列表按发生时间 `occurred_at` 所在月份收纳，没有发生时间时回退创建时间 `created_at`；默认只展开当前月份，其他月份可手动展开。
+- 登录后的用户页面显示固定底边栏：`/timeline`、`/cycle`、`/create`、`/todo`、`/me`，中间加号进入 `/create` 记一笔，详情页归属 Timeline。
 - 首页标题区右侧月亮图标进入 `/cycle` 月经周期记录页面，桌面端和手机端都显示。
 - 首页不再常驻展示周期入口；仅在预计月经开始前本机配置的 N 天到预计当天、且今日尚未记录时弹出周期记录提醒，可进入 `/cycle?quickLog=today` 填写或选择当天暂时不写。
 - 一言模块已弃用；非特殊日后端从当前 pair 的 `quotes` 数据库语录库和 `default_quotes` 全站共享兜底语录表合并后的随机池中取一句。
@@ -854,7 +856,7 @@ python -m pytest tests -q
 
 ## Todo 看板、餐厅和模型配置
 
-- 登录后 `/timeline` 首页标题区右侧同时显示 `/todo` todo 看板入口和 `/cycle` 周期入口；`/todo` 复用当前 Bearer token 鉴权，数据按 pair 双方共享。
+- 登录后可从底边栏进入 `/todo` todo 看板和 `/cycle` 周期入口；`/todo` 复用当前 Bearer token 鉴权，数据按 pair 双方共享。
 - `/todo` 顶部是月份日期看板，已有安排的日期会高亮；点击日期后，可把吃饭或玩乐板块里的已有项目安排到当天。日期安排写接口在返回前提交数据库，并给另一方发送邮件通知。
 - Todo 项目独立于 `/timeline` 事件，不会自动写入时间线。默认玩乐项目为“唱歌、台球、看电影、拼乐高”，用户也可以自定义新增。
 - 吃饭项目通过后端 `npx -y @amap/amap-maps-mcp-server` 调用高德 MCP 搜索和详情解析；高德 key 可在管理端单独配置，`.env` / 服务器环境变量 `AMAP_MAPS_API_KEY` 作为初始默认和兜底。餐厅详情有评论或图片时视作吃饭打卡完成。

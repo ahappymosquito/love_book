@@ -1,4 +1,4 @@
-"""API regression tests for auth, avatars, reminders, event visibility, todo boards, AI config, media, and fallback data."""
+"""API regression tests for auth, editable profiles, avatars, reminders, event visibility, todo boards, AI config, media, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -159,6 +159,43 @@ def test_auth_me_returns_user_counterpart_and_pair(client: TestClient, pair_toke
     assert data["pair_id"] == pair_tokens["pair_id"]
     assert data["love_started_on"]
     assert data["user"]["avatar_has_image"] is False
+
+
+def test_user_can_update_profile_name_avatar_and_email(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    token = str(pair_tokens["user_a_token"])
+
+    updated = client.patch(
+        "/auth/me",
+        headers=auth(token),
+        json={"display_name": "New A", "avatar": "🌷", "email": "  a@example.com  "},
+    )
+    reloaded = client.get("/auth/me", headers=auth(token))
+
+    assert updated.status_code == 200
+    assert updated.json()["display_name"] == "New A"
+    assert updated.json()["avatar"] == "🌷"
+    assert updated.json()["email"] == "a@example.com"
+    assert reloaded.json()["user"]["email"] == "a@example.com"
+
+
+def test_user_profile_update_normalizes_blank_email(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    token = str(pair_tokens["user_a_token"])
+    client.patch("/auth/me", headers=auth(token), json={"email": "a@example.com"})
+
+    updated = client.patch("/auth/me", headers=auth(token), json={"email": "   "})
+
+    assert updated.status_code == 200
+    assert updated.json()["email"] is None
+
+
+def test_user_profile_update_rejects_invalid_email(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    response = client.patch(
+        "/auth/me",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"email": "not-an-email"},
+    )
+
+    assert response.status_code == 422
 
 
 def test_user_can_upload_and_pair_can_read_avatar(client: TestClient, pair_tokens: dict[str, str | int]) -> None:

@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated user, private avatars, admin AI config, todo, events, quotes, cycles, comment reactions, and media requests.
+// Browser API client for authenticated editable profiles, private avatars, admin AI config, todo, events, quotes, cycles, comment reactions, and media requests.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -228,7 +228,7 @@ export const api = {
   // Auth
   me: () => apiRequest<MeOut>("/auth/me"),
   getAnniversary: () => apiRequest<AnniversaryOut>("/auth/anniversary", { silent: true }),
-  patchMe: (payload: { display_name?: string; avatar?: string }) =>
+  patchMe: (payload: { display_name?: string; avatar?: string; email?: string | null }) =>
     apiRequest<UserOut>("/auth/me", { method: "PATCH", json: payload }),
   uploadMyAvatar: (file: File) => {
     const fd = new FormData();

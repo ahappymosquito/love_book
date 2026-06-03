@@ -1,7 +1,10 @@
 "use client";
 
+// Client providers hydrate persisted auth state, render global toasts, and mount authenticated bottom navigation.
+
 import { useEffect } from "react";
 import { Toaster } from "sonner";
+import { BottomNav } from "@/components/bottom-nav";
 import { useAppStore } from "@/lib/store";
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -14,6 +17,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <>
       {children}
+      <BottomNav />
       <Toaster
         position="top-center"
         richColors
