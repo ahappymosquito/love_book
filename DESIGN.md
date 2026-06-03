@@ -28,7 +28,7 @@ The interface uses Inter plus Noto Sans SC through `next/font`. `font-display`, 
 - `btn-ghost` is a warm secondary button with calm hover feedback.
 - `.input-field` is a full-width rounded input with visible berry focus, readable placeholders, and mobile-safe tap sizing.
 - Shared `Button`, `Card`, `Badge`, `Sheet`, `TimelineHeader`, and authenticated `BottomNav` components provide the baseline vocabulary for app and admin pages.
-- `BottomNav` uses an app-style five-slot structure: Timeline, Cycle, raised animated create action, Todo, and settings. On desktop it aligns to the main content width; the center create action exposes a transparent-background Three.js rose/peach/sage plus model with larger scale, gentle vertical float, faster rotation, and a reduced-motion static fallback.
+- `BottomNav` uses an app-style five-slot structure: Timeline, Cycle, raised animated create action, Todo, and settings. On desktop it aligns to the main content width; the center create action exposes a transparent-background Three.js rose/peach/sage XYZ-axis plus model with fuller depth, axis decorations, gentle vertical float, faster rotation, and a reduced-motion static fallback.
 - `/me` is a compact settings surface: the main profile card shows avatar, nickname, email, and relationship days in view mode first; clicking nickname/email switches to inline editing. User quotes, default quotes, loading, and empty states share equal-width readable bordered row styling, with default quotes shown directly below user quotes.
 
 ## Layout And Motion

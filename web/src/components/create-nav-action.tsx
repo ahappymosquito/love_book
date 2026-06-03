@@ -1,6 +1,6 @@
 "use client";
 
-// Transparent bottom-nav create action exposing a larger floating and rotating Three.js plus model with reduced-motion fallback.
+// Transparent bottom-nav create action exposing a full XYZ-axis floating and rotating Three.js plus model with reduced-motion fallback.
 
 import Link from "next/link";
 import { Canvas, useFrame } from "@react-three/fiber";
@@ -46,30 +46,45 @@ function CreatePlusModel({ active, reduced }: { active: boolean; reduced: boolea
   });
 
   return (
-    <group ref={groupRef} rotation={reduced ? [0.18, -0.32, -0.16] : [0.18, 0, 0]} scale={reduced ? 1.14 : 1}>
+    <group ref={groupRef} rotation={reduced ? [0.42, -0.58, -0.24] : [0.26, 0.18, 0]} scale={reduced ? 1.08 : 1}>
       <group scale={active ? 1.06 : 1}>
-        <RoundedBox args={[1.35, 0.42, 0.38]} radius={0.18} smoothness={8}>
+        <RoundedBox args={[1.42, 0.46, 0.58]} radius={0.2} smoothness={10}>
           <meshStandardMaterial color={active ? "#9f3f5c" : "#c45d77"} roughness={0.45} metalness={0.05} />
         </RoundedBox>
-        <RoundedBox args={[0.42, 1.35, 0.38]} radius={0.18} smoothness={8}>
+        <RoundedBox args={[0.46, 1.42, 0.58]} radius={0.2} smoothness={10}>
           <meshStandardMaterial color={active ? "#b65370" : "#df8f9d"} roughness={0.48} metalness={0.04} />
         </RoundedBox>
-        <RoundedBox args={[0.48, 0.48, 0.45]} radius={0.18} smoothness={8} position={[0, 0, 0.04]}>
+        <RoundedBox args={[0.48, 0.48, 1.28]} radius={0.19} smoothness={10}>
+          <meshStandardMaterial color="#74aa91" roughness={0.5} metalness={0.04} />
+        </RoundedBox>
+        <RoundedBox args={[0.62, 0.62, 0.72]} radius={0.22} smoothness={10} position={[0, 0, 0.1]}>
           <meshStandardMaterial color="#efb48b" roughness={0.42} metalness={0.08} />
         </RoundedBox>
       </group>
 
-      <mesh position={[0.82, 0.72, 0.02]} scale={0.28} rotation={[0, 0, -0.18]}>
+      <mesh position={[1.02, 0.05, 0.02]} scale={0.24} rotation={[0, 0, -0.18]}>
         <extrudeGeometry args={[heartShape, { depth: 0.08, bevelEnabled: true, bevelSegments: 2, bevelSize: 0.025, bevelThickness: 0.02 }]} />
         <meshStandardMaterial color="#efb48b" roughness={0.5} />
       </mesh>
-      <mesh position={[-0.84, -0.68, 0.02]} scale={0.16}>
+      <mesh position={[-1.04, -0.04, 0.02]} scale={0.14}>
+        <sphereGeometry args={[1, 16, 12]} />
+        <meshStandardMaterial color="#f5c6b8" roughness={0.42} />
+      </mesh>
+      <mesh position={[0.02, -1.02, 0.04]} scale={0.18}>
         <octahedronGeometry args={[1, 0]} />
         <meshStandardMaterial color="#74aa91" roughness={0.44} />
       </mesh>
-      <mesh position={[-0.82, 0.74, -0.02]} scale={0.12}>
+      <mesh position={[0.04, 1.02, -0.04]} scale={0.13} rotation={[0.2, 0.4, 0]}>
+        <tetrahedronGeometry args={[1, 0]} />
+        <meshStandardMaterial color="#efb48b" roughness={0.46} />
+      </mesh>
+      <mesh position={[0.08, 0.04, 0.94]} scale={0.18}>
         <sphereGeometry args={[1, 16, 12]} />
         <meshStandardMaterial color="#f5c6b8" roughness={0.42} />
+      </mesh>
+      <mesh position={[-0.08, -0.02, -0.94]} scale={0.18} rotation={[0, Math.PI, 0.2]}>
+        <extrudeGeometry args={[heartShape, { depth: 0.08, bevelEnabled: true, bevelSegments: 2, bevelSize: 0.02, bevelThickness: 0.018 }]} />
+        <meshStandardMaterial color="#74aa91" roughness={0.52} />
       </mesh>
     </group>
   );
@@ -92,7 +107,7 @@ export function CreateNavAction({ active }: { active: boolean }) {
         aria-hidden="true"
         className="absolute inset-[-14px]"
         gl={{ alpha: true }}
-        camera={{ position: [0, 0, 3.85], fov: 38 }}
+        camera={{ position: [0, 0, 4.1], fov: 40 }}
         dpr={[1, 1.5]}
         frameloop={reduced ? "demand" : "always"}
       >
