@@ -1,6 +1,6 @@
 "use client";
 
-// Compact profile settings page with click-to-edit identity fields and shared/default quote lists.
+// Compact profile settings page with inline identity editing and unified shared/default quote rows.
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
@@ -14,13 +14,13 @@ import {
   Plus,
   Sparkles,
   Trash2,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AuthGate } from "@/components/auth-gate";
 import { Avatar } from "@/components/avatar";
 import { AvatarPicker } from "@/components/avatar-picker";
 import { TimelineHeader } from "@/components/timeline-header";
-import { Sheet, SheetBody, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import type { DefaultQuoteOut, QuoteOut } from "@/lib/types";
@@ -52,7 +52,7 @@ function MeInner() {
   const [displayName, setDisplayName] = useState(me.user.display_name);
   const [email, setEmail] = useState(me.user.email ?? "");
   const [savingProfile, setSavingProfile] = useState(false);
-  const [profileEditorOpen, setProfileEditorOpen] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false);
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [quotes, setQuotes] = useState<QuoteOut[] | null>(null);
@@ -104,11 +104,17 @@ function MeInner() {
         email: email.trim() || null,
       });
       setMe({ ...me, user: { ...me.user, ...updated } });
-      setProfileEditorOpen(false);
+      setEditingProfile(false);
       toast.success("资料已保存");
     } finally {
       setSavingProfile(false);
     }
+  }
+
+  function cancelProfileEdit() {
+    setDisplayName(me.user.display_name);
+    setEmail(me.user.email ?? "");
+    setEditingProfile(false);
   }
 
   async function pickAvatar(emoji: string) {
@@ -177,7 +183,7 @@ function MeInner() {
           animate={{ opacity: 1, y: 0 }}
           className="glass-card overflow-hidden rounded-3xl p-4 sm:p-5"
         >
-          <div className="flex min-w-0 items-center gap-4">
+          <div className="flex min-w-0 items-start gap-4">
             <button
               type="button"
               onClick={() => setAvatarPickerOpen(true)}
@@ -191,26 +197,68 @@ function MeInner() {
             </button>
             <div className="min-w-0 flex-1">
               <p className="font-sc text-xs font-semibold text-rose-deep">我的小档案</p>
-              <button
-                type="button"
-                onClick={() => setProfileEditorOpen(true)}
-                className="mt-1 flex min-h-10 w-full min-w-0 items-center gap-2 rounded-2xl text-left transition hover:bg-peach/14 focus-ring"
-                aria-label="编辑用户名和邮箱"
-              >
-              <div className="min-w-0">
-                <h1 className="mt-1 truncate font-display text-2xl font-bold leading-tight text-ink">
-                  {me.user.display_name}
-                </h1>
-                <p className="mt-1 flex min-w-0 items-center gap-1.5 font-sc text-sm text-ink-soft">
-                  <Mail className="h-3.5 w-3.5 flex-none" />
-                  <span className="truncate">{me.user.email || "未设置邮箱"}</span>
-                </p>
-              </div>
-                <Pencil className="h-4 w-4 flex-none text-rose-deep" />
-              </button>
-              <p className="mt-1 font-sc text-sm text-ink-soft">
-                和 {me.counterpart.display_name} 在一起第 {togetherDays} 天
-              </p>
+              {editingProfile ? (
+                <form onSubmit={saveProfile} className="mt-2 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                  <label className="min-w-0">
+                    <span className="sr-only">用户名</span>
+                    <input
+                      className="input-field py-2.5 text-sm"
+                      value={displayName}
+                      maxLength={100}
+                      onChange={(event) => setDisplayName(event.target.value)}
+                      placeholder="写一个你喜欢的名字"
+                      required
+                    />
+                  </label>
+                  <label className="min-w-0">
+                    <span className="sr-only">邮箱</span>
+                    <input
+                      className="input-field py-2.5 text-sm"
+                      value={email}
+                      maxLength={255}
+                      inputMode="email"
+                      autoComplete="email"
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="用于接收提醒邮件"
+                    />
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={!profileDirty || !displayName.trim() || savingProfile}
+                      className="btn-primary inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl px-4 font-sc text-sm font-medium focus-ring disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
+                    >
+                      {savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      保存
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelProfileEdit}
+                      disabled={savingProfile}
+                      className="btn-ghost grid h-11 w-11 flex-none place-items-center rounded-2xl focus-ring"
+                      aria-label="取消编辑"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEditingProfile(true)}
+                  className="mt-1 block w-full min-w-0 rounded-2xl py-1 text-left transition hover:bg-peach/14 focus-ring"
+                  aria-label="编辑用户名和邮箱"
+                >
+                  <h1 className="truncate font-display text-2xl font-bold leading-tight text-ink">
+                    {me.user.display_name}
+                  </h1>
+                  <p className="mt-1 flex min-w-0 items-center gap-1.5 font-sc text-sm text-ink-soft">
+                    <Mail className="h-3.5 w-3.5 flex-none" />
+                    <span className="truncate">{me.user.email || "未设置邮箱"}</span>
+                  </p>
+                </button>
+              )}
+              <p className="mt-1 font-sc text-sm text-ink-soft">和 {me.counterpart.display_name} 在一起第 {togetherDays} 天</p>
             </div>
           </div>
         </motion.section>
@@ -250,8 +298,8 @@ function MeInner() {
                   <QuoteMessage>还没有自定义语录。</QuoteMessage>
                 ) : (
                   quotes.map((quote) => (
-                    <div key={quote.id} className="flex items-start gap-3 rounded-2xl bg-peach/18 px-4 py-3">
-                      <p className="min-w-0 flex-1 break-words font-sc text-sm leading-relaxed text-ink-soft">
+                    <div key={quote.id} className="flex items-start gap-3 rounded-2xl bg-peach/12 px-4 py-3 hairline">
+                      <p className="min-w-0 flex-1 break-words font-sc text-sm leading-relaxed text-ink">
                         {quote.text}
                       </p>
                       <button
@@ -272,7 +320,7 @@ function MeInner() {
                   defaultQuotes.map((quote) => (
                     <p
                       key={quote.id}
-                      className="break-words rounded-2xl bg-sage/10 px-4 py-2.5 font-sc text-sm leading-relaxed text-ink-muted"
+                      className="break-words rounded-2xl bg-sage/10 px-4 py-3 font-sc text-sm leading-relaxed text-ink-soft hairline"
                     >
                       {quote.text}
                     </p>
@@ -295,55 +343,6 @@ function MeInner() {
         onDeleteImage={deleteAvatarImage}
         title="挑一个属于你的样子"
       />
-
-      <Sheet open={profileEditorOpen} onOpenChange={setProfileEditorOpen}>
-        <SheetBody open={profileEditorOpen}>
-          <SheetContent className="mx-auto max-w-md" side="bottom">
-            <SheetTitle className="pr-12 font-display text-xl font-semibold text-ink">编辑小档案</SheetTitle>
-            <SheetDescription className="mt-1 font-sc text-sm text-ink-muted">
-              保存后会立即同步到你们的页面。
-            </SheetDescription>
-            <form onSubmit={saveProfile} className="mt-5 space-y-4">
-              <label className="block">
-                <span className="mb-2 block font-sc text-xs font-medium text-ink-muted">用户名</span>
-                <input
-                  className="input-field"
-                  value={displayName}
-                  maxLength={100}
-                  onChange={(event) => setDisplayName(event.target.value)}
-                  placeholder="写一个你喜欢的名字"
-                  required
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-2 flex items-center gap-1.5 font-sc text-xs font-medium text-ink-muted">
-                  <Mail className="h-3.5 w-3.5" />
-                  邮箱
-                </span>
-                <input
-                  className="input-field"
-                  value={email}
-                  maxLength={255}
-                  inputMode="email"
-                  autoComplete="email"
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="用于接收提醒邮件"
-                />
-              </label>
-
-              <button
-                type="submit"
-                disabled={!profileDirty || !displayName.trim() || savingProfile}
-                className="btn-primary inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl px-5 font-sc text-sm font-medium focus-ring disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                保存资料
-              </button>
-            </form>
-          </SheetContent>
-        </SheetBody>
-      </Sheet>
     </div>
   );
 }

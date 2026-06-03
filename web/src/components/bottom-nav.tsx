@@ -1,6 +1,6 @@
 "use client";
 
-// Bottom app navigation for authenticated user pages, with timeline, cycle, animated create, todo, and settings destinations.
+// Bottom app navigation aligned to app content on desktop, with timeline, cycle, animated create, todo, and settings destinations.
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -37,7 +37,7 @@ export function BottomNav() {
       className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.55rem)] pt-2"
       aria-label="底部导航"
     >
-      <div className="mx-auto grid h-[72px] max-w-[520px] grid-cols-5 items-center rounded-[1.45rem] border border-line/75 bg-surface/95 px-2 shadow-glow backdrop-blur-md">
+      <div className="mx-auto grid h-[72px] max-w-[520px] grid-cols-5 items-center rounded-[1.45rem] border border-line/75 bg-surface/95 px-2 shadow-glow backdrop-blur-md sm:max-w-5xl sm:px-4">
         <NavItem href="/timeline" label="首页" active={active === "timeline"} icon={<BookHeart className="h-5 w-5" />} />
         <NavItem href="/cycle" label="周期" active={active === "cycle"} icon={<Moon className="h-5 w-5" />} />
         <CreateNavAction active={active === "create"} />
@@ -63,7 +63,7 @@ function NavItem({
     <Link
       href={href}
       className={cn(
-        "mx-auto flex min-h-[56px] w-full max-w-[72px] flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[11px] font-medium transition duration-200 focus-ring active:translate-y-0.5",
+        "mx-auto flex min-h-[56px] w-full max-w-[72px] flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[11px] font-medium transition duration-200 focus-ring active:translate-y-0.5 sm:max-w-none",
         active ? "bg-rose/10 text-rose-deep" : "text-ink-muted hover:bg-peach/18 hover:text-rose-deep",
       )}
       aria-current={active ? "page" : undefined}
