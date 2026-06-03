@@ -1,4 +1,4 @@
-"""API regression tests for auth, editable profiles, avatars, reminders, event visibility, todo boards, AI config, media, and fallback data."""
+"""API regression tests for auth, editable profiles, avatars, reminders, quote libraries, event visibility, todo boards, AI config, media, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -455,6 +455,19 @@ def test_quotes_are_shared_inside_pair_and_can_be_deleted(
     removed = client.delete(f"/quotes/{quote_id}", headers=auth(token_b))
     assert removed.status_code == 204
     assert client.get("/quotes", headers=auth(token_a)).json() == []
+
+
+def test_default_quotes_are_listed_without_pair_quotes(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    token = str(pair_tokens["user_a_token"])
+    created = client.post("/quotes", headers=auth(token), json={"text": "只属于这一对"})
+
+    response = client.get("/quotes/defaults", headers=auth(token))
+
+    assert created.status_code == 201
+    assert response.status_code == 200
+    texts = [item["text"] for item in response.json()]
+    assert set(texts) == set(services.DEFAULT_LOVE_QUOTES)
+    assert "只属于这一对" not in texts
 
 
 def test_quotes_are_isolated_between_pairs(client: TestClient, pair_tokens: dict[str, str | int]) -> None:

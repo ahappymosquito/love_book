@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, editable user profiles, admin, events, comment reactions, media, todo boards, AI config, cycle, and reminder APIs."""
+"""Pydantic schemas for auth, editable profiles, admin, events, comment reactions, media, quote libraries, cycles, and todo APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -116,6 +116,14 @@ class QuoteOut(APIModel):
     id: int
     pair_id: int
     author_id: int
+    text: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class DefaultQuoteOut(APIModel):
+    id: int
     text: str
     created_at: datetime
 

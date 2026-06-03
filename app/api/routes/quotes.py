@@ -1,4 +1,4 @@
-"""Quote route handlers for listing, creating, and deleting pair-shared local reminder quotes."""
+"""Quote route handlers for pair-shared editable quotes and read-only default reminder quotes."""
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.database import get_db
-from app.models import Quote, User
-from app.schemas import QuoteCreate, QuoteOut
+from app.models import DefaultQuote, Quote, User
+from app.schemas import DefaultQuoteOut, QuoteCreate, QuoteOut
+from app.services import ensure_default_quotes
 
 router = APIRouter(prefix="/quotes", tags=["quotes"])
 
@@ -21,6 +22,16 @@ def list_quotes(current_user: User = Depends(get_current_user), db: Session = De
         .all()
     )
     return [QuoteOut.model_validate(quote) for quote in quotes]
+
+
+@router.get("/defaults", response_model=list[DefaultQuoteOut])
+def list_default_quotes(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[DefaultQuoteOut]:
+    ensure_default_quotes(db)
+    quotes = db.execute(select(DefaultQuote).order_by(DefaultQuote.id)).scalars().all()
+    return [DefaultQuoteOut.model_validate(quote) for quote in quotes]
 
 
 @router.post("", response_model=QuoteOut, status_code=status.HTTP_201_CREATED)

@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated editable profiles, private avatars, admin AI config, todo, events, quotes, cycles, comment reactions, and media requests.
+// Browser API client for authenticated editable profiles, private avatars, admin AI config, todo, events, quote libraries, cycles, comment reactions, and media requests.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ import type {
   CycleDashboardOut,
   DailyLog,
   DailyLogInput,
+  DefaultQuoteOut,
   EventDetail,
   EventSummary,
   ImageOut,
@@ -248,6 +249,7 @@ export const api = {
 
   // Quotes
   listQuotes: () => apiRequest<QuoteOut[]>("/quotes"),
+  listDefaultQuotes: () => apiRequest<DefaultQuoteOut[]>("/quotes/defaults"),
   createQuote: (text: string) =>
     apiRequest<QuoteOut>("/quotes", {
       method: "POST",

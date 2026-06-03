@@ -28,8 +28,9 @@ The interface uses Inter plus Noto Sans SC through `next/font`. `font-display`, 
 - `btn-ghost` is a warm secondary button with calm hover feedback.
 - `.input-field` is a full-width rounded input with visible berry focus, readable placeholders, and mobile-safe tap sizing.
 - Shared `Button`, `Card`, `Badge`, `Sheet`, `TimelineHeader`, and authenticated `BottomNav` components provide the baseline vocabulary for app and admin pages.
-- `BottomNav` uses an app-style five-slot structure: Timeline, Cycle, raised center create action, Todo, and profile. It keeps the same soft rose, peach, sage, and rounded scrapbook language as the rest of the product.
+- `BottomNav` uses an app-style five-slot structure: Timeline, Cycle, raised animated create action, Todo, and settings. The center create action uses a lightweight Three.js rose/peach/sage orb with a clear plus icon and reduced-motion static fallback.
+- `/me` is a settings surface: the main profile card keeps avatar, nickname, and email editing together with an explicit save button; shared and default quote libraries are shown below as collapsible panels.
 
 ## Layout And Motion
 
-Pages use centered content widths appropriate to the workflow: narrower reading and writing surfaces, wider todo/admin/dashboard surfaces. Authenticated user pages reserve bottom safe-area space for the fixed bottom navigation, with the event composer positioned above it. Motion is smooth and gentle for hover, click, open, save, 3D login, and lottery moments, and remains covered by the global `prefers-reduced-motion` rule.
+Pages use centered content widths appropriate to the workflow: narrower reading and writing surfaces, wider todo/admin/dashboard surfaces. Authenticated user pages reserve bottom safe-area space for the fixed bottom navigation, with the event composer positioned above it. Motion is smooth and gentle for hover, click, open, save, 3D login, animated create, and lottery moments, and remains covered by the global `prefers-reduced-motion` rule.
