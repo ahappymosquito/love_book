@@ -1,14 +1,15 @@
 "use client";
 
-// Transparent bottom-nav create action exposing a cute scrapbook-note add model with a rounded Three.js plus and reduced-motion fallback.
+// Transparent bottom-nav create action with a center-symmetric Three.js plus inside an ornate rotating spherical cage.
 
 import Link from "next/link";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { RoundedBox } from "@react-three/drei";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Group } from "three";
-import { Shape } from "three";
 import { cn } from "@/lib/cn";
+
+type Point3 = [number, number, number];
 
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
@@ -24,78 +25,113 @@ function useReducedMotion(): boolean {
   return reduced;
 }
 
+function CageRing({
+  rotation,
+  color,
+  tube = 0.035,
+}: {
+  rotation: Point3;
+  color: string;
+  tube?: number;
+}) {
+  return (
+    <mesh rotation={rotation}>
+      <torusGeometry args={[1.13, tube, 10, 72]} />
+      <meshStandardMaterial color={color} roughness={0.22} metalness={0.72} />
+    </mesh>
+  );
+}
+
+function Jewel({ position, color, scale = 0.105 }: { position: Point3; color: string; scale?: number }) {
+  return (
+    <mesh position={position} scale={scale}>
+      <icosahedronGeometry args={[1, 1]} />
+      <meshStandardMaterial color={color} roughness={0.3} metalness={0.34} />
+    </mesh>
+  );
+}
+
+function SymmetricPlus({ active }: { active: boolean }) {
+  return (
+    <group>
+      <RoundedBox args={[1.38, 0.34, 0.34]} radius={0.16} smoothness={10}>
+        <meshStandardMaterial color={active ? "#a63f61" : "#c85f7c"} roughness={0.34} metalness={0.18} />
+      </RoundedBox>
+      <RoundedBox args={[1.38, 0.34, 0.34]} radius={0.16} smoothness={10} rotation={[0, 0, Math.PI / 2]}>
+        <meshStandardMaterial color={active ? "#d47e70" : "#efa38f"} roughness={0.34} metalness={0.18} />
+      </RoundedBox>
+      <RoundedBox args={[1.38, 0.34, 0.34]} radius={0.16} smoothness={10} rotation={[0, Math.PI / 2, 0]}>
+        <meshStandardMaterial color={active ? "#5f927b" : "#82b39b"} roughness={0.34} metalness={0.18} />
+      </RoundedBox>
+
+      <mesh scale={0.34}>
+        <sphereGeometry args={[1, 24, 18]} />
+        <meshStandardMaterial color="#f2bb8e" roughness={0.25} metalness={0.3} />
+      </mesh>
+
+      <Jewel position={[0.79, 0, 0]} color="#f4b2bd" />
+      <Jewel position={[-0.79, 0, 0]} color="#f4b2bd" />
+      <Jewel position={[0, 0.79, 0]} color="#f6c18f" />
+      <Jewel position={[0, -0.79, 0]} color="#f6c18f" />
+      <Jewel position={[0, 0, 0.79]} color="#9ccab4" />
+      <Jewel position={[0, 0, -0.79]} color="#9ccab4" />
+    </group>
+  );
+}
+
+function SphericalCage() {
+  return (
+    <group>
+      <CageRing rotation={[0, 0, 0]} color="#d7a76f" tube={0.043} />
+      <CageRing rotation={[Math.PI / 2, 0, 0]} color="#d7a76f" tube={0.043} />
+      <CageRing rotation={[0, Math.PI / 2, 0]} color="#d7a76f" tube={0.043} />
+      <CageRing rotation={[Math.PI / 4, 0, Math.PI / 4]} color="#e8c397" tube={0.022} />
+      <CageRing rotation={[-Math.PI / 4, 0, Math.PI / 4]} color="#e8c397" tube={0.022} />
+      <CageRing rotation={[0, Math.PI / 4, Math.PI / 4]} color="#e8c397" tube={0.022} />
+
+      <Jewel position={[1.13, 0, 0]} color="#f2bb8e" scale={0.085} />
+      <Jewel position={[-1.13, 0, 0]} color="#f2bb8e" scale={0.085} />
+      <Jewel position={[0, 1.13, 0]} color="#e78ea3" scale={0.085} />
+      <Jewel position={[0, -1.13, 0]} color="#e78ea3" scale={0.085} />
+      <Jewel position={[0, 0, 1.13]} color="#8fc0a8" scale={0.085} />
+      <Jewel position={[0, 0, -1.13]} color="#8fc0a8" scale={0.085} />
+    </group>
+  );
+}
+
 function CreatePlusModel({ active, reduced }: { active: boolean; reduced: boolean }) {
-  const groupRef = useRef<Group>(null);
-  const heartShape = useMemo(() => {
-    const shape = new Shape();
-    shape.moveTo(0, 0.18);
-    shape.bezierCurveTo(0, 0.36, -0.34, 0.36, -0.34, 0.1);
-    shape.bezierCurveTo(-0.34, -0.12, -0.1, -0.26, 0, -0.42);
-    shape.bezierCurveTo(0.1, -0.26, 0.34, -0.12, 0.34, 0.1);
-    shape.bezierCurveTo(0.34, 0.36, 0, 0.36, 0, 0.18);
-    return shape;
-  }, []);
+  const modelRef = useRef<Group>(null);
+  const coreRef = useRef<Group>(null);
+  const cageRef = useRef<Group>(null);
 
   useFrame((state, delta) => {
-    if (reduced || !groupRef.current) return;
-    groupRef.current.rotation.z += delta * 1.18;
-    groupRef.current.rotation.y += delta * 0.64;
-    groupRef.current.position.y = Math.sin(state.clock.elapsedTime * 2.4) * 0.14;
-    const scale = 1.14 + Math.sin(state.clock.elapsedTime * 2.2) * 0.035;
-    groupRef.current.scale.setScalar(scale);
+    if (reduced || !modelRef.current || !coreRef.current || !cageRef.current) return;
+
+    modelRef.current.rotation.y += delta * 0.62;
+    modelRef.current.rotation.z += delta * 0.38;
+    modelRef.current.position.y = Math.sin(state.clock.elapsedTime * 2.35) * 0.12;
+
+    coreRef.current.rotation.x += delta * 0.36;
+    coreRef.current.rotation.z += delta * 0.52;
+    cageRef.current.rotation.x -= delta * 0.28;
+    cageRef.current.rotation.y -= delta * 0.46;
+
+    const scale = 1.04 + Math.sin(state.clock.elapsedTime * 2.1) * 0.025;
+    modelRef.current.scale.setScalar(scale);
   });
 
   return (
-    <group ref={groupRef} rotation={reduced ? [0.42, -0.58, -0.24] : [0.3, 0.22, -0.08]} scale={reduced ? 1.08 : 1}>
-      <group scale={active ? 1.06 : 1} rotation={[0.08, -0.16, -0.12]}>
-        <RoundedBox args={[1.42, 1.52, 0.18]} radius={0.16} smoothness={10} position={[0, -0.04, -0.32]}>
-          <meshStandardMaterial color="#fff6ed" roughness={0.58} metalness={0.02} />
-        </RoundedBox>
-        <RoundedBox args={[0.68, 0.08, 0.04]} radius={0.035} smoothness={5} position={[0.03, 0.28, -0.2]}>
-          <meshStandardMaterial color="#efb48b" roughness={0.62} />
-        </RoundedBox>
-        <RoundedBox args={[0.48, 0.07, 0.04]} radius={0.035} smoothness={5} position={[0.0, 0.06, -0.2]}>
-          <meshStandardMaterial color="#eec9c6" roughness={0.62} />
-        </RoundedBox>
-        <RoundedBox args={[0.5, 0.07, 0.04]} radius={0.035} smoothness={5} position={[0.08, -0.16, -0.2]}>
-          <meshStandardMaterial color="#b7d7c8" roughness={0.62} />
-        </RoundedBox>
-
-        <RoundedBox args={[1.18, 0.42, 0.56]} radius={0.2} smoothness={10} position={[0, 0, 0.1]}>
-          <meshStandardMaterial color={active ? "#9f3f5c" : "#c45d77"} roughness={0.45} metalness={0.05} />
-        </RoundedBox>
-        <RoundedBox args={[0.42, 1.18, 0.56]} radius={0.2} smoothness={10} position={[0, 0, 0.14]}>
-          <meshStandardMaterial color={active ? "#b65370" : "#df8f9d"} roughness={0.48} metalness={0.04} />
-        </RoundedBox>
-        <RoundedBox args={[0.56, 0.56, 0.66]} radius={0.22} smoothness={10} position={[0, 0, 0.26]}>
-          <meshStandardMaterial color="#efb48b" roughness={0.42} metalness={0.08} />
-        </RoundedBox>
+    <group
+      ref={modelRef}
+      rotation={reduced ? [0.5, -0.62, -0.22] : [0.28, 0.24, -0.14]}
+      scale={reduced ? 1.02 : 1}
+    >
+      <group ref={coreRef} scale={active ? 1.06 : 1}>
+        <SymmetricPlus active={active} />
       </group>
-
-      <mesh position={[0.86, 0.72, 0.08]} scale={0.22} rotation={[0.1, -0.2, -0.18]}>
-        <extrudeGeometry args={[heartShape, { depth: 0.08, bevelEnabled: true, bevelSegments: 2, bevelSize: 0.025, bevelThickness: 0.02 }]} />
-        <meshStandardMaterial color="#efb48b" roughness={0.5} />
-      </mesh>
-      <mesh position={[-0.88, -0.7, 0.16]} scale={0.14}>
-        <sphereGeometry args={[1, 16, 12]} />
-        <meshStandardMaterial color="#f5c6b8" roughness={0.42} />
-      </mesh>
-      <mesh position={[0.78, -0.76, 0.04]} scale={0.16}>
-        <octahedronGeometry args={[1, 0]} />
-        <meshStandardMaterial color="#74aa91" roughness={0.44} />
-      </mesh>
-      <mesh position={[-0.82, 0.7, -0.02]} scale={0.13} rotation={[0.2, 0.4, 0]}>
-        <tetrahedronGeometry args={[1, 0]} />
-        <meshStandardMaterial color="#efb48b" roughness={0.46} />
-      </mesh>
-      <mesh position={[0.12, 0.0, 0.84]} scale={0.16}>
-        <sphereGeometry args={[1, 16, 12]} />
-        <meshStandardMaterial color="#f5c6b8" roughness={0.42} />
-      </mesh>
-      <mesh position={[-0.14, -0.04, -0.64]} scale={0.14} rotation={[0, Math.PI, 0.2]}>
-        <extrudeGeometry args={[heartShape, { depth: 0.08, bevelEnabled: true, bevelSegments: 2, bevelSize: 0.02, bevelThickness: 0.018 }]} />
-        <meshStandardMaterial color="#74aa91" roughness={0.52} />
-      </mesh>
+      <group ref={cageRef}>
+        <SphericalCage />
+      </group>
     </group>
   );
 }
@@ -115,14 +151,15 @@ export function CreateNavAction({ active }: { active: boolean }) {
     >
       <Canvas
         aria-hidden="true"
-        className="absolute inset-[-14px]"
+        className="absolute inset-[-16px]"
         gl={{ alpha: true }}
-        camera={{ position: [0, 0, 4.25], fov: 40 }}
+        camera={{ position: [0, 0, 4.55], fov: 40 }}
         dpr={[1, 1.5]}
         frameloop={reduced ? "demand" : "always"}
       >
-        <ambientLight intensity={1.65} />
-        <directionalLight position={[1.5, 2.2, 3]} intensity={2.25} />
+        <ambientLight intensity={1.45} />
+        <directionalLight position={[2.2, 2.8, 3.6]} intensity={2.15} />
+        <pointLight position={[-2, -1.5, 2.4]} intensity={1.2} color="#ffd7c2" />
         <CreatePlusModel active={active} reduced={reduced} />
       </Canvas>
     </Link>
