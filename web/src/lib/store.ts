@@ -1,5 +1,7 @@
 "use client";
 
+// Persisted authentication state plus transient global create-window controls shared by authenticated app surfaces.
+
 import { create } from "zustand";
 import type { MeOut } from "./types";
 
@@ -11,12 +13,16 @@ interface AppState {
   me: MeOut | null;
   adminKey: string | null;
   hydrated: boolean;
+  createWindowPhase: "closed" | "gathering" | "open";
   setToken: (token: string | null) => void;
   setMe: (me: MeOut | null) => void;
   setAdminKey: (key: string | null) => void;
   logout: () => void;
   logoutAdmin: () => void;
   hydrate: () => void;
+  openCreateWindow: () => void;
+  finishCreateWindowOpening: () => void;
+  closeCreateWindow: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -24,6 +30,7 @@ export const useAppStore = create<AppState>((set) => ({
   me: null,
   adminKey: null,
   hydrated: false,
+  createWindowPhase: "closed",
 
   setToken: (token) => {
     if (typeof window !== "undefined") {
@@ -34,7 +41,7 @@ export const useAppStore = create<AppState>((set) => ({
       }
     }
     set({ token });
-    if (!token) set({ me: null });
+    if (!token) set({ me: null, createWindowPhase: "closed" });
   },
 
   setMe: (me) => set({ me }),
@@ -54,7 +61,7 @@ export const useAppStore = create<AppState>((set) => ({
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(TOKEN_KEY);
     }
-    set({ token: null, me: null });
+    set({ token: null, me: null, createWindowPhase: "closed" });
   },
 
   logoutAdmin: () => {
@@ -69,6 +76,10 @@ export const useAppStore = create<AppState>((set) => ({
     const token = window.localStorage.getItem(TOKEN_KEY);
     set({ token: token || null, hydrated: true });
   },
+
+  openCreateWindow: () => set({ createWindowPhase: "gathering" }),
+  finishCreateWindowOpening: () => set({ createWindowPhase: "open" }),
+  closeCreateWindow: () => set({ createWindowPhase: "closed" }),
 }));
 
 export function isAdminPreVerified(): boolean {

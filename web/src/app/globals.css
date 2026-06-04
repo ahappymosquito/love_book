@@ -1,4 +1,4 @@
-/* Global theme tokens, soft scrapbook surfaces, reusable controls, liquid-glass bottom navigation, and smooth focus styles for the couple diary UI. */
+/* Global theme tokens, soft scrapbook surfaces, reusable controls, liquid-glass navigation, create-window sizing, and smooth focus styles. */
 
 @tailwind base;
 @tailwind components;
@@ -185,6 +185,29 @@
     backdrop-filter: blur(14px) saturate(165%);
     -webkit-backdrop-filter: blur(14px) saturate(165%);
     pointer-events: none;
+  }
+
+  .liquid-nav-lens-create {
+    inset: 1px;
+    border-radius: 999px;
+    background:
+      radial-gradient(circle at 50% 0%, rgb(255 255 255 / 0.72), transparent 52%),
+      linear-gradient(150deg, rgb(var(--rose-soft) / 0.34), rgb(var(--peach) / 0.22) 58%, rgb(var(--surface-raised) / 0.3));
+  }
+
+  .create-event-window {
+    max-height: 92dvh !important;
+  }
+
+  @media (min-width: 640px) {
+    .create-event-window {
+      left: 50% !important;
+      right: auto !important;
+      width: min(672px, calc(100vw - 2rem)) !important;
+      max-height: 86dvh !important;
+      translate: -50% 0;
+      border-radius: 1.5rem 1.5rem 0 0;
+    }
   }
 
   @media (prefers-color-scheme: dark) {

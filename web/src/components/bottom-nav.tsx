@@ -1,6 +1,6 @@
 "use client";
 
-// Authenticated five-slot bottom navigation with a shared iOS-style liquid-glass selection lens and transparent 3D create action.
+// Authenticated five-slot bottom navigation with a shared liquid-glass selection lens and compact rose create action.
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -28,6 +28,8 @@ function activeKey(pathname: string): "timeline" | "cycle" | "create" | "todo" |
 export function BottomNav() {
   const pathname = usePathname();
   const { hydrated, me, token } = useAppStore();
+  const createWindowPhase = useAppStore((s) => s.createWindowPhase);
+  const openCreateWindow = useAppStore((s) => s.openCreateWindow);
   const reducedMotion = useReducedMotion();
 
   if (!hydrated || !token || !me || !isUserAppPath(pathname)) return null;
@@ -40,11 +42,18 @@ export function BottomNav() {
       aria-label="底部导航"
     >
       <div className="liquid-nav-shell mx-auto grid h-[72px] max-w-[520px] grid-cols-5 items-center px-2 sm:max-w-5xl sm:px-4">
-        <NavItem href="/timeline" label="首页" active={active === "timeline"} reducedMotion={reducedMotion} icon={<BookHeart className="h-5 w-5" />} />
-        <NavItem href="/cycle" label="周期" active={active === "cycle"} reducedMotion={reducedMotion} icon={<Moon className="h-5 w-5" />} />
-        <CreateNavAction active={active === "create"} />
-        <NavItem href="/todo" label="Todo" active={active === "todo"} reducedMotion={reducedMotion} icon={<ListTodo className="h-5 w-5" />} />
-        <NavItem href="/me" label="设置" active={active === "me"} reducedMotion={reducedMotion} icon={<Settings className="h-5 w-5" />} />
+        <NavItem href="/timeline" label="首页" active={createWindowPhase === "closed" && active === "timeline"} reducedMotion={reducedMotion} icon={<BookHeart className="h-5 w-5" />} />
+        <NavItem href="/cycle" label="周期" active={createWindowPhase === "closed" && active === "cycle"} reducedMotion={reducedMotion} icon={<Moon className="h-5 w-5" />} />
+        <CreateNavAction
+          active={active === "create" || createWindowPhase === "open"}
+          gathering={createWindowPhase === "gathering"}
+          reducedMotion={reducedMotion}
+          onOpen={() => {
+            if (active !== "create" && createWindowPhase === "closed") openCreateWindow();
+          }}
+        />
+        <NavItem href="/todo" label="Todo" active={createWindowPhase === "closed" && active === "todo"} reducedMotion={reducedMotion} icon={<ListTodo className="h-5 w-5" />} />
+        <NavItem href="/me" label="设置" active={createWindowPhase === "closed" && active === "me"} reducedMotion={reducedMotion} icon={<Settings className="h-5 w-5" />} />
       </div>
     </nav>
   );

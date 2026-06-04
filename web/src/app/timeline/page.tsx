@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home screen showing pair reminders, avatar-aware authors, month groups, cycle prompts, and clean bottom-nav-first navigation.
+// Timeline home screen showing pair reminders, avatar-aware authors, month groups, cycle prompts, and create-window empty-state entry.
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -501,6 +501,8 @@ function ListSkeleton() {
 }
 
 function EmptyState() {
+  const openCreateWindow = useAppStore((s) => s.openCreateWindow);
+
   return (
     <div className="glass-card rounded-3xl px-6 py-12 text-center">
       <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-peach/30 text-rose">
@@ -510,13 +512,14 @@ function EmptyState() {
       <p className="font-sc text-sm text-ink-soft mt-2">
         从今天的小事开始，记下来你们就拥有了它。
       </p>
-      <Link
-        href="/create"
+      <button
+        type="button"
+        onClick={openCreateWindow}
         className="btn-primary mt-6 inline-flex items-center gap-2 rounded-full px-5 py-3 font-sc text-sm focus-ring"
       >
         <Plus className="h-4 w-4" />
         写第一笔
-      </Link>
+      </button>
     </div>
   );
 }
