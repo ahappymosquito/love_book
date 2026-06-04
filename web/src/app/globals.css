@@ -1,4 +1,4 @@
-/* Global theme tokens, soft scrapbook surfaces, reusable controls, inputs, bottom-nav spacing, and smooth focus styles for the couple diary UI. */
+/* Global theme tokens, soft scrapbook surfaces, reusable controls, liquid-glass bottom navigation, and smooth focus styles for the couple diary UI. */
 
 @tailwind base;
 @tailwind components;
@@ -140,6 +140,79 @@
     backdrop-filter: blur(16px) saturate(118%);
     -webkit-backdrop-filter: blur(16px) saturate(118%);
     border-bottom: 1px solid rgb(var(--line) / 0.68);
+  }
+
+  .liquid-nav-shell {
+    position: relative;
+    isolation: isolate;
+    overflow: visible;
+    border: 1px solid rgb(255 255 255 / 0.58);
+    border-radius: 1.45rem;
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.6), rgb(var(--surface-glass) / 0.46)),
+      rgb(var(--surface) / 0.48);
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.82) inset,
+      0 -1px 0 rgb(var(--line) / 0.26) inset,
+      0 10px 26px -22px rgb(var(--ink) / 0.42);
+    backdrop-filter: blur(22px) saturate(150%);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
+  }
+
+  .liquid-nav-shell::before {
+    content: "";
+    position: absolute;
+    inset: 1px 12% auto;
+    height: 1px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.74);
+    pointer-events: none;
+  }
+
+  .liquid-nav-lens {
+    position: absolute;
+    z-index: -1;
+    inset: 4px;
+    border: 1px solid rgb(255 255 255 / 0.68);
+    border-radius: 1rem;
+    background:
+      radial-gradient(circle at 50% 0%, rgb(255 255 255 / 0.7), transparent 54%),
+      linear-gradient(150deg, rgb(var(--rose-soft) / 0.3), rgb(var(--peach) / 0.2) 54%, rgb(var(--surface-raised) / 0.28));
+    box-shadow:
+      0 1px 1px rgb(255 255 255 / 0.72) inset,
+      0 -1px 1px rgb(var(--rose-deep) / 0.08) inset,
+      0 5px 12px -10px rgb(var(--rose-deep) / 0.45);
+    backdrop-filter: blur(14px) saturate(165%);
+    -webkit-backdrop-filter: blur(14px) saturate(165%);
+    pointer-events: none;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .liquid-nav-shell {
+      border-color: rgb(255 255 255 / 0.12);
+      background:
+        linear-gradient(180deg, rgb(255 255 255 / 0.08), rgb(var(--surface-glass) / 0.5)),
+        rgb(var(--surface) / 0.48);
+      box-shadow:
+        0 1px 0 rgb(255 255 255 / 0.1) inset,
+        0 -1px 0 rgb(0 0 0 / 0.18) inset,
+        0 12px 28px -22px rgb(0 0 0 / 0.75);
+    }
+
+    .liquid-nav-shell::before {
+      background: rgb(255 255 255 / 0.16);
+    }
+
+    .liquid-nav-lens {
+      border-color: rgb(255 255 255 / 0.16);
+      background:
+        radial-gradient(circle at 50% 0%, rgb(255 255 255 / 0.14), transparent 54%),
+        linear-gradient(150deg, rgb(var(--rose) / 0.2), rgb(var(--peach) / 0.12) 54%, rgb(var(--surface-raised) / 0.18));
+      box-shadow:
+        0 1px 1px rgb(255 255 255 / 0.1) inset,
+        0 -1px 1px rgb(0 0 0 / 0.14) inset,
+        0 5px 12px -10px rgb(0 0 0 / 0.7);
+    }
   }
 
   .hairline {
