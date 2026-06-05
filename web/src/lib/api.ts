@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated editable profiles, private avatars, admin AI config, todo, events, quote libraries, cycles, comment reactions, and media requests.
+// Browser API client for authenticated editable profiles, private avatars, admin AI config, todo scheduling/classification, events, quote libraries, cycles, comment reactions, and media requests.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -292,6 +292,7 @@ export const api = {
   scheduleTodoItem: (id: number, scheduled_on: string) =>
     apiRequest(`/todos/items/${id}/schedules`, { method: "POST", json: { scheduled_on } }),
   deleteTodoSchedule: (id: number) => apiRequest<void>(`/todos/schedules/${id}`, { method: "DELETE" }),
+  classifyTodoItem: (id: number) => apiRequest<TodoItemOut>(`/todos/items/${id}/classify`, { method: "POST" }),
   searchTodoRestaurants: (payload: { keyword: string; city?: string | null }) =>
     apiRequest<{ candidates: TodoRestaurantCandidate[] }>("/todos/restaurants/search", { method: "POST", json: payload }),
   createTodoRestaurant: (payload: {

@@ -1,4 +1,4 @@
-"""API regression tests for auth, editable profiles, avatars, reminders, quote libraries, event visibility, todo boards, AI config, media, and fallback data."""
+"""API regression tests for auth, editable profiles, avatars, reminders, quote libraries, event visibility, todo completion/classification, AI config, media, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -1224,7 +1224,7 @@ def test_todo_restaurant_search_and_create_use_amap_mcp(client: TestClient, pair
     assert data["restaurant"]["signature_dishes"] == "红烧肉"
 
 
-def test_todo_restaurant_detail_is_checked_in_after_comment_or_image(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+def test_todo_restaurant_detail_requires_both_users_to_comment_and_images_do_not_complete(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.amap_mcp.restaurant_detail", lambda poi_id, amap_key=None: {"id": poi_id})
     item = client.post(
         "/todos/restaurants",
@@ -1250,18 +1250,75 @@ def test_todo_restaurant_detail_is_checked_in_after_comment_or_image(client: Tes
     )
 
     assert comment.status_code == 201
+    assert comment.json()["author_display_name"] == "A"
     detail = client.get(f"/todos/items/{item['id']}", headers=auth(str(pair_tokens["user_b_token"]))).json()
-    assert detail["checked_in"] is True
+    assert detail["checked_in"] is False
     assert detail["comments"][0]["text"] == "吃完啦"
+    assert detail["comments"][0]["author_display_name"] == "A"
+
+    second_comment = client.post(
+        f"/todos/items/{item['id']}/comments",
+        headers=auth(str(pair_tokens["user_b_token"])),
+        json={"text": "我也写了"},
+    )
+
+    assert second_comment.status_code == 201
+    detail = client.get(f"/todos/items/{item['id']}", headers=auth(str(pair_tokens["user_a_token"]))).json()
+    assert detail["checked_in"] is True
+
+    image_only_item = client.post(
+        "/todos/items",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"category": "play", "title": "只传照片"},
+    ).json()
 
     upload = client.post(
-        f"/todos/items/{item['id']}/images",
+        f"/todos/items/{image_only_item['id']}/images",
         headers=auth(str(pair_tokens["user_b_token"])),
         files={"file": ("photo.png", sample_png_bytes(), "image/png")},
     )
     assert upload.status_code == 201
     image_id = upload.json()["id"]
     assert client.get(f"/todo-images/{image_id}/thumb", headers=auth(str(pair_tokens["user_a_token"]))).status_code == 200
+    image_only_detail = client.get(f"/todos/items/{image_only_item['id']}", headers=auth(str(pair_tokens["user_a_token"]))).json()
+    assert image_only_detail["checked_in"] is False
+
+
+def test_todo_classify_uses_llm_result_and_stays_pair_isolated(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.api.routes.todos.classify_todo_category", lambda db, item: "food")
+    item = client.post(
+        "/todos/items",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"category": "play", "title": "火锅"},
+    ).json()
+
+    classified = client.post(f"/todos/items/{item['id']}/classify", headers=auth(str(pair_tokens["user_a_token"])))
+
+    assert classified.status_code == 200
+    assert classified.json()["category"] == "food"
+
+    other_pair = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={"user_a_display_name": "C", "user_b_display_name": "D"},
+    ).json()
+    assert client.post(f"/todos/items/{item['id']}/classify", headers=auth(other_pair["user_a_token"])).status_code == 404
+
+
+def test_todo_classify_reports_missing_llm_config(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_classify(db: Session, item) -> str:
+        raise RuntimeError("LLM API key or model is not configured")
+
+    monkeypatch.setattr("app.api.routes.todos.classify_todo_category", fail_classify)
+    item = client.post(
+        "/todos/items",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"category": "play", "title": "火锅"},
+    ).json()
+
+    classified = client.post(f"/todos/items/{item['id']}/classify", headers=auth(str(pair_tokens["user_a_token"])))
+
+    assert classified.status_code == 502
 
 
 def test_admin_ai_config_edits_keys_lists_models_and_saves_model(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

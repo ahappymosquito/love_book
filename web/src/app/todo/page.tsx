@@ -1,13 +1,12 @@
 "use client";
 
-// Microsoft To Do inspired pair-shared todo workspace with Love Book colors, all-open task sorting, due-date setting, restaurant search, lottery, and completed-task folding.
+// Microsoft To Do inspired pair-shared todo workspace with detail-only scheduling, two-comment completion, AI category refresh, comments with authors, and folded photos.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   CalendarDays,
   Check,
-  ChevronLeft,
   ChevronRight,
   Circle,
   Clock3,
@@ -18,6 +17,7 @@ import {
   Menu,
   Music2,
   Plus,
+  RefreshCw,
   Search,
   Shuffle,
   Star,
@@ -64,20 +64,10 @@ function monthKey(date: Date): string {
   return toDateOnly(date).slice(0, 7);
 }
 
-function shiftMonth(month: string, delta: number): string {
-  const [year, rawMonth] = month.split("-").map(Number);
-  return monthKey(new Date(year, rawMonth - 1 + delta, 1));
-}
-
 function formatShortDate(date: string): string {
   const parsed = new Date(`${date}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return date;
   return `${parsed.getMonth() + 1}月${parsed.getDate()}日`;
-}
-
-function formatMonth(month: string): string {
-  const [year, rawMonth] = month.split("-");
-  return `${year}年${Number(rawMonth)}月`;
 }
 
 function schedulesForItem(item: TodoItemOut, schedules: TodoScheduleOut[]): TodoScheduleOut[] {
@@ -103,6 +93,7 @@ function TodoInner() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [detailId, setDetailId] = useState<number | null>(null);
+  const [classifyingId, setClassifyingId] = useState<number | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -127,6 +118,13 @@ function TodoInner() {
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void load();
+    }, 8000);
+    return () => window.clearInterval(timer);
   }, [load]);
 
   const items = useMemo(() => dashboard?.items ?? [], [dashboard]);
@@ -162,6 +160,19 @@ function TodoInner() {
     await load();
   }
 
+  async function classifyItem(itemId: number) {
+    setClassifyingId(itemId);
+    try {
+      const updated = await api.classifyTodoItem(itemId);
+      toast.success(`已刷新为${updated.category === "food" ? "吃喝" : "玩乐"}标签`);
+      await load();
+    } catch {
+      // apiRequest already shows the server-provided error toast.
+    } finally {
+      setClassifyingId(null);
+    }
+  }
+
   return (
     <div className="min-h-dvh bg-[rgb(var(--cream)/0.68)] pb-[calc(env(safe-area-inset-bottom,0px)+5.75rem)] text-ink">
       <div className="mx-auto flex min-h-dvh max-w-[1440px]">
@@ -184,17 +195,9 @@ function TodoInner() {
           <div className="mx-auto flex min-h-[calc(100dvh-7rem)] max-w-6xl flex-col overflow-hidden rounded-[1.4rem] bg-surface/82 shadow-[0_12px_34px_-28px_rgb(var(--rose)/0.42)] hairline">
             <TodoToolbar
               view={view}
-              month={month}
-              selectedDate={selectedDate}
               loading={loading}
               count={visibleItems.length}
               onOpenSidebar={() => setSidebarOpen(true)}
-              onPrevMonth={() => setMonth((value) => shiftMonth(value, -1))}
-              onNextMonth={() => setMonth((value) => shiftMonth(value, 1))}
-              onDateChange={(date) => {
-                setSelectedDate(date);
-                setMonth(date.slice(0, 7));
-              }}
             />
 
             <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 sm:px-5 sm:pb-5">
@@ -206,11 +209,9 @@ function TodoInner() {
                   items={visibleItems}
                   completedItems={completedItems}
                   schedules={schedules}
-                  selectedDate={selectedDate}
                   onOpen={setDetailId}
-                  onSchedule={scheduleItem}
-                  onRemoveSchedule={removeSchedule}
-                  onArchive={archiveItem}
+                  onClassify={classifyItem}
+                  classifyingId={classifyingId}
                 />
               )}
             </div>
@@ -218,7 +219,6 @@ function TodoInner() {
             {view !== "lottery" && (
               <QuickAddBar
                 view={view}
-                selectedDate={selectedDate}
                 onCreated={async (item) => {
                   await load();
                 }}
@@ -235,7 +235,7 @@ function TodoInner() {
               itemId={detailId}
               item={selectedDetail}
               schedules={selectedDetail ? schedulesForItem(selectedDetail, schedules) : []}
-              selectedDate={selectedDate}
+              initialScheduleDate={selectedDate}
               onClose={() => setDetailId(null)}
               onChanged={load}
               onSchedule={scheduleItem}
@@ -403,24 +403,14 @@ function TodoSidebar({
 
 function TodoToolbar({
   view,
-  month,
-  selectedDate,
   loading,
   count,
   onOpenSidebar,
-  onPrevMonth,
-  onNextMonth,
-  onDateChange,
 }: {
   view: TodoView;
-  month: string;
-  selectedDate: string;
   loading: boolean;
   count: number;
   onOpenSidebar: () => void;
-  onPrevMonth: () => void;
-  onNextMonth: () => void;
-  onDateChange: (date: string) => void;
 }) {
   const meta = VIEW_META[view];
   return (
@@ -440,23 +430,6 @@ function TodoToolbar({
         </div>
         {loading && <Loader2 className="mt-2 h-5 w-5 animate-spin text-ink-muted" />}
       </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <button type="button" onClick={onPrevMonth} className="grid h-10 w-10 place-items-center rounded-xl text-ink-soft hover:bg-peach/14 focus-ring" aria-label="上个月">
-          <ChevronLeft className="h-5 w-5" />
-        </button>
-        <span className="rounded-xl bg-peach/12 px-3 py-2 font-sc text-sm text-ink-soft">{formatMonth(month)}</span>
-        <button type="button" onClick={onNextMonth} className="grid h-10 w-10 place-items-center rounded-xl text-ink-soft hover:bg-peach/14 focus-ring" aria-label="下个月">
-          <ChevronRight className="h-5 w-5" />
-        </button>
-        <label className="ml-0 flex h-10 items-center gap-2 rounded-xl border border-line/70 bg-surface-raised/80 px-3 font-sc text-sm text-ink-soft focus-within:border-rose/60 sm:ml-auto">
-          <CalendarDays className="h-4 w-4" />
-          <input type="date" value={selectedDate} onChange={(event) => onDateChange(event.target.value)} className="bg-transparent outline-none" />
-        </label>
-        <span className="rounded-xl bg-rose/8 px-3 py-2 font-sc text-sm text-rose-deep">
-          当前要设置的时间：{formatShortDate(selectedDate)}
-        </span>
-      </div>
     </header>
   );
 }
@@ -465,20 +438,16 @@ function TaskList({
   items,
   completedItems,
   schedules,
-  selectedDate,
   onOpen,
-  onSchedule,
-  onRemoveSchedule,
-  onArchive,
+  onClassify,
+  classifyingId,
 }: {
   items: TodoItemOut[];
   completedItems: TodoItemOut[];
   schedules: TodoScheduleOut[];
-  selectedDate: string;
   onOpen: (id: number) => void;
-  onSchedule: (id: number, date?: string) => void;
-  onRemoveSchedule: (id: number) => void;
-  onArchive: (id: number) => void;
+  onClassify: (id: number) => void;
+  classifyingId: number | null;
 }) {
   return (
     <div className="pt-3">
@@ -497,11 +466,9 @@ function TaskList({
               <TaskRow
                 item={item}
                 schedules={schedulesForItem(item, schedules)}
-                selectedDate={selectedDate}
                 onOpen={() => onOpen(item.id)}
-                onSchedule={() => onSchedule(item.id)}
-                onRemoveSchedule={onRemoveSchedule}
-                onArchive={() => onArchive(item.id)}
+                onClassify={() => onClassify(item.id)}
+                classifying={classifyingId === item.id}
               />
             </li>
           ))}
@@ -510,11 +477,9 @@ function TaskList({
       <CompletedTaskSection
         items={completedItems}
         schedules={schedules}
-        selectedDate={selectedDate}
         onOpen={onOpen}
-        onSchedule={onSchedule}
-        onRemoveSchedule={onRemoveSchedule}
-        onArchive={onArchive}
+        onClassify={onClassify}
+        classifyingId={classifyingId}
       />
     </div>
   );
@@ -523,19 +488,15 @@ function TaskList({
 function CompletedTaskSection({
   items,
   schedules,
-  selectedDate,
   onOpen,
-  onSchedule,
-  onRemoveSchedule,
-  onArchive,
+  onClassify,
+  classifyingId,
 }: {
   items: TodoItemOut[];
   schedules: TodoScheduleOut[];
-  selectedDate: string;
   onOpen: (id: number) => void;
-  onSchedule: (id: number, date?: string) => void;
-  onRemoveSchedule: (id: number) => void;
-  onArchive: (id: number) => void;
+  onClassify: (id: number) => void;
+  classifyingId: number | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   if (items.length === 0) return null;
@@ -561,11 +522,9 @@ function CompletedTaskSection({
               <TaskRow
                 item={item}
                 schedules={schedulesForItem(item, schedules)}
-                selectedDate={selectedDate}
                 onOpen={() => onOpen(item.id)}
-                onSchedule={() => onSchedule(item.id)}
-                onRemoveSchedule={onRemoveSchedule}
-                onArchive={() => onArchive(item.id)}
+                onClassify={() => onClassify(item.id)}
+                classifying={classifyingId === item.id}
               />
             </li>
           ))}
@@ -578,21 +537,16 @@ function CompletedTaskSection({
 function TaskRow({
   item,
   schedules,
-  selectedDate,
   onOpen,
-  onSchedule,
-  onRemoveSchedule,
-  onArchive,
+  onClassify,
+  classifying,
 }: {
   item: TodoItemOut;
   schedules: TodoScheduleOut[];
-  selectedDate: string;
   onOpen: () => void;
-  onSchedule: () => void;
-  onRemoveSchedule: (id: number) => void;
-  onArchive: () => void;
+  onClassify: () => void;
+  classifying: boolean;
 }) {
-  const scheduledOnSelected = schedules.some((schedule) => schedule.scheduled_on === selectedDate);
   const restaurant = item.restaurant;
 
   return (
@@ -613,7 +567,7 @@ function TaskRow({
         <button type="button" onClick={onOpen} className="min-w-0 flex-1 rounded-xl text-left focus-ring">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className={cn("font-display text-base font-semibold leading-tight text-ink", item.checked_in && "text-ink-muted line-through")}>{item.title}</h3>
-            <span className="rounded-full bg-peach/16 px-2 py-0.5 font-sc text-[11px] text-ink-muted">{item.category === "food" ? "吃饭" : "玩乐"}</span>
+            <span className="rounded-full bg-peach/16 px-2 py-0.5 font-sc text-[11px] text-ink-muted">{item.category === "food" ? "吃喝" : "玩乐"}</span>
             {restaurant && <StatusPill status={restaurant.parse_status} />}
             {item.checked_in && <span className="rounded-full bg-sage/18 px-2 py-0.5 font-sc text-[11px] text-ink-soft">已打卡</span>}
           </div>
@@ -635,28 +589,15 @@ function TaskRow({
           </div>
         </button>
 
-        <div className="flex flex-none items-center gap-1">
-          {scheduledOnSelected ? (
-            <button
-              type="button"
-              onClick={() => {
-                const schedule = schedules.find((itemSchedule) => itemSchedule.scheduled_on === selectedDate);
-                if (schedule) onRemoveSchedule(schedule.id);
-              }}
-              className="grid h-10 w-10 place-items-center rounded-xl bg-sage/18 text-sage hover:bg-sage/24 focus-ring"
-              aria-label="取消这个要完成时间"
-            >
-              <Check className="h-4 w-4" />
-            </button>
-          ) : (
-            <button type="button" onClick={onSchedule} className="grid h-10 w-10 place-items-center rounded-xl text-rose-deep hover:bg-rose/10 focus-ring" aria-label="设为要完成时间">
-              <Plus className="h-4 w-4" />
-            </button>
-          )}
-          <button type="button" onClick={onArchive} className="grid h-10 w-10 place-items-center rounded-xl text-ink-muted hover:bg-ink/5 hover:text-rose-deep focus-ring" aria-label="收起项目">
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onClassify}
+          disabled={classifying}
+          className="grid h-10 w-10 flex-none place-items-center rounded-xl text-rose-deep hover:bg-rose/10 disabled:opacity-60 focus-ring"
+          aria-label="刷新任务标签"
+        >
+          {classifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+        </button>
       </div>
     </article>
   );
@@ -670,12 +611,10 @@ function StatusPill({ status }: { status: string }) {
 
 function QuickAddBar({
   view,
-  selectedDate,
   onCreated,
   onFoodIntent,
 }: {
   view: TodoView;
-  selectedDate: string;
   onCreated: (item: TodoItemOut) => void;
   onFoodIntent: () => void;
 }) {
@@ -917,7 +856,7 @@ function TodoDetailPanel({
   itemId,
   item,
   schedules,
-  selectedDate,
+  initialScheduleDate,
   onClose,
   onChanged,
   onSchedule,
@@ -927,21 +866,31 @@ function TodoDetailPanel({
   itemId: number;
   item: TodoItemOut | null;
   schedules: TodoScheduleOut[];
-  selectedDate: string;
+  initialScheduleDate: string;
   onClose: () => void;
   onChanged: () => void;
-  onSchedule: (id: number, date?: string) => void;
-  onRemoveSchedule: (id: number) => void;
+  onSchedule: (id: number, date?: string) => void | Promise<void>;
+  onRemoveSchedule: (id: number) => void | Promise<void>;
   onArchive: (id: number) => void;
 }) {
   const [detail, setDetail] = useState<TodoItemDetail | null>(null);
   const [comment, setComment] = useState("");
   const [saving, setSaving] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState(initialScheduleDate);
+  const [photosOpen, setPhotosOpen] = useState(false);
 
   useEffect(() => {
     setDetail(null);
     void api.getTodoItem(itemId).then(setDetail);
+    const timer = window.setInterval(() => {
+      void api.getTodoItem(itemId).then(setDetail);
+    }, 8000);
+    return () => window.clearInterval(timer);
   }, [itemId]);
+
+  useEffect(() => {
+    setScheduleDate(initialScheduleDate);
+  }, [initialScheduleDate, itemId]);
 
   async function submitComment(event: FormEvent) {
     event.preventDefault();
@@ -965,8 +914,23 @@ function TodoDetailPanel({
     onChanged();
   }
 
+  async function toggleScheduleDate() {
+    try {
+      if (scheduledOnSelected) {
+        await onRemoveSchedule(scheduledOnSelected.id);
+      } else {
+        await onSchedule(itemId, scheduleDate);
+      }
+      setDetail(await api.getTodoItem(itemId));
+      onChanged();
+    } catch {
+      // apiRequest already shows the server-provided error toast.
+    }
+  }
+
   const current = detail ?? item;
-  const scheduledOnSelected = schedules.find((schedule) => schedule.scheduled_on === selectedDate);
+  const currentSchedules = detail?.schedules ?? schedules;
+  const scheduledOnSelected = currentSchedules.find((schedule) => schedule.scheduled_on === scheduleDate);
 
   return (
     <>
@@ -1017,18 +981,22 @@ function TodoDetailPanel({
               <section>
                 <h3 className="mb-2 font-sc text-sm font-medium text-ink">日期安排</h3>
                 <div className="flex flex-wrap gap-2">
-                  {schedules.map((schedule) => (
+                  {currentSchedules.map((schedule) => (
                     <button key={schedule.id} type="button" onClick={() => onRemoveSchedule(schedule.id)} className="inline-flex min-h-9 items-center gap-1 rounded-full bg-peach/18 px-3 font-sc text-xs text-rose-deep focus-ring">
                       {formatShortDate(schedule.scheduled_on)}
                       <X className="h-3.5 w-3.5" />
                     </button>
                   ))}
+                  <label className="inline-flex min-h-9 items-center gap-2 rounded-full border border-line/70 bg-surface-raised/80 px-3 font-sc text-xs text-ink-soft focus-within:border-rose/60">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    <input type="date" value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} className="bg-transparent outline-none" />
+                  </label>
                   <button
                     type="button"
-                    onClick={() => (scheduledOnSelected ? onRemoveSchedule(scheduledOnSelected.id) : onSchedule(itemId, selectedDate))}
+                    onClick={toggleScheduleDate}
                     className="inline-flex min-h-9 items-center gap-1 rounded-full bg-rose/10 px-3 font-sc text-xs text-rose-deep focus-ring"
                   >
-                    {scheduledOnSelected ? "取消所选日期" : `安排到 ${formatShortDate(selectedDate)}`}
+                    {scheduledOnSelected ? "取消这个日期" : `安排到 ${formatShortDate(scheduleDate)}`}
                   </button>
                 </div>
               </section>
@@ -1041,6 +1009,7 @@ function TodoDetailPanel({
                   <ul className="space-y-2">
                     {detail.comments.map((item) => (
                       <li key={item.id} className="rounded-xl bg-peach/14 p-4">
+                        <p className="mb-2 font-sc text-xs font-medium text-rose-deep">{item.author_display_name || "对方"}</p>
                         <p className="whitespace-pre-wrap break-words font-sc text-sm text-ink">{item.text}</p>
                         <p className="mt-2 font-sc text-[11px] text-ink-muted">{formatRelative(item.created_at)}</p>
                       </li>
@@ -1050,15 +1019,28 @@ function TodoDetailPanel({
               </section>
 
               <section>
-                <h3 className="mb-2 font-sc text-sm font-medium text-ink">照片</h3>
-                {detail.images.length === 0 ? (
-                  <p className="rounded-xl bg-peach/14 p-4 font-sc text-sm text-ink-muted">还没有照片。</p>
-                ) : (
-                  <div className="grid grid-cols-3 gap-2">
-                    {detail.images.map((image) => (
-                      <TodoImageThumb key={image.id} image={image} />
-                    ))}
-                  </div>
+                <button
+                  type="button"
+                  onClick={() => setPhotosOpen((value) => !value)}
+                  className="mb-2 flex min-h-10 w-full items-center justify-between rounded-xl px-2 text-left font-sc text-sm font-medium text-ink hover:bg-peach/10 focus-ring"
+                  aria-expanded={photosOpen}
+                >
+                  <span>照片</span>
+                  <span className="inline-flex items-center gap-2 text-xs text-ink-muted">
+                    {detail.images.length}
+                    <ChevronRight className={cn("h-4 w-4 transition", photosOpen && "rotate-90")} />
+                  </span>
+                </button>
+                {photosOpen && (
+                  detail.images.length === 0 ? (
+                    <p className="rounded-xl bg-peach/14 p-4 font-sc text-sm text-ink-muted">还没有照片。</p>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2">
+                      {detail.images.map((image) => (
+                        <TodoImageThumb key={image.id} image={image} />
+                      ))}
+                    </div>
+                  )
                 )}
               </section>
             </div>

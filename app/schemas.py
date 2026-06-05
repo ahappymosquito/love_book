@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, editable profiles, admin, events, comment reactions, media, quote libraries, cycles, and todo APIs."""
+"""Pydantic schemas for auth, editable profiles, admin, events, media, quote libraries, cycles, and todo APIs with author-aware comments."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -447,10 +447,9 @@ class TodoCommentOut(APIModel):
     id: int
     item_id: int
     author_id: int
+    author_display_name: str
     text: str
     created_at: datetime
-
-    model_config = {"from_attributes": True}
 
 
 class TodoImageOut(APIModel):

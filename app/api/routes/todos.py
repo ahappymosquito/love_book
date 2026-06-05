@@ -1,4 +1,4 @@
-"""Todo board routes for pair-shared food/play items, schedules, restaurant MCP search, comments, and images."""
+"""Todo board routes for pair-shared tasks, due dates, two-person comment completion, AI category refresh, restaurants, and images."""
 
 from __future__ import annotations
 
@@ -6,19 +6,20 @@ import random
 from calendar import monthrange
 from datetime import date
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app import amap_mcp
-from app.ai_config import effective_amap_key
+from app.ai_config import effective_amap_key, effective_api_key, effective_model, get_ai_setting, protocol_base_url
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.emailer import notify_todo_schedule_created
 from app.media import MediaProcessingError, make_image_thumbnail
-from app.models import Pair, TodoCategory, TodoComment, TodoImage, TodoItem, TodoParseStatus, TodoRestaurant, TodoSchedule, User
+from app.models import AIProtocol, Pair, TodoCategory, TodoComment, TodoImage, TodoItem, TodoParseStatus, TodoRestaurant, TodoSchedule, User
 from app.schemas import (
     TodoCommentCreate,
     TodoCommentOut,
@@ -91,9 +92,9 @@ def _seed_default_play_items(db: Session, pair: Pair, user: User) -> None:
     db.flush()
 
 
-def _counts(db: Session, item_ids: list[int]) -> tuple[dict[int, int], dict[int, int]]:
+def _counts(db: Session, item_ids: list[int]) -> tuple[dict[int, int], dict[int, int], dict[int, set[int]]]:
     if not item_ids:
-        return {}, {}
+        return {}, {}, {}
     comments = dict(
         db.execute(
             select(TodoComment.item_id, func.count(TodoComment.id)).where(TodoComment.item_id.in_(item_ids)).group_by(TodoComment.item_id)
@@ -104,11 +105,37 @@ def _counts(db: Session, item_ids: list[int]) -> tuple[dict[int, int], dict[int,
             select(TodoImage.item_id, func.count(TodoImage.id)).where(TodoImage.item_id.in_(item_ids)).group_by(TodoImage.item_id)
         ).all()
     )
-    return comments, images
+    author_rows = db.execute(
+        select(TodoComment.item_id, TodoComment.author_id).where(TodoComment.item_id.in_(item_ids)).distinct()
+    ).all()
+    authors: dict[int, set[int]] = {}
+    for item_id, author_id in author_rows:
+        authors.setdefault(item_id, set()).add(author_id)
+    return comments, images, authors
+
+
+def _pair_user_ids(pair: Pair) -> set[int]:
+    return {pair.user_a_id, pair.user_b_id}
+
+
+def _is_checked_in(pair: Pair, author_ids: set[int]) -> bool:
+    return _pair_user_ids(pair).issubset(author_ids)
+
+
+def _comment_out(comment: TodoComment) -> TodoCommentOut:
+    return TodoCommentOut(
+        id=comment.id,
+        item_id=comment.item_id,
+        author_id=comment.author_id,
+        author_display_name=comment.author.display_name if comment.author else "",
+        text=comment.text,
+        created_at=comment.created_at,
+    )
 
 
 def _item_out(db: Session, item: TodoItem) -> TodoItemOut:
-    comments, images = _counts(db, [item.id])
+    pair = db.get(Pair, item.pair_id)
+    comments, images, authors = _counts(db, [item.id])
     return TodoItemOut(
         id=item.id,
         pair_id=item.pair_id,
@@ -121,14 +148,16 @@ def _item_out(db: Session, item: TodoItem) -> TodoItemOut:
         schedules=[TodoScheduleOut.model_validate(schedule) for schedule in sorted(item.schedules, key=lambda s: s.scheduled_on)],
         comments_count=comments.get(item.id, 0),
         images_count=images.get(item.id, 0),
-        checked_in=(comments.get(item.id, 0) + images.get(item.id, 0)) > 0,
+        checked_in=_is_checked_in(pair, authors.get(item.id, set())) if pair else False,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
 
 
 def _items_out(db: Session, items: list[TodoItem]) -> list[TodoItemOut]:
-    comments, images = _counts(db, [item.id for item in items])
+    comments, images, authors = _counts(db, [item.id for item in items])
+    pair_ids = {item.pair_id for item in items}
+    pairs = {pair.id: pair for pair in db.execute(select(Pair).where(Pair.id.in_(pair_ids))).scalars().all()} if pair_ids else {}
     return [
         TodoItemOut(
             id=item.id,
@@ -142,12 +171,70 @@ def _items_out(db: Session, items: list[TodoItem]) -> list[TodoItemOut]:
             schedules=[TodoScheduleOut.model_validate(schedule) for schedule in sorted(item.schedules, key=lambda s: s.scheduled_on)],
             comments_count=comments.get(item.id, 0),
             images_count=images.get(item.id, 0),
-            checked_in=(comments.get(item.id, 0) + images.get(item.id, 0)) > 0,
+            checked_in=_is_checked_in(pairs[item.pair_id], authors.get(item.id, set())) if item.pair_id in pairs else False,
             created_at=item.created_at,
             updated_at=item.updated_at,
         )
         for item in items
     ]
+
+
+def classify_todo_category(db: Session, item: TodoItem) -> TodoCategory:
+    api_key = effective_api_key(db)
+    model = effective_model(db)
+    if not api_key or not model:
+        raise RuntimeError("LLM API key or model is not configured")
+    setting = get_ai_setting(db)
+    base_url = protocol_base_url(db, setting.protocol)
+    prompt = (
+        "Classify this couple todo item into exactly one category. "
+        "Return only one token: food or play. "
+        "food means eating, drinking, restaurants, cafes, snacks, meals, stores related to food. "
+        "play means entertainment, activity, travel, shopping, games, movies, sports, chores, or anything else.\n"
+        f"Title: {item.title}\n"
+        f"Note: {item.note or ''}"
+    )
+    if setting.protocol == AIProtocol.anthropic:
+        response = httpx.post(
+            f"{base_url}/v1/messages",
+            headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
+            json={
+                "model": model,
+                "max_tokens": 8,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        content = payload.get("content", [])
+        text = ""
+        if content and isinstance(content, list):
+            first = content[0]
+            if isinstance(first, dict):
+                text = str(first.get("text") or "")
+    else:
+        response = httpx.post(
+            f"{base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0,
+                "max_tokens": 8,
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        choices = payload.get("choices", [])
+        text = str(choices[0].get("message", {}).get("content", "")) if choices else ""
+    normalized = text.strip().lower()
+    if "food" in normalized:
+        return TodoCategory.food
+    if "play" in normalized:
+        return TodoCategory.play
+    raise RuntimeError(f"LLM returned unsupported category: {text!r}")
 
 
 @router.get("/dashboard", response_model=TodoDashboardOut)
@@ -273,6 +360,21 @@ def create_schedule(
     return TodoScheduleOut.model_validate(schedule)
 
 
+@router.post("/items/{item_id}/classify", response_model=TodoItemOut)
+def classify_item(item_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> TodoItemOut:
+    pair = get_pair_for_user(db, current_user.id)
+    item = _ensure_pair_item(db, item_id, pair)
+    try:
+        item.category = TodoCategory(classify_todo_category(db, item))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"LLM classification failed: {exc}") from exc
+    db.commit()
+    db.refresh(item)
+    return _item_out(db, item)
+
+
 @router.delete("/schedules/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_schedule(schedule_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
     pair = get_pair_for_user(db, current_user.id)
@@ -386,9 +488,18 @@ def get_item_detail(item_id: int, current_user: User = Depends(get_current_user)
     pair = get_pair_for_user(db, current_user.id)
     item = _ensure_pair_item(db, item_id, pair)
     out = _item_out(db, item)
-    comments = db.execute(select(TodoComment).where(TodoComment.item_id == item.id).order_by(TodoComment.created_at)).scalars().all()
+    comments = (
+        db.execute(
+            select(TodoComment)
+            .options(selectinload(TodoComment.author))
+            .where(TodoComment.item_id == item.id)
+            .order_by(TodoComment.created_at)
+        )
+        .scalars()
+        .all()
+    )
     images = db.execute(select(TodoImage).where(TodoImage.item_id == item.id).order_by(TodoImage.created_at)).scalars().all()
-    return TodoItemDetail(**out.model_dump(), comments=comments, images=images)
+    return TodoItemDetail(**out.model_dump(), comments=[_comment_out(comment) for comment in comments], images=images)
 
 
 @router.post("/items/{item_id}/comments", response_model=TodoCommentOut, status_code=status.HTTP_201_CREATED)
@@ -404,7 +515,8 @@ def create_comment(
     db.add(comment)
     db.commit()
     db.refresh(comment)
-    return TodoCommentOut.model_validate(comment)
+    comment.author = current_user
+    return _comment_out(comment)
 
 
 @router.post("/items/{item_id}/images", response_model=TodoImageOut, status_code=status.HTTP_201_CREATED)
