@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, editable profiles, admin, events, media, quote libraries, cycles, and todo APIs with author-aware comments."""
+"""Pydantic schemas for auth, editable profiles, admin, events, media, quote libraries, cycles, and todo APIs with batch classification and author-aware comments."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -363,6 +363,11 @@ class TodoDashboardOut(APIModel):
     month: str
     items: list[TodoItemOut]
     schedules: list[TodoScheduleOut]
+
+
+class TodoClassifyOpenOut(APIModel):
+    count: int
+    items: list[TodoItemOut]
 
 
 class TodoItemCreate(APIModel):

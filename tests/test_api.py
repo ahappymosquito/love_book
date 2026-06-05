@@ -1,4 +1,4 @@
-"""API regression tests for auth, editable profiles, avatars, reminders, quote libraries, event visibility, todo completion/classification, AI config, media, and fallback data."""
+"""API regression tests for auth, editable profiles, avatars, reminders, quote libraries, event visibility, todo completion/batch classification, AI config, media, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -1303,6 +1303,48 @@ def test_todo_classify_uses_llm_result_and_stays_pair_isolated(client: TestClien
         json={"user_a_display_name": "C", "user_b_display_name": "D"},
     ).json()
     assert client.post(f"/todos/items/{item['id']}/classify", headers=auth(other_pair["user_a_token"])).status_code == 404
+
+
+def test_todo_batch_classify_only_updates_open_items(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    def classify_open_only(db: Session, item) -> str:
+        calls.append(item.title)
+        if item.title == "completed hotpot":
+            raise AssertionError("completed todo should not be classified")
+        return "food"
+
+    monkeypatch.setattr("app.api.routes.todos.classify_todo_category", classify_open_only)
+    open_item = client.post(
+        "/todos/items",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"category": "play", "title": "open hotpot"},
+    ).json()
+    completed_item = client.post(
+        "/todos/items",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"category": "play", "title": "completed hotpot"},
+    ).json()
+    client.post(
+        f"/todos/items/{completed_item['id']}/comments",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"text": "done by a"},
+    )
+    client.post(
+        f"/todos/items/{completed_item['id']}/comments",
+        headers=auth(str(pair_tokens["user_b_token"])),
+        json={"text": "done by b"},
+    )
+
+    response = client.post("/todos/items/classify-open", headers=auth(str(pair_tokens["user_a_token"])))
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+    assert calls == ["open hotpot"]
+    items = {item["id"]: item for item in client.get("/todos/dashboard?month=2026-05", headers=auth(str(pair_tokens["user_a_token"]))).json()["items"]}
+    assert items[open_item["id"]]["category"] == "food"
+    assert items[completed_item["id"]]["category"] == "play"
+    assert items[completed_item["id"]]["checked_in"] is True
 
 
 def test_todo_classify_reports_missing_llm_config(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:

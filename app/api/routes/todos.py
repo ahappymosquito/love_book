@@ -1,4 +1,4 @@
-"""Todo board routes for pair-shared tasks, due dates, two-person comment completion, AI category refresh, restaurants, and images."""
+"""Todo board routes for pair-shared tasks, due dates, two-person comment completion, batch AI category refresh, restaurants, and images."""
 
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ from app.models import AIProtocol, Pair, TodoCategory, TodoComment, TodoImage, T
 from app.schemas import (
     TodoCommentCreate,
     TodoCommentOut,
+    TodoClassifyOpenOut,
     TodoDashboardOut,
     TodoImageOut,
     TodoItemCreate,
@@ -373,6 +374,34 @@ def classify_item(item_id: int, current_user: User = Depends(get_current_user), 
     db.commit()
     db.refresh(item)
     return _item_out(db, item)
+
+
+@router.post("/items/classify-open", response_model=TodoClassifyOpenOut)
+def classify_open_items(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> TodoClassifyOpenOut:
+    pair = get_pair_for_user(db, current_user.id)
+    items = (
+        db.execute(
+            select(TodoItem)
+            .options(selectinload(TodoItem.restaurant), selectinload(TodoItem.schedules))
+            .where(TodoItem.pair_id == pair.id, TodoItem.is_archived.is_(False))
+            .order_by(TodoItem.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    _, _, authors = _counts(db, [item.id for item in items])
+    open_items = [item for item in items if not _is_checked_in(pair, authors.get(item.id, set()))]
+    try:
+        for item in open_items:
+            item.category = TodoCategory(classify_todo_category(db, item))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"LLM classification failed: {exc}") from exc
+    db.commit()
+    for item in open_items:
+        db.refresh(item)
+    return TodoClassifyOpenOut(count=len(open_items), items=_items_out(db, open_items))
 
 
 @router.delete("/schedules/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)

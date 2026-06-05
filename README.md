@@ -121,7 +121,7 @@ npm run dev
 - `/timeline/[id]` 事件详情（评论 / 语音 / 图片混排，评论支持点赞 / 倒赞 reaction，底部输入栏支持文字、录音、相册）
 - `/me` 我的页面（当前用户头像、用户名、邮箱和共享语录管理）
 - `/create` 新建事件
-- `/todo` 共享 todo 工作区（Microsoft To Do 式左侧列表 / 中央任务 / 右侧详情布局，默认展示全部未完成事项，按要完成时间排序，含详情内日期安排、AI 刷新标签、双方评论完成、照片折叠、餐厅搜索、随机抽奖和打卡详情）
+- `/todo` 共享 todo 工作区（Microsoft To Do 式左侧列表 / 中央任务 / 右侧详情布局，默认展示全部未完成事项，按要完成时间排序，含详情内日期安排、工具栏一键 AI 刷新未完成标签、双方评论完成、照片折叠、餐厅搜索、随机抽奖和打卡详情）
 - `/cycle` 周期日历 Dashboard（月 / 周 / 列表视图、筛选、提醒设置和移动端详情面板）
 
 ## 前端设计上下文
@@ -859,7 +859,7 @@ python -m pytest tests -q
 - 登录后可从底边栏进入 `/todo` todo 看板和 `/cycle` 周期入口；`/todo` 复用当前 Bearer token 鉴权，数据按 pair 双方共享。
 - `/todo` 前端采用 Microsoft To Do 式工作区：桌面端左侧列表导航、中间任务列表、右侧详情面板；移动端折叠导航并以底部面板展示详情。默认列表展示所有未完成 todo，不按当天过滤；已设置要完成时间的 todo 按日期升序排在前面，未设置时间的 todo 排在后面，已完成/打卡 todo 在下方折叠板块展示。`?date=YYYY-MM-DD` 邮件入口会预选详情内日期输入，但不会隐藏其它 todo；日期只能在详情内设置或取消。日期安排写接口在返回前提交数据库，并给另一方发送邮件通知。
 - Todo 项目独立于 `/timeline` 事件，不会自动写入时间线。默认玩乐项目为“唱歌、台球、看电影、拼乐高”，用户也可以自定义新增。
-- Todo 任务标签显示为“吃喝 / 玩乐”，用户点击刷新标签时后端按当前 Admin AI 配置调用 LLM 二分类并更新内部 `food/play` 分类。普通新建任务默认先按 `play` 保存，后续可刷新标签。
+- Todo 任务标签显示为“吃喝 / 玩乐”，用户点击 `/todo` 工具栏的唯一刷新按钮时，后端按当前 Admin AI 配置批量调用 LLM 二分类并只更新未完成 todo 的内部 `food/play` 分类；已完成 todo 不显示刷新入口也不参与刷新。普通新建任务默认先按 `play` 保存，后续可刷新标签。
 - Todo 完成状态要求 pair 双方都至少评论过一次；评论详情展示作者名，图片上传只作为记录内容，不参与完成判定。照片在详情内折叠展示，不按上传人分组。
 - 吃饭项目通过后端 `npx -y @amap/amap-maps-mcp-server` 调用高德 MCP 搜索和详情解析；高德 key 可在管理端单独配置，`.env` / 服务器环境变量 `AMAP_MAPS_API_KEY` 作为初始默认和兜底。
 - Todo 图片写入 `MEDIA_ROOT/todo/images/...`，数据库只保存 `todo_images.storage_key` / `todo_images.thumb_storage_key`，下载接口为 `/todo-images/{image_id}/file` 和 `/todo-images/{image_id}/thumb`。

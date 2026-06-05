@@ -1,4 +1,4 @@
-// Shared TypeScript contracts for API payloads, editable profile state, events, quote libraries, todo boards with author-aware comments, admin AI config, cycles, and reminders.
+// Shared TypeScript contracts for API payloads, editable profile state, events, quote libraries, todo boards with batch category refresh and author-aware comments, admin AI config, cycles, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
 export type TodoCategory = "food" | "play";
@@ -282,6 +282,11 @@ export interface TodoDashboardOut {
   month: string;
   items: TodoItemOut[];
   schedules: TodoScheduleOut[];
+}
+
+export interface TodoClassifyOpenOut {
+  count: number;
+  items: TodoItemOut[];
 }
 
 export interface TodoRestaurantCandidate {

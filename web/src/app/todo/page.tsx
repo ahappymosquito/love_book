@@ -1,6 +1,6 @@
 "use client";
 
-// Microsoft To Do inspired pair-shared todo workspace with detail-only scheduling, two-comment completion, AI category refresh, comments with authors, and folded photos.
+// Microsoft To Do inspired pair-shared todo workspace with detail-only scheduling, two-comment completion, one-click open-item AI category refresh, comments with authors, and folded photos.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -93,7 +93,7 @@ function TodoInner() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [detailId, setDetailId] = useState<number | null>(null);
-  const [classifyingId, setClassifyingId] = useState<number | null>(null);
+  const [classifyingOpen, setClassifyingOpen] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -160,16 +160,16 @@ function TodoInner() {
     await load();
   }
 
-  async function classifyItem(itemId: number) {
-    setClassifyingId(itemId);
+  async function classifyOpenItems() {
+    setClassifyingOpen(true);
     try {
-      const updated = await api.classifyTodoItem(itemId);
-      toast.success(`已刷新为${updated.category === "food" ? "吃喝" : "玩乐"}标签`);
+      const result = await api.classifyOpenTodoItems();
+      toast.success(`已刷新 ${result.count} 个未完成标签`);
       await load();
     } catch {
       // apiRequest already shows the server-provided error toast.
     } finally {
-      setClassifyingId(null);
+      setClassifyingOpen(false);
     }
   }
 
@@ -197,7 +197,9 @@ function TodoInner() {
               view={view}
               loading={loading}
               count={visibleItems.length}
+              classifyingOpen={classifyingOpen}
               onOpenSidebar={() => setSidebarOpen(true)}
+              onClassifyOpen={classifyOpenItems}
             />
 
             <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 sm:px-5 sm:pb-5">
@@ -210,8 +212,6 @@ function TodoInner() {
                   completedItems={completedItems}
                   schedules={schedules}
                   onOpen={setDetailId}
-                  onClassify={classifyItem}
-                  classifyingId={classifyingId}
                 />
               )}
             </div>
@@ -405,12 +405,16 @@ function TodoToolbar({
   view,
   loading,
   count,
+  classifyingOpen,
   onOpenSidebar,
+  onClassifyOpen,
 }: {
   view: TodoView;
   loading: boolean;
   count: number;
+  classifyingOpen: boolean;
   onOpenSidebar: () => void;
+  onClassifyOpen: () => void;
 }) {
   const meta = VIEW_META[view];
   return (
@@ -428,6 +432,16 @@ function TodoToolbar({
             </div>
           </div>
         </div>
+        <button
+          type="button"
+          onClick={onClassifyOpen}
+          disabled={classifyingOpen}
+          className="grid h-10 w-10 flex-none place-items-center rounded-xl text-rose-deep transition hover:bg-rose/10 disabled:opacity-60 focus-ring"
+          aria-label="刷新未完成任务标签"
+          title="刷新未完成任务标签"
+        >
+          {classifyingOpen ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+        </button>
         {loading && <Loader2 className="mt-2 h-5 w-5 animate-spin text-ink-muted" />}
       </div>
     </header>
@@ -439,15 +453,11 @@ function TaskList({
   completedItems,
   schedules,
   onOpen,
-  onClassify,
-  classifyingId,
 }: {
   items: TodoItemOut[];
   completedItems: TodoItemOut[];
   schedules: TodoScheduleOut[];
   onOpen: (id: number) => void;
-  onClassify: (id: number) => void;
-  classifyingId: number | null;
 }) {
   return (
     <div className="pt-3">
@@ -467,8 +477,6 @@ function TaskList({
                 item={item}
                 schedules={schedulesForItem(item, schedules)}
                 onOpen={() => onOpen(item.id)}
-                onClassify={() => onClassify(item.id)}
-                classifying={classifyingId === item.id}
               />
             </li>
           ))}
@@ -478,8 +486,6 @@ function TaskList({
         items={completedItems}
         schedules={schedules}
         onOpen={onOpen}
-        onClassify={onClassify}
-        classifyingId={classifyingId}
       />
     </div>
   );
@@ -489,14 +495,10 @@ function CompletedTaskSection({
   items,
   schedules,
   onOpen,
-  onClassify,
-  classifyingId,
 }: {
   items: TodoItemOut[];
   schedules: TodoScheduleOut[];
   onOpen: (id: number) => void;
-  onClassify: (id: number) => void;
-  classifyingId: number | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   if (items.length === 0) return null;
@@ -523,8 +525,6 @@ function CompletedTaskSection({
                 item={item}
                 schedules={schedulesForItem(item, schedules)}
                 onOpen={() => onOpen(item.id)}
-                onClassify={() => onClassify(item.id)}
-                classifying={classifyingId === item.id}
               />
             </li>
           ))}
@@ -538,14 +538,10 @@ function TaskRow({
   item,
   schedules,
   onOpen,
-  onClassify,
-  classifying,
 }: {
   item: TodoItemOut;
   schedules: TodoScheduleOut[];
   onOpen: () => void;
-  onClassify: () => void;
-  classifying: boolean;
 }) {
   const restaurant = item.restaurant;
 
@@ -587,16 +583,6 @@ function TaskRow({
               </span>
             )}
           </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={onClassify}
-          disabled={classifying}
-          className="grid h-10 w-10 flex-none place-items-center rounded-xl text-rose-deep hover:bg-rose/10 disabled:opacity-60 focus-ring"
-          aria-label="刷新任务标签"
-        >
-          {classifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
         </button>
       </div>
     </article>
