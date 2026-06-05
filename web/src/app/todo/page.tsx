@@ -1,6 +1,6 @@
 "use client";
 
-// Microsoft To Do inspired pair-shared todo workspace with Love Book colors, list navigation, planned tasks, restaurant search, lottery, and check-in detail panels.
+// Microsoft To Do inspired pair-shared todo workspace with Love Book colors, all-open task sorting, due-date setting, restaurant search, lottery, and completed-task folding.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -20,7 +20,6 @@ import {
   Plus,
   Search,
   Shuffle,
-  Sparkles,
   Star,
   Trash2,
   Utensils,
@@ -44,15 +43,14 @@ import type {
   TodoScheduleOut,
 } from "@/lib/types";
 
-type TodoView = "today" | "important" | "planned" | "food" | "play" | "completed" | "lottery";
+type TodoView = "all" | "important" | "planned" | "food" | "play" | "lottery";
 
 const VIEW_META: Record<TodoView, { title: string; subtitle: string; icon: ReactNode }> = {
-  today: { title: "我的一天", subtitle: "今天想一起完成的小安排", icon: <Sparkles className="h-4 w-4" /> },
-  important: { title: "重要", subtitle: "最近安排、已打卡和餐厅解析提醒", icon: <Star className="h-4 w-4" /> },
-  planned: { title: "计划内", subtitle: "已经放到具体日期的事项", icon: <CalendarDays className="h-4 w-4" /> },
+  all: { title: "任务", subtitle: "所有还没完成的小安排", icon: <ListTodo className="h-4 w-4" /> },
+  important: { title: "重要", subtitle: "已有时间或需要留意的事项", icon: <Star className="h-4 w-4" /> },
+  planned: { title: "计划内", subtitle: "已经设置要完成时间的事项", icon: <CalendarDays className="h-4 w-4" /> },
   food: { title: "吃饭", subtitle: "想尝试的餐厅和打卡记录", icon: <Utensils className="h-4 w-4" /> },
   play: { title: "玩乐", subtitle: "一起去做的快乐清单", icon: <Music2 className="h-4 w-4" /> },
-  completed: { title: "已完成/打卡", subtitle: "有评论或照片的完成记录", icon: <Check className="h-4 w-4" /> },
   lottery: { title: "随机抽奖", subtitle: "不知道吃什么时交给运气", icon: <Shuffle className="h-4 w-4" /> },
 };
 
@@ -97,7 +95,7 @@ export default function TodoPage() {
 function TodoInner() {
   const today = toDateOnly(new Date());
   const me = useAppStore((state) => state.me);
-  const [view, setView] = useState<TodoView>("today");
+  const [view, setView] = useState<TodoView>("all");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [month, setMonth] = useState(monthKey(new Date()));
   const [selectedDate, setSelectedDate] = useState(today);
@@ -112,7 +110,6 @@ function TodoInner() {
     if (date) {
       setSelectedDate(date);
       setMonth(date.slice(0, 7));
-      setView("planned");
     }
   }, []);
 
@@ -133,20 +130,28 @@ function TodoInner() {
   }, [load]);
 
   const items = useMemo(() => dashboard?.items ?? [], [dashboard]);
-  const schedules = useMemo(() => dashboard?.schedules ?? [], [dashboard]);
-  const visibleItems = useMemo(() => filterItems(items, schedules, view, today, selectedDate, query), [items, schedules, view, today, selectedDate, query]);
-  const counts = useMemo(() => getViewCounts(items, schedules, today), [items, schedules, today]);
+  const schedules = useMemo(() => {
+    const byId = new Map<number, TodoScheduleOut>();
+    for (const item of items) {
+      for (const schedule of item.schedules) byId.set(schedule.id, schedule);
+    }
+    for (const schedule of dashboard?.schedules ?? []) byId.set(schedule.id, schedule);
+    return Array.from(byId.values());
+  }, [dashboard, items]);
+  const visibleItems = useMemo(() => filterItems(items, schedules, view, query, false), [items, schedules, view, query]);
+  const completedItems = useMemo(() => filterItems(items, schedules, view, query, true), [items, schedules, view, query]);
+  const counts = useMemo(() => getViewCounts(items, schedules), [items, schedules]);
   const selectedDetail = detailId ? items.find((item) => item.id === detailId) ?? null : null;
 
   async function scheduleItem(itemId: number, date = selectedDate) {
     await api.scheduleTodoItem(itemId, date);
-    toast.success(`已安排到 ${formatShortDate(date)}`);
+    toast.success(`已设为 ${formatShortDate(date)} 完成`);
     await load();
   }
 
   async function removeSchedule(scheduleId: number) {
     await api.deleteTodoSchedule(scheduleId);
-    toast.success("已移除日期安排");
+    toast.success("已取消这个时间");
     await load();
   }
 
@@ -189,7 +194,6 @@ function TodoInner() {
               onDateChange={(date) => {
                 setSelectedDate(date);
                 setMonth(date.slice(0, 7));
-                if (view === "today") setView("planned");
               }}
             />
 
@@ -200,6 +204,7 @@ function TodoInner() {
               ) : (
                 <TaskList
                   items={visibleItems}
+                  completedItems={completedItems}
                   schedules={schedules}
                   selectedDate={selectedDate}
                   onOpen={setDetailId}
@@ -215,8 +220,7 @@ function TodoInner() {
                 view={view}
                 selectedDate={selectedDate}
                 onCreated={async (item) => {
-                  if (view === "today" || view === "planned") await scheduleItem(item.id, selectedDate);
-                  else await load();
+                  await load();
                 }}
                 onFoodIntent={() => setView("food")}
               />
@@ -249,23 +253,20 @@ function filterItems(
   items: TodoItemOut[],
   schedules: TodoScheduleOut[],
   view: TodoView,
-  today: string,
-  selectedDate: string,
   query: string,
+  completed: boolean,
 ): TodoItemOut[] {
   const normalized = query.trim().toLowerCase();
   const scheduledIds = new Set(schedules.map((schedule) => schedule.item_id));
-  const todayIds = new Set(schedules.filter((schedule) => schedule.scheduled_on === today).map((schedule) => schedule.item_id));
-  const selectedDateIds = new Set(schedules.filter((schedule) => schedule.scheduled_on === selectedDate).map((schedule) => schedule.item_id));
 
   return items
     .filter((item) => {
-      if (view === "today") return todayIds.has(item.id);
-      if (view === "important") return item.checked_in || item.restaurant?.parse_status === "failed" || selectedDateIds.has(item.id);
+      if (item.checked_in !== completed) return false;
+      if (view === "all") return true;
+      if (view === "important") return item.restaurant?.parse_status === "failed" || scheduledIds.has(item.id);
       if (view === "planned") return scheduledIds.has(item.id);
       if (view === "food") return item.category === "food";
       if (view === "play") return item.category === "play";
-      if (view === "completed") return item.checked_in;
       return true;
     })
     .filter((item) => {
@@ -273,20 +274,37 @@ function filterItems(
       return [item.title, item.note, item.restaurant?.address, item.restaurant?.business_area, item.restaurant?.signature_dishes]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(normalized));
-    });
+    })
+    .sort((left, right) => compareTodoItems(left, right, schedules));
 }
 
-function getViewCounts(items: TodoItemOut[], schedules: TodoScheduleOut[], today: string): Record<TodoView, number> {
-  const todayIds = new Set(schedules.filter((schedule) => schedule.scheduled_on === today).map((schedule) => schedule.item_id));
+function getEarliestScheduleDate(item: TodoItemOut, schedules: TodoScheduleOut[]): string | null {
+  const dates = schedules
+    .filter((schedule) => schedule.item_id === item.id)
+    .map((schedule) => schedule.scheduled_on)
+    .sort();
+  return dates[0] ?? null;
+}
+
+function compareTodoItems(left: TodoItemOut, right: TodoItemOut, schedules: TodoScheduleOut[]): number {
+  const leftDate = getEarliestScheduleDate(left, schedules);
+  const rightDate = getEarliestScheduleDate(right, schedules);
+  if (leftDate && rightDate && leftDate !== rightDate) return leftDate.localeCompare(rightDate);
+  if (leftDate && !rightDate) return -1;
+  if (!leftDate && rightDate) return 1;
+  return left.created_at.localeCompare(right.created_at) || left.id - right.id;
+}
+
+function getViewCounts(items: TodoItemOut[], schedules: TodoScheduleOut[]): Record<TodoView, number> {
   const scheduledIds = new Set(schedules.map((schedule) => schedule.item_id));
+  const openItems = items.filter((item) => !item.checked_in);
   return {
-    today: todayIds.size,
-    important: items.filter((item) => item.checked_in || item.restaurant?.parse_status === "failed").length,
-    planned: scheduledIds.size,
-    food: items.filter((item) => item.category === "food").length,
-    play: items.filter((item) => item.category === "play").length,
-    completed: items.filter((item) => item.checked_in).length,
-    lottery: items.filter((item) => item.category === "food").length,
+    all: openItems.length,
+    important: openItems.filter((item) => item.restaurant?.parse_status === "failed" || scheduledIds.has(item.id)).length,
+    planned: openItems.filter((item) => scheduledIds.has(item.id)).length,
+    food: openItems.filter((item) => item.category === "food").length,
+    play: openItems.filter((item) => item.category === "play").length,
+    lottery: openItems.filter((item) => item.category === "food").length,
   };
 }
 
@@ -435,12 +453,74 @@ function TodoToolbar({
           <CalendarDays className="h-4 w-4" />
           <input type="date" value={selectedDate} onChange={(event) => onDateChange(event.target.value)} className="bg-transparent outline-none" />
         </label>
+        <span className="rounded-xl bg-rose/8 px-3 py-2 font-sc text-sm text-rose-deep">
+          当前要设置的时间：{formatShortDate(selectedDate)}
+        </span>
       </div>
     </header>
   );
 }
 
 function TaskList({
+  items,
+  completedItems,
+  schedules,
+  selectedDate,
+  onOpen,
+  onSchedule,
+  onRemoveSchedule,
+  onArchive,
+}: {
+  items: TodoItemOut[];
+  completedItems: TodoItemOut[];
+  schedules: TodoScheduleOut[];
+  selectedDate: string;
+  onOpen: (id: number) => void;
+  onSchedule: (id: number, date?: string) => void;
+  onRemoveSchedule: (id: number) => void;
+  onArchive: (id: number) => void;
+}) {
+  return (
+    <div className="pt-3">
+      {items.length === 0 ? (
+        <div className="grid min-h-[32vh] place-items-center rounded-2xl border border-dashed border-line/70 bg-peach/8 p-8 text-center">
+          <div>
+            <ListTodo className="mx-auto h-8 w-8 text-rose-deep" />
+            <p className="mt-3 font-display text-lg font-semibold text-ink">这里还没有未完成任务</p>
+            <p className="mt-1 font-sc text-sm text-ink-muted">从底部添加一条，或者切换到吃饭视图搜索餐厅。</p>
+          </div>
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {items.map((item) => (
+            <li key={item.id}>
+              <TaskRow
+                item={item}
+                schedules={schedulesForItem(item, schedules)}
+                selectedDate={selectedDate}
+                onOpen={() => onOpen(item.id)}
+                onSchedule={() => onSchedule(item.id)}
+                onRemoveSchedule={onRemoveSchedule}
+                onArchive={() => onArchive(item.id)}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+      <CompletedTaskSection
+        items={completedItems}
+        schedules={schedules}
+        selectedDate={selectedDate}
+        onOpen={onOpen}
+        onSchedule={onSchedule}
+        onRemoveSchedule={onRemoveSchedule}
+        onArchive={onArchive}
+      />
+    </div>
+  );
+}
+
+function CompletedTaskSection({
   items,
   schedules,
   selectedDate,
@@ -457,34 +537,41 @@ function TaskList({
   onRemoveSchedule: (id: number) => void;
   onArchive: (id: number) => void;
 }) {
-  if (items.length === 0) {
-    return (
-      <div className="grid min-h-[42vh] place-items-center rounded-2xl border border-dashed border-line/70 bg-peach/8 p-8 text-center">
-        <div>
-          <ListTodo className="mx-auto h-8 w-8 text-rose-deep" />
-          <p className="mt-3 font-display text-lg font-semibold text-ink">这里还没有任务</p>
-          <p className="mt-1 font-sc text-sm text-ink-muted">从底部添加一条，或者切换到吃饭视图搜索餐厅。</p>
-        </div>
-      </div>
-    );
-  }
+  const [expanded, setExpanded] = useState(false);
+  if (items.length === 0) return null;
 
   return (
-    <ul className="space-y-2 pt-3">
-      {items.map((item) => (
-        <li key={item.id}>
-          <TaskRow
-            item={item}
-            schedules={schedulesForItem(item, schedules)}
-            selectedDate={selectedDate}
-            onOpen={() => onOpen(item.id)}
-            onSchedule={() => onSchedule(item.id)}
-            onRemoveSchedule={onRemoveSchedule}
-            onArchive={() => onArchive(item.id)}
-          />
-        </li>
-      ))}
-    </ul>
+    <section className="mt-4 rounded-2xl border border-line/58 bg-surface-raised/54">
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className="flex min-h-12 w-full items-center justify-between gap-3 px-4 text-left font-sc text-sm text-ink-soft transition hover:bg-peach/8 focus-ring"
+        aria-expanded={expanded}
+      >
+        <span className="inline-flex items-center gap-2">
+          <ChevronRight className={cn("h-4 w-4 transition", expanded && "rotate-90")} />
+          已完成/打卡
+        </span>
+        <span className="rounded-full bg-sage/16 px-2 py-0.5 text-xs text-ink-muted">{items.length}</span>
+      </button>
+      {expanded && (
+        <ul className="space-y-2 border-t border-line/52 p-3">
+          {items.map((item) => (
+            <li key={item.id}>
+              <TaskRow
+                item={item}
+                schedules={schedulesForItem(item, schedules)}
+                selectedDate={selectedDate}
+                onOpen={() => onOpen(item.id)}
+                onSchedule={() => onSchedule(item.id)}
+                onRemoveSchedule={onRemoveSchedule}
+                onArchive={() => onArchive(item.id)}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -557,12 +644,12 @@ function TaskRow({
                 if (schedule) onRemoveSchedule(schedule.id);
               }}
               className="grid h-10 w-10 place-items-center rounded-xl bg-sage/18 text-sage hover:bg-sage/24 focus-ring"
-              aria-label="取消所选日期安排"
+              aria-label="取消这个要完成时间"
             >
               <Check className="h-4 w-4" />
             </button>
           ) : (
-            <button type="button" onClick={onSchedule} className="grid h-10 w-10 place-items-center rounded-xl text-rose-deep hover:bg-rose/10 focus-ring" aria-label="安排到所选日期">
+            <button type="button" onClick={onSchedule} className="grid h-10 w-10 place-items-center rounded-xl text-rose-deep hover:bg-rose/10 focus-ring" aria-label="设为要完成时间">
               <Plus className="h-4 w-4" />
             </button>
           )}
@@ -606,7 +693,7 @@ function QuickAddBar({
     }
     const item = await api.createTodoItem({ category: "play", title: next });
     setTitle("");
-    toast.success(view === "today" || view === "planned" ? `已添加，准备安排到 ${formatShortDate(selectedDate)}` : "已添加到玩乐清单");
+    toast.success("已添加到玩乐清单");
     await onCreated(item);
   }
 
