@@ -121,7 +121,7 @@ npm run dev
 - `/timeline/[id]` 事件详情（评论 / 语音 / 图片混排，评论支持点赞 / 倒赞 reaction，底部输入栏支持文字、录音、相册）
 - `/me` 我的页面（当前用户头像、用户名、邮箱和共享语录管理）
 - `/create` 新建事件
-- `/todo` 共享 todo 看板（吃饭 / 玩乐、日期安排、餐厅搜索、随机抽奖和打卡详情）
+- `/todo` 共享 todo 工作区（Microsoft To Do 式左侧列表 / 中央任务 / 右侧详情布局，含吃饭 / 玩乐、日期安排、餐厅搜索、随机抽奖和打卡详情）
 - `/cycle` 周期日历 Dashboard（月 / 周 / 列表视图、筛选、提醒设置和移动端详情面板）
 
 ## 前端设计上下文
@@ -857,7 +857,7 @@ python -m pytest tests -q
 ## Todo 看板、餐厅和模型配置
 
 - 登录后可从底边栏进入 `/todo` todo 看板和 `/cycle` 周期入口；`/todo` 复用当前 Bearer token 鉴权，数据按 pair 双方共享。
-- `/todo` 顶部是月份日期看板，已有安排的日期会高亮；点击日期后，可把吃饭或玩乐板块里的已有项目安排到当天。日期安排写接口在返回前提交数据库，并给另一方发送邮件通知。
+- `/todo` 前端采用 Microsoft To Do 式工作区：桌面端左侧列表导航、中间任务列表、右侧详情面板；移动端折叠导航并以底部面板展示详情。`?date=YYYY-MM-DD` 邮件入口会默认进入计划内视图并选中对应日期；可把吃饭或玩乐项目安排到所选日期。日期安排写接口在返回前提交数据库，并给另一方发送邮件通知。
 - Todo 项目独立于 `/timeline` 事件，不会自动写入时间线。默认玩乐项目为“唱歌、台球、看电影、拼乐高”，用户也可以自定义新增。
 - 吃饭项目通过后端 `npx -y @amap/amap-maps-mcp-server` 调用高德 MCP 搜索和详情解析；高德 key 可在管理端单独配置，`.env` / 服务器环境变量 `AMAP_MAPS_API_KEY` 作为初始默认和兜底。餐厅详情有评论或图片时视作吃饭打卡完成。
 - Todo 图片写入 `MEDIA_ROOT/todo/images/...`，数据库只保存 `todo_images.storage_key` / `todo_images.thumb_storage_key`，下载接口为 `/todo-images/{image_id}/file` 和 `/todo-images/{image_id}/thumb`。
