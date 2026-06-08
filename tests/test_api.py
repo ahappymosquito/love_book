@@ -1,4 +1,4 @@
-"""API regression tests for auth, editable profiles, avatars, reminders, quote libraries, event visibility, todo completion/batch classification, AI config, media, and fallback data."""
+"""API regression tests for auth, profiles, media, todo, AMap MCP command resolution, AI config, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -1222,6 +1222,16 @@ def test_todo_restaurant_search_and_create_use_amap_mcp(client: TestClient, pair
     assert data["category"] == "food"
     assert data["restaurant"]["parse_status"] == "resolved"
     assert data["restaurant"]["signature_dishes"] == "红烧肉"
+
+
+def test_amap_mcp_resolves_windows_npx_through_cmd(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import amap_mcp
+
+    monkeypatch.setattr(amap_mcp.shutil, "which", lambda name: "C:\\Program Files\\nodejs\\npx.cmd" if name == "npx.cmd" else None)
+    monkeypatch.setattr(amap_mcp.sys, "platform", "win32")
+    monkeypatch.setenv("COMSPEC", "C:\\Windows\\System32\\cmd.exe")
+
+    assert amap_mcp._npx_command() == ["C:\\Windows\\System32\\cmd.exe", "/d", "/s", "/c", "npx"]
 
 
 def test_todo_restaurant_detail_requires_both_users_to_comment_and_images_do_not_complete(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:

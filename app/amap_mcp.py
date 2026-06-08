@@ -1,10 +1,12 @@
-"""AMap MCP subprocess client that calls restaurant search/detail tools through npx with configurable keys."""
+"""AMap MCP subprocess client that launches npx and calls newline-framed restaurant tools with configurable keys."""
 
 from __future__ import annotations
 
 import asyncio
 import json
 import os
+import shutil
+import sys
 from typing import Any
 
 from app.core.config import get_settings
@@ -15,6 +17,15 @@ MCP_PROTOCOL_VERSION = "2024-11-05"
 
 class AmapMCPError(RuntimeError):
     """Raised when the AMap MCP server cannot be called or returns an invalid response."""
+
+
+def _npx_command() -> list[str]:
+    command = shutil.which("npx") or shutil.which("npx.cmd")
+    if not command:
+        raise AmapMCPError("npx is not available on PATH")
+    if sys.platform == "win32":
+        return [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", "npx"]
+    return [command]
 
 
 def _extract_payload(result: Any) -> Any:
@@ -62,29 +73,33 @@ def _pois_from_payload(payload: Any) -> list[dict[str, Any]]:
 
 
 async def _read_message(stream: asyncio.StreamReader, timeout: float) -> dict[str, Any]:
-    header = await asyncio.wait_for(stream.readuntil(b"\r\n\r\n"), timeout=timeout)
-    length = 0
-    for line in header.decode("utf-8", errors="replace").split("\r\n"):
-        if line.lower().startswith("content-length:"):
-            length = int(line.split(":", 1)[1].strip())
-            break
-    if length <= 0:
-        raise AmapMCPError("MCP response is missing Content-Length")
-    body = await asyncio.wait_for(stream.readexactly(length), timeout=timeout)
-    return json.loads(body.decode("utf-8"))
+    line = await asyncio.wait_for(stream.readline(), timeout=timeout)
+    if not line:
+        raise AmapMCPError("MCP response stream closed")
+    return json.loads(line.decode("utf-8"))
 
 
 async def _send_message(stream: asyncio.StreamWriter, payload: dict[str, Any]) -> None:
-    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    stream.write(f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body)
+    body = (json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+    stream.write(body)
     await stream.drain()
+
+
+async def _stderr_message(process: asyncio.subprocess.Process) -> str:
+    if process.stderr is None:
+        return ""
+    try:
+        data = await asyncio.wait_for(process.stderr.read(), timeout=1)
+    except Exception:
+        return ""
+    return data.decode("utf-8", errors="replace").strip()
 
 
 async def _call_tool_async(
     tool_name: str,
     arguments: dict[str, Any],
     amap_key: str | None = None,
-    timeout: float = 20.0,
+    timeout: float = 45.0,
 ) -> Any:
     settings = get_settings()
     effective_key = (amap_key or settings.amap_maps_api_key).strip()
@@ -93,8 +108,9 @@ async def _call_tool_async(
 
     env = os.environ.copy()
     env["AMAP_MAPS_API_KEY"] = effective_key
+    command = _npx_command()
     process = await asyncio.create_subprocess_exec(
-        "npx",
+        *command,
         "-y",
         MCP_PACKAGE,
         stdin=asyncio.subprocess.PIPE,
@@ -137,8 +153,11 @@ async def _call_tool_async(
         if response.get("error"):
             raise AmapMCPError(str(response["error"]))
         return _extract_payload(response.get("result"))
-    except (asyncio.TimeoutError, OSError, json.JSONDecodeError) as exc:
-        raise AmapMCPError(f"AMap MCP call failed: {exc}") from exc
+    except (asyncio.TimeoutError, asyncio.IncompleteReadError, OSError, json.JSONDecodeError) as exc:
+        stderr = await _stderr_message(process)
+        detail = f": {stderr}" if stderr else ""
+        error_text = str(exc) or type(exc).__name__
+        raise AmapMCPError(f"AMap MCP call failed: {error_text}{detail}") from exc
     finally:
         process.terminate()
         try:

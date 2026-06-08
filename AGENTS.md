@@ -54,7 +54,7 @@
 - Todo 数据独立于时间线事件，不自动创建或更新 `/timeline` 事件。
 - Todo 项目按 pair 双方共享，分为 `food` 吃饭和 `play` 玩乐；默认玩乐项目为“唱歌、台球、看电影、拼乐高”。
 - 日期安排写接口必须在响应返回前完成数据库提交，并向另一方发送邮件通知；邮件展示日期、板块、项目和 `/todo?date=YYYY-MM-DD` 入口。
-- 餐厅搜索和详情解析通过后端运行 `npx -y @amap/amap-maps-mcp-server` 调用高德 MCP，优先使用管理端保存的高德 key，未保存时回退 `.env` / 环境变量 `AMAP_MAPS_API_KEY`。
+- 餐厅搜索和详情解析通过后端运行 `npx -y @amap/amap-maps-mcp-server` 调用高德 MCP，后端会在 Windows 本地经 `cmd.exe` 调用 `npx` 以兼容 Node.js 批处理入口，按该包当前 SDK 的 newline JSON stdio 协议通信，并为 MCP 冷启动保留 45 秒默认超时；高德 key 优先使用管理端保存值，未保存时回退 `.env` / 环境变量 `AMAP_MAPS_API_KEY`。
 - 餐厅 todo 同样遵守双方评论完成规则，不因单方评论或图片上传直接完成。
 - Todo 图片写入 `MEDIA_ROOT/todo/images/...`，数据库只保存 `todo_images.storage_key` / `todo_images.thumb_storage_key`，不得写入数据库 BLOB。
 - 随机抽奖支持人均、城市/区域、附近 1/3/5/10km 筛选；附近筛选由浏览器定位提供经纬度，定位失败不得阻断其它抽奖方式。

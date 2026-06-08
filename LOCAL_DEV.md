@@ -32,7 +32,7 @@
 ## 环境要求
 
 - `python` 或 `py` 已加入 PATH
-- `npm` / `npx` 已加入 PATH；餐厅搜索会通过 `npx -y @amap/amap-maps-mcp-server` 调用高德 MCP
+- `npm` / `npx` 已加入 PATH；餐厅搜索会通过 `npx -y @amap/amap-maps-mcp-server` 调用高德 MCP，Windows 本地会经 `cmd.exe` 调用 `npx`，按 newline JSON stdio 协议通信，MCP 冷启动默认等待 45 秒
 - 前后端依赖源可正常访问
 
 ## Todo / 高德 / LLM 配置

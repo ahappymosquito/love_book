@@ -861,7 +861,7 @@ python -m pytest tests -q
 - Todo 项目独立于 `/timeline` 事件，不会自动写入时间线。默认玩乐项目为“唱歌、台球、看电影、拼乐高”，用户也可以自定义新增。
 - Todo 任务标签显示为“吃喝 / 玩乐”，用户点击 `/todo` 工具栏的唯一刷新按钮时，后端按当前 Admin AI 配置批量调用 LLM 二分类并只更新未完成 todo 的内部 `food/play` 分类；已完成 todo 不显示刷新入口也不参与刷新。普通新建任务默认先按 `play` 保存，后续可刷新标签。
 - Todo 完成状态要求 pair 双方都至少评论过一次；评论详情展示作者名，图片上传只作为记录内容，不参与完成判定。照片在详情内折叠展示，不按上传人分组。
-- 吃饭项目通过后端 `npx -y @amap/amap-maps-mcp-server` 调用高德 MCP 搜索和详情解析；高德 key 可在管理端单独配置，`.env` / 服务器环境变量 `AMAP_MAPS_API_KEY` 作为初始默认和兜底。
+- 吃饭项目通过后端 `npx -y @amap/amap-maps-mcp-server` 调用高德 MCP 搜索和详情解析；Windows 本地会经 `cmd.exe` 调用 `npx` 以兼容 Node.js 批处理入口，并按该包当前 SDK 的 newline JSON stdio 协议通信，MCP 冷启动默认保留 45 秒超时。高德 key 可在管理端单独配置，`.env` / 服务器环境变量 `AMAP_MAPS_API_KEY` 作为初始默认和兜底。
 - Todo 图片写入 `MEDIA_ROOT/todo/images/...`，数据库只保存 `todo_images.storage_key` / `todo_images.thumb_storage_key`，下载接口为 `/todo-images/{image_id}/file` 和 `/todo-images/{image_id}/thumb`。
 - `/todo` 随机抽奖支持人均、城市/区域和附近 1/3/5/10km 点选筛选；附近筛选由浏览器定位提供经纬度，失败时静默保留其它筛选。
 - 管理端 `/admin` 的 AI / 模型配置区先选择 OpenAI 或 Anthropic 协议，再编辑对应地址和 token；获取模型列表后在下拉框展示模型数量，选择模型会自动测试连接，也保留手动测试按钮。高德 `AMAP_MAPS_API_KEY` 单独罗列并可自定义保存。
