@@ -1,4 +1,4 @@
-"""Admin routes for pair setup, tokens, contact details, relationship dates, login logs, and AI model config."""
+"""Admin routes for pair setup, tokens, contact details, relationship dates, login logs, and AI model config with live completion tests."""
 
 import secrets
 from datetime import timezone
@@ -8,7 +8,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai_config import get_ai_setting, list_models, preview_secret, update_ai_setting
+from app.ai_config import get_ai_setting, list_models, preview_secret, test_category_completion, update_ai_setting
 from app.api.dependencies import require_admin_key
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -232,13 +232,8 @@ def get_admin_ai_models(protocol: AIProtocol | None = None, db: Session = Depend
 
 @router.post("/ai-config/test", response_model=AdminAIConnectionTestOut, dependencies=[Depends(require_admin_key)])
 def test_admin_ai_config(db: Session = Depends(get_db)) -> AdminAIConnectionTestOut:
-    row = get_ai_setting(db)
     try:
-        models = list_models(db, row.protocol)
+        category = test_category_completion(db)
     except (RuntimeError, httpx.HTTPError) as exc:
         raise HTTPException(status_code=502, detail=f"AI connection test failed: {exc}") from exc
-    selected = row.selected_model or get_settings().llm_model
-    message = "Connection ok"
-    if selected and selected not in models:
-        message = f"Connection ok, but selected model {selected!r} was not returned"
-    return AdminAIConnectionTestOut(ok=True, message=message)
+    return AdminAIConnectionTestOut(ok=True, message=f"Completion ok, sample category: {category}", sample_category=category)

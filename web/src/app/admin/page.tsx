@@ -30,7 +30,7 @@ import { useAppStore } from "@/lib/store";
 import { Avatar } from "@/components/avatar";
 import { AvatarPicker } from "@/components/avatar-picker";
 import { formatAbsolute, fromLocalInputValue, toLocalInputValue } from "@/lib/format";
-import { AVATAR_PRESETS, type AdminAIConfigOut, type AIProtocol, type PairCreated, type PairOut } from "@/lib/types";
+import { AVATAR_PRESETS, type AdminAIConfigOut, type AdminAIConnectionTestOut, type AIProtocol, type PairCreated, type PairOut } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
 function toDateInputValue(date: Date): string {
@@ -488,6 +488,8 @@ function AIConfigPanel() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [modelMessage, setModelMessage] = useState("");
+  const [testResult, setTestResult] = useState<AdminAIConnectionTestOut | null>(null);
+  const [testError, setTestError] = useState("");
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
@@ -500,6 +502,8 @@ function AIConfigPanel() {
       setApiKey(next.api_key);
       setAmapApiKey(next.amap_api_key);
       setSelectedModel(next.selected_model || next.env_model);
+      setTestResult(null);
+      setTestError("");
     } finally {
       setLoading(false);
     }
@@ -531,6 +535,8 @@ function AIConfigPanel() {
       setModels(result.models);
       setModelMessage(`已获取 ${result.models.length} 个模型`);
       if (!selectedModel && result.models[0]) setSelectedModel(result.models[0]);
+      setTestResult(null);
+      setTestError("");
       toast.success(`模型列表已更新：${result.models.length} 个`);
     } finally {
       setLoading(false);
@@ -542,6 +548,8 @@ function AIConfigPanel() {
     try {
       const next = await api.updateAdminAIConfig(configPayload(model));
       setConfig(next);
+      setTestResult(null);
+      setTestError("");
       if (showToast) toast.success("模型配置已保存");
       return next;
     } finally {
@@ -554,8 +562,14 @@ function AIConfigPanel() {
     try {
       await saveConfig(selectedModel, false);
       const result = await api.testAdminAIConfig();
+      setTestResult(result);
+      setTestError("");
       if (showToast) toast.success(result.message || "连接测试通过");
       return result;
+    } catch (err) {
+      setTestResult(null);
+      setTestError(err instanceof APIError ? err.message : "AI 测试失败，请检查协议、地址、token 和模型。");
+      throw err;
     } finally {
       setTesting(false);
     }
@@ -567,8 +581,12 @@ function AIConfigPanel() {
     try {
       await saveConfig(model, false);
       const result = await api.testAdminAIConfig();
+      setTestResult(result);
+      setTestError("");
       toast.success(result.message || "模型已选择，连接测试通过");
-    } catch {
+    } catch (err) {
+      setTestResult(null);
+      setTestError(err instanceof APIError ? err.message : "AI 测试失败，请检查协议、地址、token 和模型。");
       // toast handled by api client
     }
   }
@@ -599,6 +617,25 @@ function AIConfigPanel() {
         </div>
       )}
 
+      <div
+        className={cn(
+          "mb-4 rounded-2xl border p-4 font-sc text-xs",
+          testError
+            ? "border-red-200 bg-red-50 text-red-700"
+            : testResult
+              ? "border-sage/40 bg-sage/12 text-ink-soft"
+              : "border-line/70 bg-surface-raised/70 text-ink-muted",
+        )}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="font-medium text-ink">真实补全测试</span>
+          <span>{testResult ? `已返回 ${testResult.sample_category || "未知"}` : testError ? "测试失败" : "尚未测试"}</span>
+        </div>
+        <p className="mt-2 leading-relaxed">
+          {testError || testResult?.message || "保存配置后点击测试连接，会让当前模型真实回答一次 food/play 分类。"}
+        </p>
+      </div>
+
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-2">
           {(["openai", "anthropic"] as AIProtocol[]).map((item) => (
@@ -610,6 +647,8 @@ function AIConfigPanel() {
                 setModels([]);
                 setModelMessage("");
                 setSelectedModel("");
+                setTestResult(null);
+                setTestError("");
               }}
               className={cn(
                 "min-h-11 rounded-2xl px-4 font-sc text-sm hairline focus-ring",

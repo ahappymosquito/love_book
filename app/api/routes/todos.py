@@ -1,4 +1,4 @@
-"""Todo board routes for pair-shared tasks, due dates, two-person comment completion, batch AI category refresh, restaurants, and images."""
+"""Todo board routes for pair-shared tasks, due dates, two-person comment completion, shared LLM category refresh, restaurants, and images."""
 
 from __future__ import annotations
 
@@ -13,13 +13,13 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app import amap_mcp
-from app.ai_config import effective_amap_key, effective_api_key, effective_model, get_ai_setting, protocol_base_url
+from app.ai_config import complete_todo_category, effective_amap_key
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.emailer import notify_todo_schedule_created
 from app.media import MediaProcessingError, make_image_thumbnail
-from app.models import AIProtocol, Pair, TodoCategory, TodoComment, TodoImage, TodoItem, TodoParseStatus, TodoRestaurant, TodoSchedule, User
+from app.models import Pair, TodoCategory, TodoComment, TodoImage, TodoItem, TodoParseStatus, TodoRestaurant, TodoSchedule, User
 from app.schemas import (
     TodoCommentCreate,
     TodoCommentOut,
@@ -181,61 +181,7 @@ def _items_out(db: Session, items: list[TodoItem]) -> list[TodoItemOut]:
 
 
 def classify_todo_category(db: Session, item: TodoItem) -> TodoCategory:
-    api_key = effective_api_key(db)
-    model = effective_model(db)
-    if not api_key or not model:
-        raise RuntimeError("LLM API key or model is not configured")
-    setting = get_ai_setting(db)
-    base_url = protocol_base_url(db, setting.protocol)
-    prompt = (
-        "Classify this couple todo item into exactly one category. "
-        "Return only one token: food or play. "
-        "food means eating, drinking, restaurants, cafes, snacks, meals, stores related to food. "
-        "play means entertainment, activity, travel, shopping, games, movies, sports, chores, or anything else.\n"
-        f"Title: {item.title}\n"
-        f"Note: {item.note or ''}"
-    )
-    if setting.protocol == AIProtocol.anthropic:
-        response = httpx.post(
-            f"{base_url}/v1/messages",
-            headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
-            json={
-                "model": model,
-                "max_tokens": 8,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            timeout=20,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        content = payload.get("content", [])
-        text = ""
-        if content and isinstance(content, list):
-            first = content[0]
-            if isinstance(first, dict):
-                text = str(first.get("text") or "")
-    else:
-        response = httpx.post(
-            f"{base_url}/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0,
-                "max_tokens": 8,
-            },
-            timeout=20,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        choices = payload.get("choices", [])
-        text = str(choices[0].get("message", {}).get("content", "")) if choices else ""
-    normalized = text.strip().lower()
-    if "food" in normalized:
-        return TodoCategory.food
-    if "play" in normalized:
-        return TodoCategory.play
-    raise RuntimeError(f"LLM returned unsupported category: {text!r}")
+    return TodoCategory(complete_todo_category(db, item.title, item.note))
 
 
 @router.get("/dashboard", response_model=TodoDashboardOut)
@@ -252,7 +198,7 @@ def dashboard(
             select(TodoItem)
             .options(selectinload(TodoItem.restaurant), selectinload(TodoItem.schedules))
             .where(TodoItem.pair_id == pair.id, TodoItem.is_archived.is_(False))
-            .order_by(TodoItem.category, TodoItem.created_at.desc())
+            .order_by(TodoItem.category, TodoItem.created_at.desc(), TodoItem.id.desc())
         )
         .scalars()
         .all()

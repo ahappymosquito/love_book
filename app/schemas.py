@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, editable profiles, admin, events, media, quote libraries, cycles, and todo APIs with batch classification and author-aware comments."""
+"""Pydantic schemas for auth, editable profiles, admin live AI tests, events, media, quote libraries, cycles, and todo APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -506,3 +506,4 @@ class AdminAIModelListOut(APIModel):
 class AdminAIConnectionTestOut(APIModel):
     ok: bool
     message: str
+    sample_category: TodoCategory | None = None

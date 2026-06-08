@@ -1,4 +1,4 @@
-"""API regression tests for auth, profiles, media, todo, AMap MCP command resolution, AI config, and fallback data."""
+"""API regression tests for auth, profiles, media, todo, AMap MCP command resolution, live AI config tests, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -1379,6 +1379,7 @@ def test_admin_ai_config_edits_keys_lists_models_and_saves_model(client: TestCli
     settings.amap_maps_api_key = "amap-secret-5678"
     settings.llm_model = "mimo-v2.5-pro"
     monkeypatch.setattr("app.api.routes.admin.list_models", lambda db, protocol: ["mimo-v2.5-pro", "other-model"])
+    monkeypatch.setattr("app.api.routes.admin.test_category_completion", lambda db: "food")
 
     config = client.get("/admin/ai-config", headers={"X-Admin-Key": "test-admin-key"})
     assert config.status_code == 200
@@ -1410,3 +1411,48 @@ def test_admin_ai_config_edits_keys_lists_models_and_saves_model(client: TestCli
     assert updated.json()["amap_api_key"] == "custom-amap"
     assert models.json()["models"] == ["mimo-v2.5-pro", "other-model"]
     assert tested.json()["ok"] is True
+    assert tested.json()["sample_category"] == "food"
+
+
+def test_admin_ai_connection_test_rejects_empty_completion(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = get_settings()
+    settings.llm_api_key = "secret-token-1234"
+    settings.llm_model = "mimo-v2.5-pro"
+
+    def empty_completion(db: Session) -> str:
+        raise RuntimeError("LLM returned unsupported category: ''")
+
+    monkeypatch.setattr("app.api.routes.admin.test_category_completion", empty_completion)
+
+    tested = client.post("/admin/ai-config/test", headers={"X-Admin-Key": "test-admin-key"})
+
+    assert tested.status_code == 502
+    assert "unsupported category" in tested.json()["detail"]
+
+
+def test_llm_category_completion_uses_openai_chat_response(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.ai_config import complete_todo_category
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "llm_api_key", "secret-token-1234")
+    monkeypatch.setattr(settings, "llm_model", "mimo-v2.5-pro")
+    monkeypatch.setattr(settings, "llm_openai_base_url", "https://openai.example/v1")
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"choices": [{"message": {"content": "food"}}]}
+
+    def fake_post(url: str, headers: dict, json: dict, timeout: int) -> FakeResponse:
+        assert url == "https://openai.example/v1/chat/completions"
+        assert headers["Authorization"] == "Bearer secret-token-1234"
+        assert json["model"] == "mimo-v2.5-pro"
+        assert "Title: 火锅" in json["messages"][0]["content"]
+        assert timeout == 20
+        return FakeResponse()
+
+    monkeypatch.setattr("app.ai_config.httpx.post", fake_post)
+
+    assert complete_todo_category(db_session, "火锅", "周末一起吃饭") == "food"

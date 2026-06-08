@@ -1,4 +1,4 @@
-// Shared TypeScript contracts for API payloads, editable profile state, events, quote libraries, todo boards with batch category refresh and author-aware comments, admin AI config, cycles, and reminders.
+// Shared TypeScript contracts for API payloads, editable profile state, events, quote libraries, todo boards, admin live AI tests, cycles, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
 export type TodoCategory = "food" | "play";
@@ -344,6 +344,12 @@ export interface AdminAIConfigOut {
   amap_key_preview: string;
   has_amap_key: boolean;
   updated_at: string | null;
+}
+
+export interface AdminAIConnectionTestOut {
+  ok: boolean;
+  message: string;
+  sample_category: TodoCategory | null;
 }
 
 export const AVATAR_PRESETS = [

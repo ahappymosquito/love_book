@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated editable profiles, private avatars, admin AI config, todo scheduling/batch classification, events, quote libraries, cycles, comment reactions, and media requests.
+// Browser API client for authenticated editable profiles, private avatars, admin AI config/live tests, todo scheduling, events, quote libraries, cycles, reactions, and media requests.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import { useAppStore } from "./store";
 import type {
   AnniversaryOut,
   AdminAIConfigOut,
+  AdminAIConnectionTestOut,
   AIProtocol,
   CommentOut,
   CommentReactionType,
@@ -221,7 +222,7 @@ export const api = {
       withAuth: false,
     }),
   testAdminAIConfig: () =>
-    apiRequest<{ ok: boolean; message: string }>("/admin/ai-config/test", {
+    apiRequest<AdminAIConnectionTestOut>("/admin/ai-config/test", {
       method: "POST",
       withAdmin: true,
       withAuth: false,
