@@ -9,6 +9,7 @@ from PIL import Image as PILImage
 from sqlalchemy.orm import Session
 
 import app.api.routes.admin as admin_routes
+import app.core.database as database
 import app.cycles as cycles
 import app.services as services
 from app.core.config import get_settings
@@ -28,6 +29,17 @@ def sample_png_bytes() -> bytes:
     image = PILImage.new("RGB", (40, 28), color=(220, 80, 120))
     image.save(output, format="PNG")
     return output.getvalue()
+
+
+def test_todo_category_enum_migration_sql_targets_mysql_only() -> None:
+    expected = [
+        "ALTER TABLE todo_items MODIFY category ENUM('food','play','stay','wish') NOT NULL",
+        "ALTER TABLE todo_candidates MODIFY category ENUM('food','play','stay','wish') NOT NULL",
+    ]
+
+    assert database._todo_category_enum_migration_sql("mysql") == expected
+    assert database._todo_category_enum_migration_sql("mariadb") == expected
+    assert database._todo_category_enum_migration_sql("sqlite") == []
 
 
 def test_admin_pair_creation_requires_admin_key(client: TestClient) -> None:

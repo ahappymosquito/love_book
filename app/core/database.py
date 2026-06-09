@@ -1,4 +1,4 @@
-"""Database setup, sessions, default quote seeding, and lightweight migrations for media, todo, AI model lists, and avatars."""
+"""Database setup, sessions, default quote seeding, and lightweight migrations for media, todo category enums, AI model lists, and avatars."""
 
 """Database engine, session factory, and lightweight migrations for evolving auth, media, AI, and rich AMap restaurant schemas."""
 
@@ -201,6 +201,16 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
 ]
 
 
+def _todo_category_enum_migration_sql(dialect_name: str) -> list[str]:
+    if dialect_name not in {"mysql", "mariadb"}:
+        return []
+    enum_values = "ENUM('food','play','stay','wish') NOT NULL"
+    return [
+        f"ALTER TABLE todo_items MODIFY category {enum_values}",
+        f"ALTER TABLE todo_candidates MODIFY category {enum_values}",
+    ]
+
+
 def _ensure_columns(target_engine: Engine) -> None:
     inspector = inspect(target_engine)
     existing_tables = set(inspector.get_table_names())
@@ -221,12 +231,26 @@ def _ensure_columns(target_engine: Engine) -> None:
                     connection.execute(text(f"UPDATE {table_name} SET {column_name} = '[]' WHERE {column_name} IS NULL"))
 
 
+def _ensure_todo_category_enum(target_engine: Engine) -> None:
+    ddl_statements = _todo_category_enum_migration_sql(target_engine.dialect.name)
+    if not ddl_statements:
+        return
+    inspector = inspect(target_engine)
+    existing_tables = set(inspector.get_table_names())
+    if not {"todo_items", "todo_candidates"}.issubset(existing_tables):
+        return
+    with target_engine.begin() as connection:
+        for ddl_statement in ddl_statements:
+            connection.execute(text(ddl_statement))
+
+
 def init_db() -> None:
     from app import models  # noqa: F401
     from app.services import ensure_default_quotes
 
     Base.metadata.create_all(bind=engine)
     _ensure_columns(engine)
+    _ensure_todo_category_enum(engine)
     with SessionLocal() as db:
         ensure_default_quotes(db)
         db.commit()
