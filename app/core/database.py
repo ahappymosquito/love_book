@@ -1,5 +1,7 @@
 """Database setup, sessions, default quote seeding, and lightweight migrations for media, todo, AI model lists, and avatars."""
 
+"""Database engine, session factory, and lightweight migrations for evolving auth, media, AI, and rich AMap restaurant schemas."""
+
 from collections.abc import Generator
 
 from sqlalchemy import create_engine, inspect, text
@@ -39,7 +41,7 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
-# Lightweight column-existence migration for environments without Alembic.
+# Lightweight column-existence migration for environments without Alembic, including rich AMap restaurant evidence columns.
 # Each entry: (table, column_name, {dialect_name: "<DDL fragment>"}).
 # "default" is used as a fallback when the dialect-specific fragment is missing.
 _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
@@ -184,6 +186,18 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         "anthropic_models",
         {"sqlite": "JSON NOT NULL DEFAULT '[]'", "mysql": "JSON NULL", "default": "JSON NULL"},
     ),
+    ("todo_restaurants", "adname", {"default": "VARCHAR(100) NULL"}),
+    ("todo_restaurants", "pname", {"default": "VARCHAR(100) NULL"}),
+    ("todo_restaurants", "poi_typecode", {"default": "VARCHAR(50) NULL"}),
+    ("todo_restaurants", "rating", {"default": "FLOAT NULL"}),
+    ("todo_restaurants", "opening_hours", {"default": "VARCHAR(300) NULL"}),
+    ("todo_restaurants", "meal_ordering", {"default": "VARCHAR(50) NULL"}),
+    (
+        "todo_restaurants",
+        "photos_count",
+        {"default": "INTEGER NOT NULL DEFAULT 0", "mysql": "INT NOT NULL DEFAULT 0", "mariadb": "INT NOT NULL DEFAULT 0"},
+    ),
+    ("todo_restaurants", "first_photo_url", {"default": "VARCHAR(1000) NULL"}),
 ]
 
 

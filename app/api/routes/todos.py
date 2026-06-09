@@ -1,4 +1,4 @@
-"""Todo board routes for pair-shared tasks, due dates, two-person comment completion, shared LLM category refresh, restaurants, and images."""
+"""Todo board routes for pair-shared tasks, due dates, two-person comment completion, shared LLM category refresh, rich AMap restaurant evidence, and images."""
 
 from __future__ import annotations
 
@@ -52,6 +52,17 @@ router = APIRouter(prefix="/todos", tags=["todos"])
 image_router = APIRouter(prefix="/todo-images", tags=["todos"])
 
 DEFAULT_PLAY_TITLES = ["唱歌", "台球", "看电影", "拼乐高"]
+
+
+def _merge_restaurant_candidate(candidate: TodoRestaurantCandidate, detail: dict | None) -> dict:
+    data = candidate.model_dump()
+    if detail:
+        raw = detail.get("raw") if isinstance(detail.get("raw"), dict) else detail
+        data.update({key: value for key, value in detail.items() if key != "raw" and value not in (None, "", [])})
+        data["raw"] = raw
+    else:
+        data["raw"] = data.get("raw") or {}
+    return data
 
 
 def _month_range(month: str) -> tuple[date, date]:
@@ -386,35 +397,44 @@ def create_restaurant_item(
 ) -> TodoItemOut:
     pair = get_pair_for_user(db, current_user.id)
     candidate = payload.candidate
-    raw = candidate.raw or {}
+    detail: dict | None = None
     parse_status = TodoParseStatus.resolved
     parse_error = None
     if candidate.amap_poi_id:
         try:
             detail = amap_mcp.restaurant_detail(candidate.amap_poi_id, effective_amap_key(db))
-            if detail:
-                raw = detail
         except amap_mcp.AmapMCPError as exc:
             parse_status = TodoParseStatus.failed
             parse_error = str(exc)
-    item = TodoItem(pair_id=pair.id, creator_id=current_user.id, category=TodoCategory.food, title=candidate.name)
+    restaurant_data = _merge_restaurant_candidate(candidate, detail)
+    signature_dishes = payload.signature_dishes or restaurant_data.get("signature_dishes")
+    per_capita = payload.per_capita if payload.per_capita is not None else restaurant_data.get("per_capita")
+    item = TodoItem(pair_id=pair.id, creator_id=current_user.id, category=TodoCategory.food, title=restaurant_data.get("name") or candidate.name)
     db.add(item)
     db.flush()
     restaurant = TodoRestaurant(
         item_id=item.id,
-        amap_poi_id=candidate.amap_poi_id,
-        name=candidate.name,
-        address=candidate.address,
-        location=candidate.location,
-        city=candidate.city,
-        poi_type=candidate.poi_type,
-        tel=candidate.tel,
-        business_area=candidate.business_area,
-        signature_dishes=payload.signature_dishes,
-        per_capita=payload.per_capita,
+        amap_poi_id=restaurant_data.get("amap_poi_id"),
+        name=restaurant_data.get("name") or candidate.name,
+        address=restaurant_data.get("address"),
+        location=restaurant_data.get("location"),
+        city=restaurant_data.get("city"),
+        adname=restaurant_data.get("adname"),
+        pname=restaurant_data.get("pname"),
+        poi_type=restaurant_data.get("poi_type"),
+        poi_typecode=restaurant_data.get("poi_typecode"),
+        tel=restaurant_data.get("tel"),
+        business_area=restaurant_data.get("business_area"),
+        signature_dishes=signature_dishes,
+        per_capita=per_capita,
+        rating=restaurant_data.get("rating"),
+        opening_hours=restaurant_data.get("opening_hours"),
+        meal_ordering=restaurant_data.get("meal_ordering"),
+        photos_count=restaurant_data.get("photos_count") or 0,
+        first_photo_url=restaurant_data.get("first_photo_url"),
         parse_status=parse_status,
         parse_error=parse_error,
-        raw=raw,
+        raw=restaurant_data.get("raw"),
     )
     db.add(restaurant)
     db.commit()

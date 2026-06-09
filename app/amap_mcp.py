@@ -8,6 +8,7 @@ import os
 import shutil
 import sys
 from typing import Any
+from urllib.parse import quote
 
 from app.core.config import get_settings
 
@@ -48,11 +49,13 @@ def _normalize_poi(raw: dict[str, Any]) -> dict[str, Any]:
     biz_ext = raw.get("biz_ext") if isinstance(raw.get("biz_ext"), dict) else {}
     photos = raw.get("photos") if isinstance(raw.get("photos"), list) else []
     tags = _split_tags(raw.get("tag") or raw.get("tags") or raw.get("recommend") or biz_ext.get("tag"))
+    name = str(raw.get("name") or "").strip()
+    location = raw.get("location")
     return {
         "amap_poi_id": raw.get("id") or raw.get("poi_id") or raw.get("amap_poi_id"),
-        "name": str(raw.get("name") or "").strip(),
+        "name": name,
         "address": raw.get("address"),
-        "location": raw.get("location"),
+        "location": location,
         "city": city,
         "adname": raw.get("adname"),
         "pname": raw.get("pname"),
@@ -62,10 +65,13 @@ def _normalize_poi(raw: dict[str, Any]) -> dict[str, Any]:
         "business_area": raw.get("business_area") or raw.get("businessarea"),
         "rating": _optional_float(biz_ext.get("rating") or raw.get("rating")),
         "per_capita": _optional_int(biz_ext.get("cost") or raw.get("cost") or raw.get("per_capita")),
+        "opening_hours": biz_ext.get("open_time") or biz_ext.get("opentime") or raw.get("open_time") or raw.get("opentime"),
+        "meal_ordering": _optional_text(biz_ext.get("meal_ordering") or raw.get("meal_ordering")),
         "tags": tags,
         "signature_dishes": ", ".join(tags) if tags else None,
         "photos_count": len(photos),
         "first_photo_url": _first_photo_url(photos),
+        "amap_navigation_url": _navigation_url(location, name),
         "raw": raw,
     }
 
@@ -101,6 +107,12 @@ def _optional_float(value: Any) -> float | None:
         return None
 
 
+def _optional_text(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    return str(value)
+
+
 def _first_photo_url(photos: list[Any]) -> str | None:
     for photo in photos:
         if isinstance(photo, dict):
@@ -110,6 +122,15 @@ def _first_photo_url(photos: list[Any]) -> str | None:
         elif photo:
             return str(photo)
     return None
+
+
+def _navigation_url(location: Any, name: str) -> str | None:
+    if not location:
+        return None
+    text = str(location).strip()
+    if "," not in text:
+        return None
+    return f"https://uri.amap.com/marker?position={quote(text, safe=',')}&name={quote(name)}"
 
 
 def _pois_from_payload(payload: Any) -> list[dict[str, Any]]:
@@ -250,9 +271,9 @@ def restaurant_detail(amap_poi_id: str, amap_key: str | None = None) -> dict[str
     payload = call_amap_tool("maps_search_detail", {"id": amap_poi_id}, amap_key=amap_key)
     if isinstance(payload, dict):
         if isinstance(payload.get("poi"), dict):
-            return payload["poi"]
+            return _normalize_poi(payload["poi"])
         if isinstance(payload.get("pois"), list) and payload["pois"]:
             first = payload["pois"][0]
-            return first if isinstance(first, dict) else None
-        return payload
+            return _normalize_poi(first) if isinstance(first, dict) else None
+        return _normalize_poi(payload)
     return None

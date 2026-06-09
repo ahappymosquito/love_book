@@ -1,7 +1,8 @@
-"""SQLAlchemy models for pair timelines, comment reactions, food/play/stay todo boards, media keys, quotes, AI settings with saved model lists, and login logs."""
+"""SQLAlchemy models for pair timelines, comment reactions, food/play/stay todo boards, rich AMap restaurant evidence, media keys, quotes, AI settings with saved model lists, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
+from urllib.parse import quote
 
 from sqlalchemy import Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, JSON, LargeBinary, String, Text
 from sqlalchemy.dialects.mysql import LONGBLOB
@@ -186,11 +187,19 @@ class TodoRestaurant(Base):
     address: Mapped[str | None] = mapped_column(String(500))
     location: Mapped[str | None] = mapped_column(String(100))
     city: Mapped[str | None] = mapped_column(String(100))
+    adname: Mapped[str | None] = mapped_column(String(100))
+    pname: Mapped[str | None] = mapped_column(String(100))
     poi_type: Mapped[str | None] = mapped_column(String(200))
+    poi_typecode: Mapped[str | None] = mapped_column(String(50))
     tel: Mapped[str | None] = mapped_column(String(200))
     business_area: Mapped[str | None] = mapped_column(String(200))
     signature_dishes: Mapped[str | None] = mapped_column(Text)
     per_capita: Mapped[int | None] = mapped_column(Integer)
+    rating: Mapped[float | None] = mapped_column(Float)
+    opening_hours: Mapped[str | None] = mapped_column(String(300))
+    meal_ordering: Mapped[str | None] = mapped_column(String(50))
+    photos_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    first_photo_url: Mapped[str | None] = mapped_column(String(1000))
     parse_status: Mapped[TodoParseStatus] = mapped_column(
         Enum(TodoParseStatus), default=TodoParseStatus.pending, nullable=False, index=True
     )
@@ -198,6 +207,33 @@ class TodoRestaurant(Base):
     raw: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+    @property
+    def amap_navigation_url(self) -> str | None:
+        if not self.location:
+            return None
+        return f"https://uri.amap.com/marker?position={quote(self.location, safe=',')}&name={quote(self.name)}"
+
+    @property
+    def display_facts(self) -> list[dict[str, str | None]]:
+        meal_text = None
+        if self.meal_ordering is not None:
+            meal_text = "支持在线点餐" if str(self.meal_ordering) == "1" else f"高德字段 meal_ordering: {self.meal_ordering}"
+        return [
+            {"label": "店名", "value": self.name},
+            {"label": "城市", "value": self.city},
+            {"label": "地址", "value": self.address},
+            {"label": "商圈", "value": self.business_area or self.adname},
+            {"label": "菜系/类型", "value": self.poi_type},
+            {"label": "评分", "value": str(self.rating) if self.rating is not None else None},
+            {"label": "人均", "value": f"约 {self.per_capita} 元" if self.per_capita is not None else None},
+            {"label": "营业时间", "value": self.opening_hours},
+            {"label": "坐标", "value": self.location},
+            {"label": "高德 POI ID", "value": self.amap_poi_id},
+            {"label": "是否支持点餐", "value": meal_text},
+            {"label": "门店照片", "value": self.first_photo_url, "href": self.first_photo_url},
+            {"label": "地图导航", "value": self.amap_navigation_url, "href": self.amap_navigation_url},
+        ]
 
 
 class TodoSchedule(Base):

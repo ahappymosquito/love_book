@@ -1,4 +1,4 @@
-// Shared TypeScript contracts for API payloads, editable profile state, events, quote libraries, food/play/stay todo boards, admin saved-model AMap-grounded AI tests, cycles, and reminders.
+// Shared TypeScript contracts for API payloads, editable profile state, events, quote libraries, food/play/stay todo boards, rich AMap restaurant evidence, admin saved-model AMap-grounded AI tests, cycles, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
 export type TodoCategory = "food" | "play" | "stay";
@@ -241,11 +241,21 @@ export interface TodoRestaurantOut {
   address: string | null;
   location: string | null;
   city: string | null;
+  adname: string | null;
+  pname: string | null;
   poi_type: string | null;
+  poi_typecode: string | null;
   tel: string | null;
   business_area: string | null;
   signature_dishes: string | null;
   per_capita: number | null;
+  rating: number | null;
+  opening_hours: string | null;
+  meal_ordering: string | null;
+  photos_count: number;
+  first_photo_url: string | null;
+  amap_navigation_url: string | null;
+  display_facts: Array<{ label: string; value: string | null; href?: string | null }>;
   parse_status: TodoParseStatus;
   parse_error: string | null;
   raw: Record<string, unknown> | null;
@@ -303,10 +313,13 @@ export interface TodoRestaurantCandidate {
   business_area: string | null;
   rating: number | null;
   per_capita: number | null;
+  opening_hours: string | null;
+  meal_ordering: string | null;
   tags: string[];
   signature_dishes: string | null;
   photos_count: number;
   first_photo_url: string | null;
+  amap_navigation_url: string | null;
   raw: Record<string, unknown> | null;
 }
 

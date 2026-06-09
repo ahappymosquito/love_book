@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, editable profiles, admin saved-model AMap-grounded food/play/stay AI tests, events, media, quotes, cycles, and todo APIs."""
+"""Pydantic schemas for auth, editable profiles, admin saved-model AMap-grounded food/play/stay AI tests, rich AMap restaurant evidence, events, media, quotes, cycles, and todo APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -316,11 +316,21 @@ class TodoRestaurantOut(APIModel):
     address: str | None = None
     location: str | None = None
     city: str | None = None
+    adname: str | None = None
+    pname: str | None = None
     poi_type: str | None = None
+    poi_typecode: str | None = None
     tel: str | None = None
     business_area: str | None = None
     signature_dishes: str | None = None
     per_capita: int | None = None
+    rating: float | None = None
+    opening_hours: str | None = None
+    meal_ordering: str | None = None
+    photos_count: int = 0
+    first_photo_url: str | None = None
+    amap_navigation_url: str | None = None
+    display_facts: list[dict[str, str | None]] = Field(default_factory=list)
     parse_status: TodoParseStatus
     parse_error: str | None = None
     raw: dict | None = None
@@ -423,10 +433,13 @@ class TodoRestaurantCandidate(APIModel):
     business_area: str | None = None
     rating: float | None = None
     per_capita: int | None = None
+    opening_hours: str | None = None
+    meal_ordering: str | None = None
     tags: list[str] = Field(default_factory=list)
     signature_dishes: str | None = None
     photos_count: int = 0
     first_photo_url: str | None = None
+    amap_navigation_url: str | None = None
     raw: dict | None = None
 
 

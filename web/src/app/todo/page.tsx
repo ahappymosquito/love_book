@@ -1,6 +1,6 @@
 "use client";
 
-// Microsoft To Do inspired pair-shared food/play/stay todo workspace with detail-only scheduling, two-comment completion, one-click open-item AI category refresh, comments with authors, and folded photos.
+// Microsoft To Do inspired pair-shared food/play/stay todo workspace with rich AMap restaurant evidence, detail-only scheduling, two-comment completion, AI category refresh, comments with authors, and folded photos.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -211,7 +211,7 @@ function TodoInner() {
             />
 
             <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 sm:px-5 sm:pb-5">
-              {view === "food" && <RestaurantCreator onCreated={load} />}
+              {view === "food" && <RestaurantCreator onCreated={async (item) => { await load(); setDetailId(item.id); }} />}
               {view === "lottery" ? (
                 <RestaurantLottery onCreated={load} onOpen={setDetailId} />
               ) : (
@@ -585,6 +585,9 @@ function TaskRow({
               </span>
             )}
             {restaurant?.per_capita != null && <span>人均 {restaurant.per_capita}</span>}
+            {restaurant?.rating != null && <span>评分 {restaurant.rating}</span>}
+            {restaurant?.opening_hours && <span>{restaurant.opening_hours}</span>}
+            {restaurant?.poi_type && <span className="truncate">{restaurant.poi_type}</span>}
             {item.note && <span className="truncate">{item.note}</span>}
             {schedules.length > 0 && (
               <span className="inline-flex items-center gap-1">
@@ -651,14 +654,13 @@ function QuickAddBar({
   );
 }
 
-function RestaurantCreator({ onCreated }: { onCreated: () => void }) {
+function RestaurantCreator({ onCreated }: { onCreated: (item: TodoItemOut) => void | Promise<void> }) {
   const [keyword, setKeyword] = useState("");
   const [city, setCity] = useState("");
   const [searching, setSearching] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [candidates, setCandidates] = useState<TodoRestaurantCandidate[]>([]);
   const [selected, setSelected] = useState<TodoRestaurantCandidate | null>(null);
-  const [signature, setSignature] = useState("");
-  const [perCapita, setPerCapita] = useState("");
 
   async function search(event: FormEvent) {
     event.preventDefault();
@@ -676,19 +678,18 @@ function RestaurantCreator({ onCreated }: { onCreated: () => void }) {
 
   async function create() {
     if (!selected) return;
-    await api.createTodoRestaurant({
-      candidate: selected,
-      signature_dishes: signature.trim() || null,
-      per_capita: perCapita ? Number(perCapita) : null,
-    });
-    setKeyword("");
-    setCity("");
-    setCandidates([]);
-    setSelected(null);
-    setSignature("");
-    setPerCapita("");
-    toast.success("餐厅已添加");
-    onCreated();
+    setCreating(true);
+    try {
+      const item = await api.createTodoRestaurant({ candidate: selected });
+      setKeyword("");
+      setCity("");
+      setCandidates([]);
+      setSelected(null);
+      toast.success("餐厅已添加，已刷新高德详情");
+      await onCreated(item);
+    } finally {
+      setCreating(false);
+    }
   }
 
   return (
@@ -713,18 +714,24 @@ function RestaurantCreator({ onCreated }: { onCreated: () => void }) {
               >
                 <span className="block font-display text-sm font-semibold text-ink">{candidate.name}</span>
                 <span className="mt-1 block truncate font-sc text-xs text-ink-muted">{candidate.address || candidate.city || "暂无地址"}</span>
+                <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-sc text-[11px] text-ink-muted">
+                  {candidate.poi_type && <span>{candidate.poi_type}</span>}
+                  {candidate.business_area && <span>{candidate.business_area}</span>}
+                  {candidate.rating != null && <span>评分 {candidate.rating}</span>}
+                  {candidate.per_capita != null && <span>人均 {candidate.per_capita}</span>}
+                </span>
               </button>
             ))}
           </div>
           <div className="rounded-xl border border-line/58 bg-surface/78 p-3">
             <p className="font-display text-sm font-semibold text-ink">{selected?.name ?? "选择一家餐厅"}</p>
-            <div className="mt-3 grid gap-2">
-              <input className="input-field rounded-xl text-sm" value={signature} onChange={(event) => setSignature(event.target.value)} placeholder="招牌菜，可选" maxLength={1000} />
-              <input className="input-field rounded-xl text-sm" type="number" min={0} value={perCapita} onChange={(event) => setPerCapita(event.target.value)} placeholder="人均，可选" />
-              <button type="button" onClick={create} disabled={!selected} className="btn-primary min-h-11 rounded-xl px-4 font-sc text-sm disabled:opacity-50 focus-ring">
-                添加餐厅
-              </button>
+            <div className="mt-2 space-y-1 font-sc text-xs text-ink-muted">
+              <p>{selected?.address || "高德未返回地址"}</p>
+              <p>添加后会自动拉取高德详情，并打开右侧详情。</p>
             </div>
+            <button type="button" onClick={create} disabled={!selected || creating} className="btn-primary mt-3 min-h-11 w-full rounded-xl px-4 font-sc text-sm disabled:opacity-50 focus-ring">
+              {creating ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "添加并查看详情"}
+            </button>
           </div>
         </div>
       )}
@@ -997,6 +1004,8 @@ function TodoDetailPanel({
                 </div>
               </section>
 
+              {detail.restaurant && <RestaurantEvidence restaurant={detail.restaurant} />}
+
               <section>
                 <h3 className="mb-2 font-sc text-sm font-medium text-ink">双方评论</h3>
                 {detail.comments.length === 0 ? (
@@ -1063,6 +1072,54 @@ function TodoDetailPanel({
         </footer>
       </motion.aside>
     </>
+  );
+}
+
+function RestaurantEvidence({ restaurant }: { restaurant: NonNullable<TodoItemDetail["restaurant"]> }) {
+  const facts = restaurant.display_facts?.length
+    ? restaurant.display_facts
+    : [
+        { label: "店名", value: restaurant.name },
+        { label: "城市", value: restaurant.city },
+        { label: "地址", value: restaurant.address },
+        { label: "商圈", value: restaurant.business_area || restaurant.adname },
+        { label: "菜系/类型", value: restaurant.poi_type },
+        { label: "评分", value: restaurant.rating != null ? String(restaurant.rating) : null },
+        { label: "人均", value: restaurant.per_capita != null ? `约 ${restaurant.per_capita} 元` : null },
+        { label: "营业时间", value: restaurant.opening_hours },
+        { label: "坐标", value: restaurant.location },
+        { label: "高德 POI ID", value: restaurant.amap_poi_id },
+        { label: "是否支持点餐", value: restaurant.meal_ordering != null ? `高德字段 meal_ordering: ${restaurant.meal_ordering}` : null },
+        { label: "门店照片", value: restaurant.first_photo_url, href: restaurant.first_photo_url },
+        { label: "地图导航", value: restaurant.amap_navigation_url, href: restaurant.amap_navigation_url },
+      ];
+
+  return (
+    <section className="rounded-2xl border border-line/62 bg-surface-raised/66 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="font-sc text-sm font-medium text-ink">高德取证</h3>
+        <StatusPill status={restaurant.parse_status} />
+      </div>
+      {restaurant.parse_status === "failed" && restaurant.parse_error && (
+        <p className="mb-2 rounded-xl bg-red-50 p-2 font-sc text-xs text-red-700">{restaurant.parse_error}</p>
+      )}
+      <dl className="divide-y divide-line/52 overflow-hidden rounded-xl border border-line/52 bg-surface/78">
+        {facts.map((fact) => (
+          <div key={fact.label} className="grid grid-cols-[6.2rem_minmax(0,1fr)] gap-2 px-3 py-2 font-sc text-xs">
+            <dt className="text-ink-muted">{fact.label}</dt>
+            <dd className="min-w-0 break-words text-ink-soft">
+              {fact.href && fact.value ? (
+                <a href={fact.href} target="_blank" rel="noreferrer" className="text-rose-deep underline-offset-4 hover:underline">
+                  {fact.label === "门店照片" ? "打开门店照片" : fact.label === "地图导航" ? "打开高德地图标记" : fact.value}
+                </a>
+              ) : (
+                fact.value || "未返回"
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 

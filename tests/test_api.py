@@ -1,4 +1,4 @@
-"""API regression tests for auth, profiles, media, food/play/stay todo, AMap MCP POI normalization, AMap-grounded AI tests, and fallback data."""
+"""API regression tests for auth, profiles, media, food/play/stay todo, rich AMap restaurant evidence, AMap MCP POI normalization, AMap-grounded AI tests, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -1202,7 +1202,15 @@ def test_todo_restaurant_search_and_create_use_amap_mcp(client: TestClient, pair
             }
         ],
     )
-    monkeypatch.setattr("app.amap_mcp.restaurant_detail", lambda poi_id, amap_key=None: {"id": poi_id, "rating": "4.8"})
+    monkeypatch.setattr(
+        "app.amap_mcp.restaurant_detail",
+        lambda poi_id, amap_key=None: {
+            "amap_poi_id": poi_id,
+            "name": "小馆",
+            "rating": 4.8,
+            "raw": {"id": poi_id, "rating": "4.8"},
+        },
+    )
 
     search = client.post(
         "/todos/restaurants/search",
@@ -1222,6 +1230,95 @@ def test_todo_restaurant_search_and_create_use_amap_mcp(client: TestClient, pair
     assert data["category"] == "food"
     assert data["restaurant"]["parse_status"] == "resolved"
     assert data["restaurant"]["signature_dishes"] == "红烧肉"
+    assert data["restaurant"]["rating"] == 4.8
+
+
+def test_todo_restaurant_create_auto_saves_rich_amap_detail(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.amap_mcp.search_restaurants",
+        lambda keyword, city=None, amap_key=None: [
+            {
+                "amap_poi_id": "B0G2HCOEAE",
+                "name": "陈记川菜馆（汇银中心店）",
+                "address": "杭州市余杭区联创街 77 号汇银中心 F1 层",
+                "location": "120.027121,30.288808",
+                "city": "杭州市",
+                "adname": "余杭区",
+                "pname": "浙江省",
+                "poi_type": "餐饮服务;中餐厅;四川菜(川菜)",
+                "poi_typecode": "050102",
+                "business_area": "五常街道",
+                "raw": {"id": "B0G2HCOEAE"},
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        "app.amap_mcp.restaurant_detail",
+        lambda poi_id, amap_key=None: {
+            "amap_poi_id": poi_id,
+            "name": "陈记川菜馆（汇银中心店）",
+            "address": "杭州市余杭区联创街 77 号汇银中心 F1 层",
+            "location": "120.027121,30.288808",
+            "city": "杭州市",
+            "adname": "余杭区",
+            "pname": "浙江省",
+            "poi_type": "餐饮服务;中餐厅;四川菜(川菜)",
+            "poi_typecode": "050102",
+            "business_area": "五常街道",
+            "rating": 4.4,
+            "per_capita": 69,
+            "opening_hours": "周一至周日 11:00-23:00",
+            "meal_ordering": "0",
+            "signature_dishes": "川菜, 四川菜",
+            "photos_count": 1,
+            "first_photo_url": "https://aos-comment.amap.com/B0G2HCOEAE/comment/photo.jpg",
+            "amap_navigation_url": "https://uri.amap.com/marker?position=120.027121,30.288808&name=%E9%99%88%E8%AE%B0",
+            "raw": {"id": poi_id, "biz_ext": {"rating": "4.4", "cost": "69", "open_time": "周一至周日 11:00-23:00", "meal_ordering": "0"}},
+        },
+    )
+
+    search = client.post(
+        "/todos/restaurants/search",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"keyword": "陈记川菜馆（汇银中心店）", "city": "杭州"},
+    )
+    candidate = search.json()["candidates"][0]
+    created = client.post("/todos/restaurants", headers=auth(str(pair_tokens["user_a_token"])), json={"candidate": candidate})
+
+    assert created.status_code == 201
+    restaurant = created.json()["restaurant"]
+    assert restaurant["amap_poi_id"] == "B0G2HCOEAE"
+    assert restaurant["rating"] == 4.4
+    assert restaurant["per_capita"] == 69
+    assert restaurant["opening_hours"] == "周一至周日 11:00-23:00"
+    assert restaurant["meal_ordering"] == "0"
+    assert restaurant["first_photo_url"].startswith("https://aos-comment.amap.com/")
+    assert restaurant["amap_navigation_url"].startswith("https://uri.amap.com/marker")
+    assert any(fact["label"] == "地图导航" and fact["href"] for fact in restaurant["display_facts"])
+
+
+def test_todo_restaurant_create_keeps_candidate_when_detail_fails(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.amap_mcp import AmapMCPError
+
+    candidate = {
+        "amap_poi_id": "B001",
+        "name": "小馆",
+        "address": "幸福路 1 号",
+        "location": "120.1,30.2",
+        "city": "杭州",
+        "poi_type": "餐饮服务",
+        "business_area": "中心",
+        "raw": {"id": "B001"},
+    }
+    monkeypatch.setattr("app.amap_mcp.restaurant_detail", lambda poi_id, amap_key=None: (_ for _ in ()).throw(AmapMCPError("detail failed")))
+
+    created = client.post("/todos/restaurants", headers=auth(str(pair_tokens["user_a_token"])), json={"candidate": candidate})
+
+    assert created.status_code == 201
+    restaurant = created.json()["restaurant"]
+    assert restaurant["name"] == "小馆"
+    assert restaurant["parse_status"] == "failed"
+    assert "detail failed" in restaurant["parse_error"]
 
 
 def test_amap_mcp_resolves_windows_npx_through_cmd(monkeypatch: pytest.MonkeyPatch) -> None:
