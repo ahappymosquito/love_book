@@ -1,4 +1,4 @@
-"""API regression tests for auth, profiles, media, food/play/stay/wish todo candidate queues, retryable candidate confirmation, single-date scheduling, rich AMap restaurant evidence, AMap MCP POI normalization, AMap-grounded AI tests, and fallback data."""
+"""API regression tests for auth, profiles, media, food/play/stay/wish todo candidate queues, category-overridable candidate confirmation, no-email single-date scheduling, rich AMap restaurant evidence, AMap MCP POI normalization, AMap-grounded AI tests, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -1160,7 +1160,7 @@ def test_todo_items_are_pair_isolated(client: TestClient, pair_tokens: dict[str,
     assert client.get(f"/todos/items/{created['id']}", headers=auth(other_pair["user_a_token"])).status_code == 404
 
 
-def test_todo_schedule_commits_and_sends_email(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_todo_schedule_commits_without_email(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     sent: list[dict[str, str]] = []
 
     def fake_send_email(to: str, subject: str, text_body: str, html_body: str | None = None) -> bool:
@@ -1193,9 +1193,7 @@ def test_todo_schedule_commits_and_sends_email(client: TestClient, monkeypatch: 
     assert scheduled.status_code == 201
     dashboard = client.get("/todos/dashboard?month=2026-05", headers=auth(str(pair_tokens["user_b_token"]))).json()
     assert any(schedule["item_id"] == item["id"] for schedule in dashboard["schedules"])
-    assert sent
-    assert "看电影" in sent[-1]["text"]
-
+    assert sent == []
 
 def test_todo_restaurant_search_and_create_use_amap_mcp(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
@@ -1452,6 +1450,29 @@ def test_todo_candidate_single_play_poi_confirms_and_removes_candidate(client: T
     assert confirmed.json()["restaurant"]["amap_poi_id"] == "PLAY001"
     assert remaining.status_code == 200
     assert remaining.json() == []
+
+
+def test_todo_candidate_confirm_can_override_category(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.api.routes.todos.complete_todo_category", lambda db, title: "play")
+    monkeypatch.setattr(
+        "app.amap_mcp.search_restaurants",
+        lambda keyword, city=None, amap_key=None: [{"amap_poi_id": "STAY001", "name": "Haiyou Hotel", "address": "Alibaba HQ"}],
+    )
+    monkeypatch.setattr(
+        "app.amap_mcp.restaurant_detail",
+        lambda poi_id, amap_key=None: {"amap_poi_id": poi_id, "name": "Haiyou Hotel", "raw": {"id": poi_id}},
+    )
+
+    created = client.post("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])), json={"raw_title": "Haiyou Hotel"})
+    confirmed = client.post(
+        f"/todos/candidates/{created.json()['id']}/confirm",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"category": "stay"},
+    )
+
+    assert confirmed.status_code == 201
+    assert confirmed.json()["category"] == "stay"
+    assert confirmed.json()["restaurant"]["amap_poi_id"] == "STAY001"
 
 
 def test_todo_candidate_confirm_detail_crash_returns_502_and_keeps_candidate(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:

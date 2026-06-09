@@ -1,4 +1,4 @@
-"""Todo board routes for pair-shared tasks, retryable candidate confirmation, single-date schedules, two-person comment completion, shared LLM category refresh, rich AMap restaurant evidence, and images."""
+"""Todo board routes for pair-shared tasks, retryable category-overridable candidate confirmation, no-email single-date schedules, two-person comment completion, shared LLM category refresh, rich AMap restaurant evidence, and images."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from calendar import monthrange
 from datetime import date
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session, selectinload
@@ -18,7 +18,6 @@ from app.ai_config import complete_todo_category, effective_amap_key
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.emailer import notify_todo_schedule_created
 from app.media import MediaProcessingError, make_image_thumbnail
 from app.models import Pair, TodoCandidate, TodoCandidateStatus, TodoCategory, TodoComment, TodoImage, TodoItem, TodoParseStatus, TodoRestaurant, TodoSchedule, User
 from app.schemas import (
@@ -45,7 +44,6 @@ from app.schemas import (
 )
 
 logger = logging.getLogger(__name__)
-from app.services import active_token_for_user, counterpart
 from app.storage import (
     PRIVATE_MEDIA_CACHE_HEADERS,
     MediaStorageError,
@@ -380,7 +378,6 @@ def delete_item(item_id: int, current_user: User = Depends(get_current_user), db
 def create_schedule(
     item_id: int,
     payload: TodoScheduleCreate,
-    background: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TodoScheduleOut:
@@ -396,20 +393,8 @@ def create_schedule(
     db.add(schedule)
     db.flush()
     db.refresh(schedule)
-    other = counterpart(pair, current_user)
-    recipient_token = active_token_for_user(db, other.id)
     db.commit()
     db.refresh(schedule)
-    background.add_task(
-        notify_todo_schedule_created,
-        recipient_email=other.email,
-        recipient_name=other.display_name,
-        recipient_token=recipient_token,
-        actor_name=current_user.display_name,
-        scheduled_on=schedule.scheduled_on,
-        category=item.category.value,
-        item_title=item.title,
-    )
     return TodoScheduleOut.model_validate(schedule)
 
 

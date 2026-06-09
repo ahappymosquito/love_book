@@ -1,6 +1,6 @@
 "use client";
 
-// Four-section pair-shared todo workspace with local pending candidate queues, confirmation error recovery, rich AMap POI evidence, single-date scheduling, two-comment completion, AI category refresh, comments with authors, and folded photos.
+// Four-section pair-shared todo workspace with local pending candidate queues, category override confirmation, rich AMap POI evidence, instant single-date scheduling, two-comment completion, AI category refresh, comments with authors, and folded photos.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -75,6 +75,7 @@ const TODO_SECTIONS: Array<{ category: TodoCategory; title: string; subtitle: st
   { category: "stay", title: "住一晚也好", subtitle: "酒店、民宿和过夜小计划", icon: <BedDouble className="h-4 w-4" /> },
   { category: "wish", title: "悄悄许个愿", subtitle: "还没定下来的愿望和小期待", icon: <Star className="h-4 w-4" /> },
 ];
+const TODO_CATEGORY_OPTIONS: TodoCategory[] = ["food", "play", "stay", "wish"];
 
 function toDateOnly(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -540,8 +541,9 @@ function CandidateCard({
   onConfirm: (candidate: TodoCandidateOut, selectedCandidate?: TodoRestaurantCandidate | null, category?: TodoCategory) => void | Promise<void>;
   onDiscard: (candidate: CandidateQueueItem) => void | Promise<void>;
 }) {
-  const [expanded, setExpanded] = useState(candidate.status !== "ready");
+  const [expanded, setExpanded] = useState(true);
   const [selected, setSelected] = useState<TodoRestaurantCandidate | null>(candidate.selected_candidate ?? candidate.amap_candidates[0] ?? null);
+  const [overrideCategory, setOverrideCategory] = useState<TodoCategory>(candidate.category);
   const [confirming, setConfirming] = useState(false);
   const [discarding, setDiscarding] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -550,10 +552,11 @@ function CandidateCard({
 
   useEffect(() => {
     setSelected(candidate.selected_candidate ?? candidate.amap_candidates[0] ?? null);
+    setOverrideCategory(candidate.category);
     setActionError(null);
   }, [candidate]);
 
-  async function confirmWith(nextCategory = candidate.category) {
+  async function confirmWith(nextCategory = overrideCategory) {
     if (!persisted || candidate.status === "parsing") return;
     setConfirming(true);
     setActionError(null);
@@ -600,6 +603,25 @@ function CandidateCard({
           {candidate.status === "parsing" && <p className="rounded-xl bg-peach/12 p-3 font-sc text-xs text-ink-muted">正在调用 LLM 和高德 MCP 解析，完成后这里会显示可确认的详情。</p>}
           {(candidate.parse_error || actionError) && <p className="rounded-xl bg-red-50 p-2 font-sc text-xs text-red-700">{actionError ?? candidate.parse_error}</p>}
 
+          <div className="rounded-xl border border-line/58 bg-surface-raised/70 p-3">
+            <p className="font-sc text-xs text-ink-muted">LLM 判断：{TODO_CATEGORY_LABELS[candidate.category]}。你也可以改到其它板块。</p>
+            <div className="mt-2 grid grid-cols-4 gap-1 rounded-xl bg-ink/5 p-1">
+              {TODO_CATEGORY_OPTIONS.map((category) => (
+                <button
+                  key={category}
+                  type="button"
+                  onClick={() => setOverrideCategory(category)}
+                  className={cn(
+                    "min-h-9 rounded-lg font-sc text-xs transition focus-ring",
+                    overrideCategory === category ? "bg-surface text-rose-deep shadow-sm" : "text-ink-muted hover:bg-surface/62",
+                  )}
+                >
+                  {TODO_CATEGORY_LABELS[category]}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {candidate.status === "ready" && selected && <CandidatePoiSummary candidate={selected} selected />}
 
           {candidate.status === "needs_choice" && (
@@ -625,8 +647,8 @@ function CandidateCard({
 
           <div className="flex flex-wrap justify-end gap-2">
             {candidate.status === "failed" && persisted && (
-              <button type="button" onClick={() => confirmWith("wish")} disabled={confirming || discarding} className="btn-ghost min-h-9 rounded-xl px-3 font-sc text-xs focus-ring disabled:opacity-50">
-                {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : "按原文字加入许愿"}
+              <button type="button" onClick={() => confirmWith(overrideCategory)} disabled={confirming || discarding} className="btn-ghost min-h-9 rounded-xl px-3 font-sc text-xs focus-ring disabled:opacity-50">
+                {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : `按当前分类加入${TODO_CATEGORY_LABELS[overrideCategory]}`}
               </button>
             )}
             {(candidate.status === "ready" || candidate.status === "needs_choice") && persisted && (
@@ -1221,6 +1243,7 @@ function TodoDetailPanel({
   const [comment, setComment] = useState("");
   const [saving, setSaving] = useState(false);
   const [scheduleDate, setScheduleDate] = useState(initialScheduleDate);
+  const [savingSchedule, setSavingSchedule] = useState(false);
   const [photosOpen, setPhotosOpen] = useState(false);
 
   useEffect(() => {
@@ -1259,17 +1282,32 @@ function TodoDetailPanel({
     await onChanged();
   }
 
-  async function toggleScheduleDate() {
+  async function applyScheduleDate(nextDate: string) {
+    setScheduleDate(nextDate);
+    if (!nextDate) return;
+    setSavingSchedule(true);
     try {
-      if (currentSchedule && currentSchedule.scheduled_on === scheduleDate) {
-        await onRemoveSchedule(currentSchedule.id);
-      } else {
-        await onSchedule(itemId, scheduleDate);
-      }
+      await onSchedule(itemId, nextDate);
       setDetail(await api.getTodoItem(itemId));
       await onChanged();
     } catch {
       // apiRequest already shows the server-provided error toast.
+    } finally {
+      setSavingSchedule(false);
+    }
+  }
+
+  async function clearScheduleDate() {
+    if (!currentSchedule) return;
+    setSavingSchedule(true);
+    try {
+      await onRemoveSchedule(currentSchedule.id);
+      setDetail(await api.getTodoItem(itemId));
+      await onChanged();
+    } catch {
+      // apiRequest already shows the server-provided error toast.
+    } finally {
+      setSavingSchedule(false);
     }
   }
 
@@ -1341,15 +1379,18 @@ function TodoDetailPanel({
                   </p>
                   <label className="flex min-h-11 items-center gap-2 rounded-xl border border-line/70 bg-surface/88 px-3 font-sc text-xs text-ink-soft focus-within:border-rose/60">
                     <CalendarDays className="h-3.5 w-3.5" />
-                    <input type="date" value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} className="min-w-0 flex-1 bg-transparent outline-none" />
+                    <input type="date" value={scheduleDate} onChange={(event) => void applyScheduleDate(event.target.value)} disabled={savingSchedule} className="min-w-0 flex-1 bg-transparent outline-none disabled:opacity-60" />
                   </label>
-                  <button
-                    type="button"
-                    onClick={toggleScheduleDate}
-                    className="mt-2 inline-flex min-h-9 items-center gap-1 rounded-full bg-rose/10 px-3 font-sc text-xs text-rose-deep focus-ring"
-                  >
-                    {currentSchedule?.scheduled_on === scheduleDate ? "清除日期" : `保存为 ${formatShortDate(scheduleDate)}`}
-                  </button>
+                  {currentSchedule && (
+                    <button
+                      type="button"
+                      onClick={() => void clearScheduleDate()}
+                      disabled={savingSchedule}
+                      className="mt-2 inline-flex min-h-9 items-center gap-1 rounded-full bg-rose/10 px-3 font-sc text-xs text-rose-deep disabled:opacity-60 focus-ring"
+                    >
+                      {savingSchedule ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "清除日期"}
+                    </button>
+                  )}
                 </div>
               </section>
 
