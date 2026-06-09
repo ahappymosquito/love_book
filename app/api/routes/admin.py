@@ -1,4 +1,4 @@
-"""Admin routes for pair setup, tokens, contacts, login logs, and AI config with AMap-grounded live completion tests."""
+"""Admin routes for pair setup, tokens, contacts, login logs, and AI config with saved models and AMap-grounded tests."""
 
 import secrets
 from datetime import timezone
@@ -8,7 +8,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai_config import get_ai_setting, list_models, preview_secret, test_category_completion, update_ai_setting
+from app.ai_config import get_ai_setting, list_models, preview_secret, saved_models_for_protocol, test_category_completion, update_ai_setting, update_saved_models
 from app.api.dependencies import require_admin_key
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -201,6 +201,7 @@ def get_admin_ai_config(db: Session = Depends(get_db)) -> AdminAIConfigOut:
         amap_api_key=amap_api_key,
         amap_key_preview=preview_secret(amap_api_key),
         has_amap_key=bool(amap_api_key),
+        saved_models=saved_models_for_protocol(row, row.protocol),
         updated_at=row.updated_at,
     )
 
@@ -225,9 +226,12 @@ def get_admin_ai_models(protocol: AIProtocol | None = None, db: Session = Depend
     row = get_ai_setting(db)
     target_protocol = protocol or row.protocol
     try:
-        return AdminAIModelListOut(models=list_models(db, target_protocol))
+        models = list_models(db, target_protocol)
     except (RuntimeError, httpx.HTTPError) as exc:
         raise HTTPException(status_code=502, detail=f"Model list request failed: {exc}") from exc
+    update_saved_models(db, target_protocol, models)
+    db.commit()
+    return AdminAIModelListOut(models=models)
 
 
 @router.post("/ai-config/test", response_model=AdminAIConnectionTestOut, dependencies=[Depends(require_admin_key)])
@@ -246,5 +250,10 @@ def test_admin_ai_config(db: Session = Depends(get_db)) -> AdminAIConnectionTest
         amap_address=result["amap_address"],
         amap_poi_type=result["amap_poi_type"],
         amap_poi_id=result["amap_poi_id"],
+        amap_category=result["amap_category"],
+        amap_category_reason=result["amap_category_reason"],
+        llm_category=result["llm_category"],
+        llm_status=result["llm_status"],
+        llm_message=result["llm_message"],
         evidence_note=result["evidence_note"],
     )

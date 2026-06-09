@@ -1,4 +1,4 @@
-"""Admin AI configuration helpers for editable endpoints, keys, model listing, AMap-grounded category completions, and connection tests."""
+"""Admin AI configuration helpers for editable endpoints, saved model lists, AMap-grounded category tests, and LLM diagnostics."""
 
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ CATEGORY_SYSTEM_PROMPT = (
 CATEGORY_MAX_TOKENS = 64
 CATEGORY_RETRY_MAX_TOKENS = 256
 ADMIN_TEST_RESTAURANT_KEYWORD = "江西小炒(西溪北苑东区店)"
+AMAP_FOOD_TYPE_PREFIX = "05"
+AMAP_FOOD_TYPE_WORDS = ("餐饮", "美食", "小吃", "中餐", "饭店", "餐厅", "火锅", "炒菜", "菜馆")
 
 
 def preview_secret(value: str) -> str:
@@ -72,6 +74,25 @@ def update_ai_setting(
     row.api_key = api_key.strip()
     row.amap_api_key = amap_api_key.strip()
     row.updated_by_id = user.id if user else None
+    db.add(row)
+    db.flush()
+    return row
+
+
+def saved_models_for_protocol(row: AISetting, protocol: AIProtocol) -> list[str]:
+    models = row.anthropic_models if protocol == AIProtocol.anthropic else row.openai_models
+    return [str(model) for model in models or [] if str(model)]
+
+
+def update_saved_models(db: Session, protocol: AIProtocol, models: list[str]) -> AISetting:
+    row = get_ai_setting(db)
+    cleaned = [model.strip() for model in models if model.strip()]
+    if protocol == AIProtocol.anthropic:
+        row.anthropic_models = cleaned
+    else:
+        row.openai_models = cleaned
+    if not row.selected_model and cleaned:
+        row.selected_model = cleaned[0]
     db.add(row)
     db.flush()
     return row
@@ -271,6 +292,23 @@ def _restaurant_evidence_note(candidate: dict) -> str:
     )
 
 
+def classify_amap_poi(candidate: dict) -> tuple[str | None, str]:
+    poi_type = str(candidate.get("poi_type") or "")
+    name = str(candidate.get("name") or "")
+    combined = f"{poi_type} {name}"
+    if poi_type.startswith(AMAP_FOOD_TYPE_PREFIX) or any(word in combined for word in AMAP_FOOD_TYPE_WORDS):
+        return "food", f"AMap POI type/name indicates food service: {poi_type or name}"
+    return None, f"AMap POI type is not recognized as food service: {poi_type or 'empty'}"
+
+
+def _llm_diagnostic(db: Session, title: str, note: str) -> tuple[str | None, str, str]:
+    try:
+        category = complete_todo_category(db, title, note)
+    except (RuntimeError, httpx.HTTPError) as exc:
+        return None, "failed", str(exc)
+    return category, "ok", f"LLM returned {category}"
+
+
 def test_category_completion(db: Session) -> dict[str, str | None]:
     candidates = amap_mcp.search_restaurants(
         ADMIN_TEST_RESTAURANT_KEYWORD,
@@ -281,13 +319,21 @@ def test_category_completion(db: Session) -> dict[str, str | None]:
     candidate = candidates[0]
     title = str(candidate.get("name") or ADMIN_TEST_RESTAURANT_KEYWORD)
     note = _restaurant_evidence_note(candidate)
-    category = complete_todo_category(db, title, note)
+    amap_category, amap_reason = classify_amap_poi(candidate)
+    if amap_category != "food":
+        raise RuntimeError(amap_reason)
+    llm_category, llm_status, llm_message = _llm_diagnostic(db, title, note)
     return {
-        "category": category,
+        "category": amap_category,
         "sample_keyword": ADMIN_TEST_RESTAURANT_KEYWORD,
         "amap_name": str(candidate.get("name") or ""),
         "amap_address": str(candidate.get("address") or ""),
         "amap_poi_type": str(candidate.get("poi_type") or ""),
         "amap_poi_id": str(candidate.get("amap_poi_id") or ""),
+        "amap_category": amap_category,
+        "amap_category_reason": amap_reason,
+        "llm_category": llm_category,
+        "llm_status": llm_status,
+        "llm_message": llm_message,
         "evidence_note": note,
     }

@@ -63,7 +63,7 @@
 ## Admin AI 配置约定
 
 - Admin AI 配置为全站唯一；管理端可保存协议、对应服务地址、token、选中模型和高德 key，`.env` / 服务器环境变量作为初始默认和兜底。
-- 管理端先选择 OpenAI 或 Anthropic，再编辑当前协议对应地址和 token；获取模型列表后需要在下拉框展示模型数量，选择模型后自动执行真实 `food/play` 补全测试，并保留手动测试连接按钮。Admin 测试样例固定使用“江西小炒(西溪北苑东区店)”，必须先通过高德 MCP 获取真实 POI 证据，再让 LLM 基于 POI 名称、地址、类型判断分类，并在界面展示“高德取证 -> LLM 判断”过程；测试必须能发现高德失败、空回复、协议错配或模型不支持 chat/messages 的问题。分类补全默认给 64 tokens 输出预算，遇到长度耗尽且正文为空时用 256 tokens 重试一次。
+- 管理端先选择 OpenAI 或 Anthropic，再编辑当前协议对应地址和 token；获取模型列表后需要按协议保存最近一次模型列表，刷新页面后继续展示上次列表和选中模型；没有选中模型时获取列表会自动保存第一个模型。Admin 测试样例固定使用“江西小炒(西溪北苑东区店)”，必须先通过高德 MCP 获取真实 POI 证据，并以高德 POI 类型作为主判断依据；LLM 只作为补全诊断展示，空回复、协议错配或模型不支持 chat/messages 不能让高德取证测试失败。界面需要展示“高德取证 -> 高德类型判断 -> LLM 补全诊断”过程。分类补全默认给 64 tokens 输出预算，遇到长度耗尽且正文为空时用 256 tokens 重试一次。
 - `.env` / 服务器环境变量维护 `LLM_OPENAI_BASE_URL`、`LLM_ANTHROPIC_BASE_URL`、`LLM_API_KEY`、`LLM_PROTOCOL`、`LLM_MODEL`、`AMAP_MAPS_API_KEY` 的默认值。
 - OpenAI 协议获取模型列表走 `{LLM_OPENAI_BASE_URL}/models`；Anthropic 协议走 `{LLM_ANTHROPIC_BASE_URL}/v1/models`。
 - `.env.example` 只能放占位值，不得提交真实高德 key、LLM token、数据库密码或 SMTP 授权码。

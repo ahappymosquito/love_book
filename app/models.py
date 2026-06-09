@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair timelines, comment reactions, todo boards, media keys, quotes, AI settings, and login logs."""
+"""SQLAlchemy models for pair timelines, comment reactions, todo boards, media keys, quotes, AI settings with saved model lists, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -256,6 +256,8 @@ class AISetting(Base):
     anthropic_base_url: Mapped[str] = mapped_column(String(500), nullable=False, default="", server_default="")
     api_key: Mapped[str] = mapped_column(String(4000), nullable=False, default="", server_default="")
     amap_api_key: Mapped[str] = mapped_column(String(200), nullable=False, default="", server_default="")
+    openai_models: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    anthropic_models: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 

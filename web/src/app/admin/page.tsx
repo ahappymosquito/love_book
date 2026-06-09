@@ -501,7 +501,15 @@ function AIConfigPanel() {
       setAnthropicBaseUrl(next.anthropic_base_url);
       setApiKey(next.api_key);
       setAmapApiKey(next.amap_api_key);
-      setSelectedModel(next.selected_model || next.env_model);
+      const restoredModels = next.saved_models?.length
+        ? next.saved_models
+        : next.selected_model || next.env_model
+          ? [next.selected_model || next.env_model]
+          : [];
+      const restoredSelected = next.selected_model || next.env_model;
+      setSelectedModel(restoredSelected);
+      setModels(restoredSelected && !restoredModels.includes(restoredSelected) ? [restoredSelected, ...restoredModels] : restoredModels);
+      setModelMessage(restoredModels.length ? `已恢复 ${restoredModels.length} 个已保存模型` : "");
       setTestResult(null);
       setTestError("");
     } finally {
@@ -534,7 +542,10 @@ function AIConfigPanel() {
       const result = await api.listAdminAIModels(protocol);
       setModels(result.models);
       setModelMessage(`已获取 ${result.models.length} 个模型`);
-      if (!selectedModel && result.models[0]) setSelectedModel(result.models[0]);
+      if (!selectedModel && result.models[0]) {
+        setSelectedModel(result.models[0]);
+        await saveConfig(result.models[0], false);
+      }
       setTestResult(null);
       setTestError("");
       toast.success(`模型列表已更新：${result.models.length} 个`);
@@ -632,10 +643,10 @@ function AIConfigPanel() {
           <span>{testResult ? `已返回 ${testResult.sample_category || "未知"}` : testError ? "测试失败" : "尚未测试"}</span>
         </div>
         <p className="mt-2 leading-relaxed">
-          {testError || testResult?.message || "保存配置后点击测试连接，会先用高德 MCP 获取样例餐厅信息，再让当前模型基于 POI 证据回答 food/play 分类。"}
+          {testError || testResult?.message || "保存配置后点击测试连接，会先用高德 MCP 获取样例餐厅信息，以 POI 类型完成主判断，并把当前模型补全作为诊断展示。"}
         </p>
         {testResult && (
-          <div className="mt-3 grid gap-2 text-ink-soft sm:grid-cols-2">
+          <div className="mt-3 grid gap-2 text-ink-soft sm:grid-cols-3">
             <div className="rounded-xl bg-surface/70 p-3">
               <p className="font-medium text-ink">1. 高德 MCP 取证</p>
               <p className="mt-1">样例：{testResult.sample_keyword || "江西小炒(西溪北苑东区店)"}</p>
@@ -644,9 +655,16 @@ function AIConfigPanel() {
               <p className="mt-1">类型：{testResult.amap_poi_type || "未返回类型"}</p>
             </div>
             <div className="rounded-xl bg-surface/70 p-3">
-              <p className="font-medium text-ink">2. LLM 基于证据判断</p>
-              <p className="mt-1">返回：{testResult.sample_category || "未知"}</p>
+              <p className="font-medium text-ink">2. 高德类型判断</p>
+              <p className="mt-1">分类：{testResult.amap_category || "未知"}</p>
+              <p className="mt-1">{testResult.amap_category_reason || "已根据 POI 类型判断。"}</p>
               <p className="mt-1">POI ID：{testResult.amap_poi_id || "未返回"}</p>
+            </div>
+            <div className="rounded-xl bg-surface/70 p-3">
+              <p className="font-medium text-ink">3. LLM 补全诊断</p>
+              <p className="mt-1">状态：{testResult.llm_status === "ok" ? "通过" : "未给最终文本"}</p>
+              <p className="mt-1">返回：{testResult.llm_category || "无"}</p>
+              <p className="mt-1">{testResult.llm_message || "LLM 诊断未返回信息。"}</p>
               <p className="mt-1 line-clamp-3">{testResult.evidence_note || "已将高德 POI 信息作为补全输入。"}</p>
             </div>
           </div>
@@ -748,6 +766,10 @@ function AIConfigPanel() {
               </option>
             ))}
           </select>
+          <div className="grid gap-1 rounded-xl border border-line/60 bg-surface-raised/60 p-3 font-sc text-xs text-ink-muted sm:grid-cols-2">
+            <span>已保存模型列表：{models.length} 个</span>
+            <span>上次选中模型：{config?.selected_model || selectedModel || "未选择"}</span>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">

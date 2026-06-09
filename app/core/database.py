@@ -1,4 +1,4 @@
-"""Database setup, sessions, default quote seeding, and lightweight migrations for media, todo, AI, and avatars."""
+"""Database setup, sessions, default quote seeding, and lightweight migrations for media, todo, AI model lists, and avatars."""
 
 from collections.abc import Generator
 
@@ -174,6 +174,16 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         "amap_api_key",
         {"default": "VARCHAR(200) NOT NULL DEFAULT ''"},
     ),
+    (
+        "ai_settings",
+        "openai_models",
+        {"sqlite": "JSON NOT NULL DEFAULT '[]'", "mysql": "JSON NULL", "default": "JSON NULL"},
+    ),
+    (
+        "ai_settings",
+        "anthropic_models",
+        {"sqlite": "JSON NOT NULL DEFAULT '[]'", "mysql": "JSON NULL", "default": "JSON NULL"},
+    ),
 ]
 
 
@@ -190,6 +200,11 @@ def _ensure_columns(target_engine: Engine) -> None:
         ddl_fragment = ddl_by_dialect.get(dialect_name, ddl_by_dialect["default"])
         with target_engine.begin() as connection:
             connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {ddl_fragment}"))
+            if column_name in {"openai_models", "anthropic_models"}:
+                if dialect_name == "mysql":
+                    connection.execute(text(f"UPDATE {table_name} SET {column_name} = JSON_ARRAY() WHERE {column_name} IS NULL"))
+                else:
+                    connection.execute(text(f"UPDATE {table_name} SET {column_name} = '[]' WHERE {column_name} IS NULL"))
 
 
 def init_db() -> None:

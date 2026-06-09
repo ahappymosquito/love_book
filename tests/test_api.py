@@ -1388,6 +1388,11 @@ def test_admin_ai_config_edits_keys_lists_models_and_saves_model(client: TestCli
             "amap_address": "西溪北苑东区",
             "amap_poi_type": "050000",
             "amap_poi_id": "B001",
+            "amap_category": "food",
+            "amap_category_reason": "AMap POI type/name indicates food service: 050000",
+            "llm_category": None,
+            "llm_status": "failed",
+            "llm_message": "LLM returned empty category text",
             "evidence_note": "AMap evidence",
         },
     )
@@ -1423,24 +1428,43 @@ def test_admin_ai_config_edits_keys_lists_models_and_saves_model(client: TestCli
     assert models.json()["models"] == ["mimo-v2.5-pro", "other-model"]
     assert tested.json()["ok"] is True
     assert tested.json()["sample_category"] == "food"
+    assert tested.json()["amap_category"] == "food"
+    assert tested.json()["llm_status"] == "failed"
     assert tested.json()["sample_keyword"] == "江西小炒(西溪北苑东区店)"
     assert tested.json()["amap_name"] == "江西小炒(西溪北苑东区店)"
+    reloaded = client.get("/admin/ai-config", headers={"X-Admin-Key": "test-admin-key"})
+    assert reloaded.json()["saved_models"] == ["mimo-v2.5-pro", "other-model"]
 
 
-def test_admin_ai_connection_test_rejects_empty_completion(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_admin_ai_connection_test_rejects_missing_amap_evidence(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     settings = get_settings()
     settings.llm_api_key = "secret-token-1234"
     settings.llm_model = "mimo-v2.5-pro"
 
-    def empty_completion(db: Session) -> str:
-        raise RuntimeError("LLM returned empty category text; finish_reason='length', message_keys=['content']")
+    def missing_amap(db: Session) -> dict:
+        raise RuntimeError("AMap MCP returned no restaurant candidate")
 
-    monkeypatch.setattr("app.api.routes.admin.test_category_completion", empty_completion)
+    monkeypatch.setattr("app.api.routes.admin.test_category_completion", missing_amap)
 
     tested = client.post("/admin/ai-config/test", headers={"X-Admin-Key": "test-admin-key"})
 
     assert tested.status_code == 502
-    assert "empty category text" in tested.json()["detail"]
+    assert "AMap MCP returned no restaurant candidate" in tested.json()["detail"]
+
+
+def test_admin_ai_model_list_persists_first_model_when_none_selected(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "llm_api_key", "secret-token-1234")
+    monkeypatch.setattr(settings, "llm_model", "")
+    monkeypatch.setattr("app.api.routes.admin.list_models", lambda db, protocol: ["first-model", "second-model"])
+
+    models = client.get("/admin/ai-config/models", headers={"X-Admin-Key": "test-admin-key"})
+    config = client.get("/admin/ai-config", headers={"X-Admin-Key": "test-admin-key"})
+
+    assert models.status_code == 200
+    assert models.json()["models"] == ["first-model", "second-model"]
+    assert config.json()["saved_models"] == ["first-model", "second-model"]
+    assert config.json()["selected_model"] == "first-model"
 
 
 def test_llm_category_completion_uses_openai_chat_response(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1555,3 +1579,34 @@ def test_admin_ai_completion_uses_amap_restaurant_evidence(db_session: Session, 
     assert captured["title"] == "江西小炒(西溪北苑东区店)"
     assert "AMap MCP returned a real POI" in str(captured["note"])
     assert "杭州市西溪北苑东区" in str(captured["note"])
+
+
+def test_admin_ai_completion_keeps_amap_success_when_llm_has_empty_content(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import ai_config
+
+    monkeypatch.setattr(
+        ai_config.amap_mcp,
+        "search_restaurants",
+        lambda keyword, city=None, amap_key=None: [
+            {
+                "amap_poi_id": "B001",
+                "name": "江西小炒(西溪北苑东区店)",
+                "address": "杭州市西溪北苑东区",
+                "city": "杭州市",
+                "poi_type": "050000",
+            }
+        ],
+    )
+
+    def empty_llm(db: Session, title: str, note: str | None = None) -> str:
+        raise RuntimeError("LLM returned empty category text; finish_reason='length'")
+
+    monkeypatch.setattr(ai_config, "complete_todo_category", empty_llm)
+
+    result = ai_config.test_category_completion(db_session)
+
+    assert result["category"] == "food"
+    assert result["amap_category"] == "food"
+    assert result["llm_category"] is None
+    assert result["llm_status"] == "failed"
+    assert "empty category text" in str(result["llm_message"])
