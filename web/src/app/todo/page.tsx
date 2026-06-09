@@ -1,9 +1,9 @@
 "use client";
 
-// Four-section pair-shared todo workspace with candidate parsing queues, rich AMap POI evidence, single-date scheduling, two-comment completion, AI category refresh, comments with authors, and folded photos.
+// Four-section pair-shared todo workspace with local pending candidate queues, confirmation error recovery, rich AMap POI evidence, single-date scheduling, two-comment completion, AI category refresh, comments with authors, and folded photos.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   CalendarDays,
   Check,
@@ -30,7 +30,7 @@ import { toast } from "sonner";
 import { AuthGate } from "@/components/auth-gate";
 import { Avatar } from "@/components/avatar";
 import { TodoLotteryScene } from "@/components/todo-lottery-scene";
-import { api, fetchTodoImageBlob } from "@/lib/api";
+import { APIError, api, fetchTodoImageBlob } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { formatRelative } from "@/lib/format";
 import { useAppStore } from "@/lib/store";
@@ -46,6 +46,11 @@ import type {
 } from "@/lib/types";
 
 type TodoView = "all" | "important" | "planned" | "food" | "play" | "stay" | "lottery";
+type LocalTodoCandidate = Omit<TodoCandidateOut, "id"> & {
+  client_id: string;
+  is_local: true;
+};
+type CandidateQueueItem = TodoCandidateOut | LocalTodoCandidate;
 
 const VIEW_META: Record<TodoView, { title: string; subtitle: string; icon: ReactNode }> = {
   all: { title: "任务", subtitle: "所有还没完成的小安排", icon: <ListTodo className="h-4 w-4" /> },
@@ -91,6 +96,45 @@ function schedulesForItem(item: TodoItemOut, schedules: TodoScheduleOut[]): Todo
   return schedules.filter((schedule) => schedule.item_id === item.id);
 }
 
+function getPrimarySchedule(item: TodoItemOut, schedules: TodoScheduleOut[]): TodoScheduleOut | null {
+  const ownSchedules = item.schedules.length ? item.schedules : schedulesForItem(item, schedules);
+  return [...ownSchedules].sort((left, right) => left.scheduled_on.localeCompare(right.scheduled_on))[0] ?? null;
+}
+
+function scheduleMeta(date: string, checkedIn: boolean): { label: string; className: string } {
+  const today = toDateOnly(new Date());
+  const todayTime = new Date(`${today}T00:00:00`).getTime();
+  const targetTime = new Date(`${date}T00:00:00`).getTime();
+  const days = Math.round((targetTime - todayTime) / 86_400_000);
+  if (checkedIn) {
+    return { label: formatShortDate(date), className: "border-sage/28 bg-sage/16 text-ink-soft" };
+  }
+  if (days < 0) {
+    return { label: `${formatShortDate(date)} 已过`, className: "border-red-200 bg-red-50 text-red-700" };
+  }
+  if (days === 0) {
+    return { label: "今天", className: "border-rose/30 bg-rose/12 text-rose-deep" };
+  }
+  if (days <= 3) {
+    return { label: `${days} 天后`, className: "border-peach-deep/30 bg-peach/24 text-rose-deep" };
+  }
+  return { label: formatShortDate(date), className: "border-peach/35 bg-peach/14 text-ink-soft" };
+}
+
+function isPersistedCandidate(candidate: CandidateQueueItem): candidate is TodoCandidateOut {
+  return !("is_local" in candidate);
+}
+
+function candidateKey(candidate: CandidateQueueItem): string {
+  return isPersistedCandidate(candidate) ? `server-${candidate.id}` : candidate.client_id;
+}
+
+function apiErrorMessage(error: unknown): string {
+  if (error instanceof APIError) {
+    return error.status === 0 ? "网络连接失败，请检查后端服务或高德详情调用后重试" : error.message;
+  }
+  return error instanceof Error ? error.message : "请求失败，请重试";
+}
 export default function TodoPage() {
   return (
     <AuthGate>
@@ -105,10 +149,10 @@ function TodoInner() {
   const [selectedDate, setSelectedDate] = useState(today);
   const [dashboard, setDashboard] = useState<TodoDashboardOut | null>(null);
   const [candidates, setCandidates] = useState<TodoCandidateOut[]>([]);
+  const [localCandidates, setLocalCandidates] = useState<LocalTodoCandidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [classifyingOpen, setClassifyingOpen] = useState(false);
-  const [adding, setAdding] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<TodoCategory, boolean>>({
     food: true,
     play: true,
@@ -161,6 +205,7 @@ function TodoInner() {
     return Array.from(byId.values());
   }, [dashboard, items]);
   const selectedDetail = detailId ? items.find((item) => item.id === detailId) ?? null : null;
+  const queuedCandidates = useMemo<CandidateQueueItem[]>(() => [...localCandidates, ...candidates], [localCandidates, candidates]);
 
   async function scheduleItem(itemId: number, date = selectedDate) {
     await api.scheduleTodoItem(itemId, date);
@@ -195,49 +240,86 @@ function TodoInner() {
   }
 
   async function addCandidate(title: string) {
-    setAdding(true);
+    const now = new Date().toISOString();
+    const clientId = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const localCandidate: LocalTodoCandidate = {
+      client_id: clientId,
+      is_local: true,
+      raw_title: title,
+      category: "play",
+      status: "parsing",
+      amap_candidates: [],
+      selected_candidate: null,
+      parse_error: null,
+      created_at: now,
+      updated_at: now,
+    };
+    setLocalCandidates((current) => [localCandidate, ...current]);
     try {
-      await api.createTodoCandidate({ raw_title: title });
+      const created = await api.createTodoCandidate({ raw_title: title });
+      setLocalCandidates((current) => current.filter((candidate) => candidate.client_id !== clientId));
+      setCandidates((current) => [created, ...current.filter((candidate) => candidate.id !== created.id)]);
       toast.success("已放入待确认队列");
-      await load();
-    } finally {
-      setAdding(false);
+      void load();
+    } catch (error) {
+      const message = apiErrorMessage(error);
+      setLocalCandidates((current) =>
+        current.map((candidate) =>
+          candidate.client_id === clientId
+            ? { ...candidate, status: "failed", parse_error: message, updated_at: new Date().toISOString() }
+            : candidate,
+        ),
+      );
     }
   }
 
   async function confirmCandidate(candidate: TodoCandidateOut, selectedCandidate = candidate.selected_candidate, category = candidate.category) {
-    const item = await api.confirmTodoCandidate(candidate.id, {
-      category,
-      selected_candidate: selectedCandidate,
-    });
-    toast.success("已加入清单");
-    await load();
-    setDetailId(item.id);
+    try {
+      const item = await api.confirmTodoCandidate(candidate.id, {
+        category,
+        selected_candidate: selectedCandidate,
+      });
+      toast.success("已加入清单");
+      await load();
+      setDetailId(item.id);
+    } catch (error) {
+      toast.error(`加入失败：${apiErrorMessage(error)}`);
+      throw error;
+    }
   }
 
-  async function discardCandidate(candidateId: number) {
-    await api.deleteTodoCandidate(candidateId);
-    toast.success("已移出待确认");
-    await load();
+  async function discardCandidate(candidate: CandidateQueueItem) {
+    if (!isPersistedCandidate(candidate)) {
+      setLocalCandidates((current) => current.filter((item) => item.client_id !== candidate.client_id));
+      return;
+    }
+    try {
+      await api.deleteTodoCandidate(candidate.id);
+      setCandidates((current) => current.filter((item) => item.id !== candidate.id));
+      toast.success("已移出待确认");
+      void load();
+    } catch (error) {
+      toast.error(`丢弃失败：${apiErrorMessage(error)}`);
+      throw error;
+    }
   }
-
   function toggleSection(category: TodoCategory) {
     setExpandedSections((current) => ({ ...current, [category]: !current[category] }));
   }
 
   return (
-    <div className="min-h-dvh bg-[rgb(var(--cream)/0.68)] pb-[calc(env(safe-area-inset-bottom,0px)+5.75rem)] text-ink">
-      <div className="mx-auto flex min-h-dvh max-w-6xl px-3 py-3 sm:px-5 lg:px-6">
+    <div className="min-h-dvh bg-[rgb(var(--cream)/0.68)] pb-[calc(env(safe-area-inset-bottom,0px)+9rem)] text-ink">
+      <div className="mx-auto flex min-h-dvh max-w-6xl gap-0 px-3 py-3 sm:px-5 lg:px-6">
         <main className="min-w-0 flex flex-1 flex-col overflow-hidden rounded-[1.4rem] bg-surface/82 shadow-[0_12px_34px_-28px_rgb(var(--rose)/0.42)] hairline">
           <TodoBoardHeader
             loading={loading}
             openCount={items.filter((item) => !item.checked_in).length}
-            candidateCount={candidates.length}
+            candidateCount={queuedCandidates.length}
             classifyingOpen={classifyingOpen}
             onClassifyOpen={classifyOpenItems}
           />
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 sm:px-5 sm:pb-5">
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] sm:px-5 sm:pb-5">
             <div className="space-y-3 pt-3">
               {TODO_SECTIONS.map((section) => (
                 <TodoCategorySection
@@ -252,14 +334,14 @@ function TodoInner() {
                 />
               ))}
               <CandidateQueue
-                candidates={candidates}
+                candidates={queuedCandidates}
                 onConfirm={confirmCandidate}
                 onDiscard={discardCandidate}
               />
             </div>
           </div>
 
-          <QuickAddBar onCreated={addCandidate} adding={adding} />
+          <QuickAddBar onCreated={addCandidate} />
         </main>
 
         <AnimatePresence>
@@ -427,9 +509,9 @@ function CandidateQueue({
   onConfirm,
   onDiscard,
 }: {
-  candidates: TodoCandidateOut[];
+  candidates: CandidateQueueItem[];
   onConfirm: (candidate: TodoCandidateOut, selectedCandidate?: TodoRestaurantCandidate | null, category?: TodoCategory) => void | Promise<void>;
-  onDiscard: (candidateId: number) => void | Promise<void>;
+  onDiscard: (candidate: CandidateQueueItem) => void | Promise<void>;
 }) {
   if (candidates.length === 0) return null;
   return (
@@ -437,13 +519,13 @@ function CandidateQueue({
       <div className="mb-3 flex items-center justify-between gap-2 px-1">
         <div>
           <h2 className="font-display text-base font-semibold text-ink">待确认</h2>
-          <p className="font-sc text-xs text-ink-muted">解析完成后确认加入对应板块。</p>
+          <p className="font-sc text-xs text-ink-muted">点击卡片查看解析结果，再确认加入或丢弃。</p>
         </div>
         <span className="rounded-full bg-rose/10 px-2 py-0.5 font-sc text-xs text-rose-deep">{candidates.length}</span>
       </div>
       <div className="grid gap-2">
         {candidates.map((candidate) => (
-          <CandidateCard key={candidate.id} candidate={candidate} onConfirm={onConfirm} onDiscard={onDiscard} />
+          <CandidateCard key={candidateKey(candidate)} candidate={candidate} onConfirm={onConfirm} onDiscard={onDiscard} />
         ))}
       </div>
     </section>
@@ -455,61 +537,133 @@ function CandidateCard({
   onConfirm,
   onDiscard,
 }: {
-  candidate: TodoCandidateOut;
+  candidate: CandidateQueueItem;
   onConfirm: (candidate: TodoCandidateOut, selectedCandidate?: TodoRestaurantCandidate | null, category?: TodoCategory) => void | Promise<void>;
-  onDiscard: (candidateId: number) => void | Promise<void>;
+  onDiscard: (candidate: CandidateQueueItem) => void | Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(candidate.status !== "ready");
+  const [selected, setSelected] = useState<TodoRestaurantCandidate | null>(candidate.selected_candidate ?? candidate.amap_candidates[0] ?? null);
+  const [confirming, setConfirming] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const candidates = candidate.amap_candidates ?? [];
+  const persisted = isPersistedCandidate(candidate);
+
+  useEffect(() => {
+    setSelected(candidate.selected_candidate ?? candidate.amap_candidates[0] ?? null);
+    setActionError(null);
+  }, [candidate]);
+
+  async function confirmWith(nextCategory = candidate.category) {
+    if (!persisted || candidate.status === "parsing") return;
+    setConfirming(true);
+    setActionError(null);
+    try {
+      await onConfirm(candidate, nextCategory === "wish" ? null : selected, nextCategory);
+    } catch (error) {
+      setActionError(apiErrorMessage(error));
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  async function discard() {
+    setDiscarding(true);
+    setActionError(null);
+    try {
+      await onDiscard(candidate);
+    } catch (error) {
+      setActionError(apiErrorMessage(error));
+    } finally {
+      setDiscarding(false);
+    }
+  }
+
+  const statusText = candidate.status === "ready" ? "待增加" : candidate.status === "needs_choice" ? "需要选择地点" : candidate.status === "failed" ? "解析失败" : "正在解析";
+
   return (
     <article className="rounded-xl border border-line/58 bg-surface/86 p-3">
-      <div className="flex flex-wrap items-start gap-2">
-        <button type="button" onClick={() => setExpanded((value) => !value)} className="min-w-0 flex-1 text-left focus-ring">
+      <button type="button" onClick={() => setExpanded((value) => !value)} className="flex w-full items-start gap-3 text-left focus-ring">
+        <span className="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-xl bg-peach/18 text-rose-deep">
+          {candidate.status === "parsing" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className={cn("h-4 w-4 transition", expanded && "rotate-90")} />}
+        </span>
+        <span className="min-w-0 flex-1">
           <span className="block font-display text-sm font-semibold text-ink">{candidate.raw_title}</span>
           <span className="mt-1 block font-sc text-xs text-ink-muted">
-            {TODO_CATEGORY_LABELS[candidate.category]} · {candidate.status === "ready" ? "待增加" : candidate.status === "needs_choice" ? "需要选择地点" : candidate.status === "failed" ? "解析失败" : "解析中"}
+            {TODO_CATEGORY_LABELS[candidate.category]} · {statusText}
           </span>
           {candidate.selected_candidate && <span className="mt-1 block truncate font-sc text-xs text-ink-muted">{candidate.selected_candidate.name}</span>}
-        </button>
-        {candidate.status === "ready" && (
-          <button type="button" onClick={() => onConfirm(candidate)} className="btn-primary min-h-9 rounded-xl px-3 font-sc text-xs focus-ring">
-            确认加入
-          </button>
-        )}
-        <button type="button" onClick={() => onDiscard(candidate.id)} className="btn-ghost min-h-9 rounded-xl px-3 font-sc text-xs focus-ring">
-          丢弃
-        </button>
-      </div>
+        </span>
+      </button>
+
       {expanded && (
-        <div className="mt-3 space-y-2">
-          {candidate.parse_error && <p className="rounded-xl bg-red-50 p-2 font-sc text-xs text-red-700">{candidate.parse_error}</p>}
-          {candidate.status === "failed" && (
-            <button type="button" onClick={() => onConfirm(candidate, null, "wish")} className="btn-ghost min-h-9 rounded-xl px-3 font-sc text-xs focus-ring">
-              按原文字加入许愿
-            </button>
+        <div className="mt-3 space-y-3 border-t border-line/52 pt-3">
+          {candidate.status === "parsing" && <p className="rounded-xl bg-peach/12 p-3 font-sc text-xs text-ink-muted">正在调用 LLM 和高德 MCP 解析，完成后这里会显示可确认的详情。</p>}
+          {(candidate.parse_error || actionError) && <p className="rounded-xl bg-red-50 p-2 font-sc text-xs text-red-700">{actionError ?? candidate.parse_error}</p>}
+
+          {candidate.status === "ready" && selected && <CandidatePoiSummary candidate={selected} selected />}
+
+          {candidate.status === "needs_choice" && (
+            <div className="grid gap-2">
+              {candidates.map((item, index) => {
+                const isSelected = selected === item || (!!selected?.amap_poi_id && selected.amap_poi_id === item.amap_poi_id);
+                return (
+                  <button
+                    type="button"
+                    key={`${item.amap_poi_id || item.name}-${index}`}
+                    onClick={() => setSelected(item)}
+                    className={cn(
+                      "block w-full rounded-xl border p-3 text-left transition focus-ring",
+                      isSelected ? "border-rose/38 bg-rose/10" : "border-line/58 bg-surface-raised/82 hover:bg-peach/10",
+                    )}
+                  >
+                    <CandidatePoiSummary candidate={item} selected={isSelected} />
+                  </button>
+                );
+              })}
+            </div>
           )}
-          {candidate.status === "needs_choice" && candidates.map((item, index) => (
-            <button
-              type="button"
-              key={`${item.amap_poi_id || item.name}-${index}`}
-              onClick={() => onConfirm(candidate, item)}
-              className="block w-full rounded-xl border border-line/58 bg-surface-raised/82 p-3 text-left transition hover:bg-peach/10 focus-ring"
-            >
-              <span className="block font-display text-sm font-semibold text-ink">{item.name}</span>
-              <span className="mt-1 block truncate font-sc text-xs text-ink-muted">{item.address || item.city || "高德未返回地址"}</span>
-              <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-sc text-[11px] text-ink-muted">
-                {item.poi_type && <span>{item.poi_type}</span>}
-                {item.rating != null && <span>评分 {item.rating}</span>}
-                {item.per_capita != null && <span>人均 {item.per_capita}</span>}
-              </span>
+
+          <div className="flex flex-wrap justify-end gap-2">
+            {candidate.status === "failed" && persisted && (
+              <button type="button" onClick={() => confirmWith("wish")} disabled={confirming || discarding} className="btn-ghost min-h-9 rounded-xl px-3 font-sc text-xs focus-ring disabled:opacity-50">
+                {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : "按原文字加入许愿"}
+              </button>
+            )}
+            {(candidate.status === "ready" || candidate.status === "needs_choice") && persisted && (
+              <button type="button" onClick={() => confirmWith()} disabled={confirming || discarding || (candidate.status === "needs_choice" && !selected)} className="btn-primary min-h-9 rounded-xl px-3 font-sc text-xs focus-ring disabled:opacity-50">
+                {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : "确认加入"}
+              </button>
+            )}
+            <button type="button" onClick={discard} disabled={confirming || discarding} className="btn-ghost min-h-9 rounded-xl px-3 font-sc text-xs focus-ring disabled:opacity-50">
+              {discarding ? <Loader2 className="h-4 w-4 animate-spin" /> : "丢弃"}
             </button>
-          ))}
+          </div>
         </div>
       )}
     </article>
   );
 }
 
+function CandidatePoiSummary({ candidate, selected }: { candidate: TodoRestaurantCandidate; selected?: boolean }) {
+  return (
+    <span className="block">
+      <span className="flex items-start gap-2">
+        <span className="min-w-0 flex-1">
+          <span className="block font-display text-sm font-semibold text-ink">{candidate.name}</span>
+          <span className="mt-1 block truncate font-sc text-xs text-ink-muted">{candidate.address || candidate.city || "高德未返回地址"}</span>
+        </span>
+        {selected && <Check className="mt-0.5 h-4 w-4 flex-none text-rose-deep" />}
+      </span>
+      <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-sc text-[11px] text-ink-muted">
+        {candidate.poi_type && <span>{candidate.poi_type}</span>}
+        {candidate.business_area && <span>{candidate.business_area}</span>}
+        {candidate.rating != null && <span>评分 {candidate.rating}</span>}
+        {candidate.per_capita != null && <span>人均 {candidate.per_capita}</span>}
+      </span>
+    </span>
+  );
+}
 function TodoSidebar({
   open,
   me,
@@ -746,6 +900,8 @@ function TaskRow({
   onOpen: () => void;
 }) {
   const restaurant = item.restaurant;
+  const primarySchedule = getPrimarySchedule(item, schedules);
+  const primaryScheduleMeta = primarySchedule ? scheduleMeta(primarySchedule.scheduled_on, item.checked_in) : null;
 
   return (
     <article className="group rounded-2xl border border-line/58 bg-surface-raised/88 px-3 py-3 transition hover:border-rose/26 hover:bg-peach/8">
@@ -763,11 +919,20 @@ function TaskRow({
         </button>
 
         <button type="button" onClick={onOpen} className="min-w-0 flex-1 rounded-xl text-left focus-ring">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className={cn("font-display text-base font-semibold leading-tight text-ink", item.checked_in && "text-ink-muted line-through")}>{item.title}</h3>
-            <span className="rounded-full bg-peach/16 px-2 py-0.5 font-sc text-[11px] text-ink-muted">{TODO_CATEGORY_LABELS[item.category]}</span>
-            {restaurant && <StatusPill status={restaurant.parse_status} />}
-            {item.checked_in && <span className="rounded-full bg-sage/18 px-2 py-0.5 font-sc text-[11px] text-ink-soft">已打卡</span>}
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className={cn("font-display text-base font-semibold leading-tight text-ink", item.checked_in && "text-ink-muted line-through")}>{item.title}</h3>
+                <span className="rounded-full bg-peach/16 px-2 py-0.5 font-sc text-[11px] text-ink-muted">{TODO_CATEGORY_LABELS[item.category]}</span>
+                {restaurant && <StatusPill status={restaurant.parse_status} />}
+                {item.checked_in && <span className="rounded-full bg-sage/18 px-2 py-0.5 font-sc text-[11px] text-ink-soft">已打卡</span>}
+              </div>
+            </div>
+            {primaryScheduleMeta && (
+              <span className={cn("ml-auto inline-flex min-h-7 flex-none items-center rounded-full border px-2.5 font-sc text-[11px] font-medium", primaryScheduleMeta.className)}>
+                {primaryScheduleMeta.label}
+              </span>
+            )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-sc text-xs text-ink-muted">
             {restaurant?.address && (
@@ -781,10 +946,10 @@ function TaskRow({
             {restaurant?.opening_hours && <span>{restaurant.opening_hours}</span>}
             {restaurant?.poi_type && <span className="truncate">{restaurant.poi_type}</span>}
             {item.note && <span className="truncate">{item.note}</span>}
-            {schedules.length > 0 && (
+            {primarySchedule && (
               <span className="inline-flex items-center gap-1">
                 <Clock3 className="h-3.5 w-3.5" />
-                {schedules.map((schedule) => formatShortDate(schedule.scheduled_on)).join("、")}
+                {formatShortDate(primarySchedule.scheduled_on)}
               </span>
             )}
           </div>
@@ -800,19 +965,19 @@ function StatusPill({ status }: { status: string }) {
   return <span className="rounded-full bg-peach/18 px-2 py-0.5 font-sc text-[11px] text-ink-muted">解析中</span>;
 }
 
-function QuickAddBar({ onCreated, adding }: { onCreated: (title: string) => void | Promise<void>; adding: boolean }) {
+function QuickAddBar({ onCreated }: { onCreated: (title: string) => void | Promise<void> }) {
   const [title, setTitle] = useState("");
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     const next = title.trim();
     if (!next) return;
-    await onCreated(next);
     setTitle("");
+    void onCreated(next);
   }
 
   return (
-    <form onSubmit={submit} className="border-t border-line/60 bg-surface/92 p-3 sm:p-4">
+    <form onSubmit={submit} className="sticky bottom-[calc(env(safe-area-inset-bottom,0px)+5.8rem)] z-20 border-t border-line/60 bg-surface/95 p-3 shadow-[0_-12px_26px_-24px_rgb(var(--ink)/0.45)] lg:bottom-0 sm:p-4">
       <div className="flex min-h-12 items-center gap-2 rounded-2xl border border-line/70 bg-surface-raised/90 px-3 focus-within:border-rose/60 focus-within:shadow-[0_0_0_4px_rgb(var(--focus)/0.14)]">
         <Plus className="h-4 w-4 text-rose-deep" />
         <input
@@ -822,8 +987,8 @@ function QuickAddBar({ onCreated, adding }: { onCreated: (title: string) => void
           maxLength={200}
           className="min-w-0 flex-1 bg-transparent font-sc text-sm outline-none placeholder:text-ink-muted/82"
         />
-        <button type="submit" disabled={!title.trim() || adding} className="rounded-xl bg-rose px-3 py-2 font-sc text-sm text-white disabled:opacity-45 focus-ring">
-          {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : "加入队列"}
+        <button type="submit" disabled={!title.trim()} className="rounded-xl bg-rose px-3 py-2 font-sc text-sm text-white disabled:opacity-45 focus-ring">
+          加入队列
         </button>
       </div>
     </form>
@@ -1047,11 +1212,12 @@ function TodoDetailPanel({
   schedules: TodoScheduleOut[];
   initialScheduleDate: string;
   onClose: () => void;
-  onChanged: () => void;
+  onChanged: () => void | Promise<void>;
   onSchedule: (id: number, date?: string) => void | Promise<void>;
   onRemoveSchedule: (id: number) => void | Promise<void>;
   onArchive: (id: number) => void;
 }) {
+  const reducedMotion = useReducedMotion();
   const [detail, setDetail] = useState<TodoItemDetail | null>(null);
   const [comment, setComment] = useState("");
   const [saving, setSaving] = useState(false);
@@ -1068,8 +1234,9 @@ function TodoDetailPanel({
   }, [itemId]);
 
   useEffect(() => {
-    setScheduleDate(initialScheduleDate);
-  }, [initialScheduleDate, itemId]);
+    const savedDate = (detail?.schedules ?? schedules)[0]?.scheduled_on;
+    setScheduleDate(savedDate ?? initialScheduleDate);
+  }, [detail?.schedules, schedules, initialScheduleDate, itemId]);
 
   async function submitComment(event: FormEvent) {
     event.preventDefault();
@@ -1080,7 +1247,7 @@ function TodoDetailPanel({
       await api.postTodoComment(itemId, text);
       setComment("");
       setDetail(await api.getTodoItem(itemId));
-      onChanged();
+      await onChanged();
     } finally {
       setSaving(false);
     }
@@ -1090,7 +1257,7 @@ function TodoDetailPanel({
     if (!file) return;
     await api.postTodoImage(itemId, file);
     setDetail(await api.getTodoItem(itemId));
-    onChanged();
+    await onChanged();
   }
 
   async function toggleScheduleDate() {
@@ -1101,7 +1268,7 @@ function TodoDetailPanel({
         await onSchedule(itemId, scheduleDate);
       }
       setDetail(await api.getTodoItem(itemId));
-      onChanged();
+      await onChanged();
     } catch {
       // apiRequest already shows the server-provided error toast.
     }
@@ -1110,6 +1277,19 @@ function TodoDetailPanel({
   const current = detail ?? item;
   const currentSchedules = detail?.schedules ?? schedules;
   const currentSchedule = currentSchedules[0] ?? null;
+  const panelMotion = reducedMotion
+    ? {
+        initial: { opacity: 0 },
+        animate: { opacity: 1 },
+        exit: { opacity: 0 },
+        transition: { duration: 0.12 },
+      }
+    : {
+        initial: { x: 36, y: 18, opacity: 0 },
+        animate: { x: 0, y: 0, opacity: 1 },
+        exit: { x: 32, y: 18, opacity: 0 },
+        transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] as const },
+      };
 
   return (
     <>
@@ -1123,11 +1303,8 @@ function TodoDetailPanel({
         onClick={onClose}
       />
       <motion.aside
-        initial={{ x: 36, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        exit={{ x: 36, opacity: 0 }}
-        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-        className="fixed inset-x-0 bottom-0 z-50 flex max-h-[86dvh] flex-col overflow-hidden rounded-t-[1.35rem] border border-line/70 bg-surface text-ink shadow-[0_-24px_52px_-36px_rgb(var(--ink)/0.55)] lg:sticky lg:inset-auto lg:top-0 lg:z-auto lg:h-dvh lg:w-[380px] lg:max-h-none lg:rounded-none lg:border-y-0 lg:border-r-0 lg:shadow-[-18px_0_42px_-34px_rgb(var(--ink)/0.5)]"
+        {...panelMotion}
+        className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom,0px)+5.8rem)] z-50 flex max-h-[calc(100dvh-env(safe-area-inset-bottom,0px)-7rem)] flex-col overflow-hidden rounded-t-[1.35rem] border border-line/70 bg-surface text-ink shadow-[0_-24px_52px_-36px_rgb(var(--ink)/0.55)] lg:sticky lg:inset-auto lg:top-0 lg:z-auto lg:h-dvh lg:w-[390px] lg:flex-none lg:max-h-none lg:rounded-none lg:border-y-0 lg:border-r-0 lg:shadow-[-18px_0_42px_-34px_rgb(var(--ink)/0.5)]"
         role="dialog"
         aria-modal="true"
       >
@@ -1225,7 +1402,7 @@ function TodoDetailPanel({
           )}
         </div>
 
-        <footer className="border-t border-line/60 p-4">
+        <footer className="border-t border-line/60 p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] lg:pb-4">
           <form onSubmit={submitComment} className="mb-3 flex gap-2">
             <input className="input-field min-w-0 flex-1 rounded-xl text-sm" value={comment} onChange={(event) => setComment(event.target.value)} placeholder="写评论打卡" maxLength={2000} />
             <button type="submit" disabled={saving || !comment.trim()} className="grid h-12 w-12 flex-none place-items-center rounded-xl bg-rose text-white disabled:opacity-50 focus-ring" aria-label="发送评论">

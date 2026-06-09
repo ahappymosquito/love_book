@@ -1,4 +1,4 @@
-"""API regression tests for auth, profiles, media, food/play/stay todo, rich AMap restaurant evidence, AMap MCP POI normalization, AMap-grounded AI tests, and fallback data."""
+"""API regression tests for auth, profiles, media, food/play/stay/wish todo candidate queues, single-date scheduling, rich AMap restaurant evidence, AMap MCP POI normalization, AMap-grounded AI tests, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -1399,6 +1399,47 @@ def test_todo_candidate_multiple_amap_choices_can_confirm_selected(client: TestC
     assert confirmed.status_code == 201
     assert confirmed.json()["category"] == "play"
     assert confirmed.json()["restaurant"]["amap_poi_id"] == "B002"
+    remaining = client.get("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])))
+    assert remaining.status_code == 200
+    assert remaining.json() == []
+
+
+def test_todo_candidate_single_play_poi_confirms_and_removes_candidate(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.api.routes.todos.complete_todo_category", lambda db, title: "play")
+    monkeypatch.setattr(
+        "app.amap_mcp.search_restaurants",
+        lambda keyword, city=None, amap_key=None: [
+            {
+                "amap_poi_id": "PLAY001",
+                "name": "Haobo Billiards Club",
+                "address": "Huiyin Center",
+                "poi_type": "Sports;Billiards",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        "app.amap_mcp.restaurant_detail",
+        lambda poi_id, amap_key=None: {
+            "amap_poi_id": poi_id,
+            "name": "Haobo Billiards Club",
+            "address": "Huiyin Center",
+            "poi_type": "Sports;Billiards",
+            "raw": {"id": poi_id},
+        },
+    )
+
+    created = client.post("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])), json={"raw_title": "Haobo Billiards Club"})
+    body = created.json()
+    confirmed = client.post(f"/todos/candidates/{body['id']}/confirm", headers=auth(str(pair_tokens["user_a_token"])), json={})
+    remaining = client.get("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])))
+
+    assert created.status_code == 201
+    assert body["status"] == "ready"
+    assert confirmed.status_code == 201
+    assert confirmed.json()["category"] == "play"
+    assert confirmed.json()["restaurant"]["amap_poi_id"] == "PLAY001"
+    assert remaining.status_code == 200
+    assert remaining.json() == []
 
 
 def test_todo_candidate_wish_skips_amap_and_confirms_plain_item(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1437,6 +1478,25 @@ def test_todo_schedule_replaces_existing_date(client: TestClient, pair_tokens: d
     assert first.status_code == 201
     assert second.status_code == 201
     assert [schedule["scheduled_on"] for schedule in detail["schedules"]] == ["2026-05-21"]
+
+
+def test_todo_detail_returns_saved_schedule_date(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    item = client.post(
+        "/todos/items",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"category": "wish", "title": "一起去看日落"},
+    ).json()
+
+    scheduled = client.post(
+        f"/todos/items/{item['id']}/schedules",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"scheduled_on": "2026-06-01"},
+    )
+    detail = client.get(f"/todos/items/{item['id']}", headers=auth(str(pair_tokens["user_b_token"])))
+
+    assert scheduled.status_code == 201
+    assert detail.status_code == 200
+    assert detail.json()["schedules"][0]["scheduled_on"] == "2026-06-01"
 
 
 def test_amap_mcp_resolves_windows_npx_through_cmd(monkeypatch: pytest.MonkeyPatch) -> None:
