@@ -1,7 +1,8 @@
-// Shared TypeScript contracts for API payloads, editable profile state, events, quote libraries, food/play/stay todo boards, rich AMap restaurant evidence, admin saved-model AMap-grounded AI tests, cycles, and reminders.
+// Shared TypeScript contracts for API payloads, editable profile state, events, quote libraries, food/play/stay/wish todo boards, candidate queues, rich AMap restaurant evidence, admin saved-model AMap-grounded AI tests, cycles, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
-export type TodoCategory = "food" | "play" | "stay";
+export type TodoCategory = "food" | "play" | "stay" | "wish";
+export type TodoCandidateStatus = "parsing" | "needs_choice" | "ready" | "failed";
 export type TodoParseStatus = "pending" | "resolved" | "failed";
 export type AIProtocol = "openai" | "anthropic";
 
@@ -297,6 +298,18 @@ export interface TodoDashboardOut {
 export interface TodoClassifyOpenOut {
   count: number;
   items: TodoItemOut[];
+}
+
+export interface TodoCandidateOut {
+  id: number;
+  raw_title: string;
+  category: TodoCategory;
+  status: TodoCandidateStatus;
+  amap_candidates: TodoRestaurantCandidate[];
+  selected_candidate: TodoRestaurantCandidate | null;
+  parse_error: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface TodoRestaurantCandidate {

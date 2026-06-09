@@ -1,6 +1,6 @@
 "use client";
 
-// Microsoft To Do inspired pair-shared food/play/stay todo workspace with rich AMap restaurant evidence, detail-only scheduling, two-comment completion, AI category refresh, comments with authors, and folded photos.
+// Four-section pair-shared todo workspace with candidate parsing queues, rich AMap POI evidence, single-date scheduling, two-comment completion, AI category refresh, comments with authors, and folded photos.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -36,6 +36,7 @@ import { formatRelative } from "@/lib/format";
 import { useAppStore } from "@/lib/store";
 import type {
   TodoCategory,
+  TodoCandidateOut,
   TodoDashboardOut,
   TodoImageOut,
   TodoItemDetail,
@@ -60,7 +61,15 @@ const TODO_CATEGORY_LABELS: Record<TodoCategory, string> = {
   food: "吃喝",
   play: "玩乐",
   stay: "住宿",
+  wish: "许愿",
 };
+
+const TODO_SECTIONS: Array<{ category: TodoCategory; title: string; subtitle: string; icon: ReactNode }> = [
+  { category: "food", title: "今天想吃点", subtitle: "餐厅、甜品、咖啡和想打卡的味道", icon: <Utensils className="h-4 w-4" /> },
+  { category: "play", title: "出去玩一玩", subtitle: "电影、台球、展览和临时起意的活动", icon: <Music2 className="h-4 w-4" /> },
+  { category: "stay", title: "住一晚也好", subtitle: "酒店、民宿和过夜小计划", icon: <BedDouble className="h-4 w-4" /> },
+  { category: "wish", title: "悄悄许个愿", subtitle: "还没定下来的愿望和小期待", icon: <Star className="h-4 w-4" /> },
+];
 
 function toDateOnly(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -92,16 +101,20 @@ export default function TodoPage() {
 
 function TodoInner() {
   const today = toDateOnly(new Date());
-  const me = useAppStore((state) => state.me);
-  const [view, setView] = useState<TodoView>("all");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [month, setMonth] = useState(monthKey(new Date()));
   const [selectedDate, setSelectedDate] = useState(today);
   const [dashboard, setDashboard] = useState<TodoDashboardOut | null>(null);
+  const [candidates, setCandidates] = useState<TodoCandidateOut[]>([]);
   const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState("");
   const [detailId, setDetailId] = useState<number | null>(null);
   const [classifyingOpen, setClassifyingOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Record<TodoCategory, boolean>>({
+    food: true,
+    play: true,
+    stay: true,
+    wish: true,
+  });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -115,9 +128,12 @@ function TodoInner() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setDashboard(await api.getTodoDashboard(month));
+      const [nextDashboard, nextCandidates] = await Promise.all([api.getTodoDashboard(month), api.listTodoCandidates()]);
+      setDashboard(nextDashboard);
+      setCandidates(nextCandidates);
     } catch {
       setDashboard({ month, items: [], schedules: [] });
+      setCandidates([]);
       toast.error("Todo 看板加载失败");
     } finally {
       setLoading(false);
@@ -144,9 +160,6 @@ function TodoInner() {
     for (const schedule of dashboard?.schedules ?? []) byId.set(schedule.id, schedule);
     return Array.from(byId.values());
   }, [dashboard, items]);
-  const visibleItems = useMemo(() => filterItems(items, schedules, view, query, false), [items, schedules, view, query]);
-  const completedItems = useMemo(() => filterItems(items, schedules, view, query, true), [items, schedules, view, query]);
-  const counts = useMemo(() => getViewCounts(items, schedules), [items, schedules]);
   const selectedDetail = detailId ? items.find((item) => item.id === detailId) ?? null : null;
 
   async function scheduleItem(itemId: number, date = selectedDate) {
@@ -181,59 +194,72 @@ function TodoInner() {
     }
   }
 
+  async function addCandidate(title: string) {
+    setAdding(true);
+    try {
+      await api.createTodoCandidate({ raw_title: title });
+      toast.success("已放入待确认队列");
+      await load();
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function confirmCandidate(candidate: TodoCandidateOut, selectedCandidate = candidate.selected_candidate, category = candidate.category) {
+    const item = await api.confirmTodoCandidate(candidate.id, {
+      category,
+      selected_candidate: selectedCandidate,
+    });
+    toast.success("已加入清单");
+    await load();
+    setDetailId(item.id);
+  }
+
+  async function discardCandidate(candidateId: number) {
+    await api.deleteTodoCandidate(candidateId);
+    toast.success("已移出待确认");
+    await load();
+  }
+
+  function toggleSection(category: TodoCategory) {
+    setExpandedSections((current) => ({ ...current, [category]: !current[category] }));
+  }
+
   return (
     <div className="min-h-dvh bg-[rgb(var(--cream)/0.68)] pb-[calc(env(safe-area-inset-bottom,0px)+5.75rem)] text-ink">
-      <div className="mx-auto flex min-h-dvh max-w-[1440px]">
-        <TodoSidebar
-          open={sidebarOpen}
-          me={me}
-          view={view}
-          query={query}
-          counts={counts}
-          loading={loading}
-          onQuery={setQuery}
-          onPick={(next) => {
-            setView(next);
-            setSidebarOpen(false);
-          }}
-          onClose={() => setSidebarOpen(false)}
-        />
+      <div className="mx-auto flex min-h-dvh max-w-6xl px-3 py-3 sm:px-5 lg:px-6">
+        <main className="min-w-0 flex flex-1 flex-col overflow-hidden rounded-[1.4rem] bg-surface/82 shadow-[0_12px_34px_-28px_rgb(var(--rose)/0.42)] hairline">
+          <TodoBoardHeader
+            loading={loading}
+            openCount={items.filter((item) => !item.checked_in).length}
+            candidateCount={candidates.length}
+            classifyingOpen={classifyingOpen}
+            onClassifyOpen={classifyOpenItems}
+          />
 
-        <main className="min-w-0 flex-1 px-3 py-3 sm:px-5 lg:px-6">
-          <div className="mx-auto flex min-h-[calc(100dvh-7rem)] max-w-6xl flex-col overflow-hidden rounded-[1.4rem] bg-surface/82 shadow-[0_12px_34px_-28px_rgb(var(--rose)/0.42)] hairline">
-            <TodoToolbar
-              view={view}
-              loading={loading}
-              count={visibleItems.length}
-              classifyingOpen={classifyingOpen}
-              onOpenSidebar={() => setSidebarOpen(true)}
-              onClassifyOpen={classifyOpenItems}
-            />
-
-            <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 sm:px-5 sm:pb-5">
-              {view === "food" && <RestaurantCreator onCreated={async (item) => { await load(); setDetailId(item.id); }} />}
-              {view === "lottery" ? (
-                <RestaurantLottery onCreated={load} onOpen={setDetailId} />
-              ) : (
-                <TaskList
-                  items={visibleItems}
-                  completedItems={completedItems}
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 sm:px-5 sm:pb-5">
+            <div className="space-y-3 pt-3">
+              {TODO_SECTIONS.map((section) => (
+                <TodoCategorySection
+                  key={section.category}
+                  section={section}
+                  expanded={expandedSections[section.category]}
+                  items={items.filter((item) => item.category === section.category && !item.checked_in)}
+                  completedItems={items.filter((item) => item.category === section.category && item.checked_in)}
                   schedules={schedules}
+                  onToggle={() => toggleSection(section.category)}
                   onOpen={setDetailId}
                 />
-              )}
-            </div>
-
-            {view !== "lottery" && (
-              <QuickAddBar
-                view={view}
-                onCreated={async (item) => {
-                  await load();
-                }}
-                onFoodIntent={() => setView("food")}
+              ))}
+              <CandidateQueue
+                candidates={candidates}
+                onConfirm={confirmCandidate}
+                onDiscard={discardCandidate}
               />
-            )}
+            </div>
           </div>
+
+          <QuickAddBar onCreated={addCandidate} adding={adding} />
         </main>
 
         <AnimatePresence>
@@ -316,6 +342,172 @@ function getViewCounts(items: TodoItemOut[], schedules: TodoScheduleOut[]): Reco
     stay: openItems.filter((item) => item.category === "stay").length,
     lottery: openItems.filter((item) => item.category === "food").length,
   };
+}
+
+function TodoBoardHeader({
+  loading,
+  openCount,
+  candidateCount,
+  classifyingOpen,
+  onClassifyOpen,
+}: {
+  loading: boolean;
+  openCount: number;
+  candidateCount: number;
+  classifyingOpen: boolean;
+  onClassifyOpen: () => void;
+}) {
+  return (
+    <header className="border-b border-line/60 px-3 py-4 sm:px-5 sm:py-5">
+      <div className="flex items-start gap-3">
+        <span className="grid h-10 w-10 place-items-center rounded-2xl bg-peach/20 text-rose-deep">
+          <ListTodo className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h1 className="font-display text-2xl font-semibold leading-tight text-ink sm:text-3xl">要一起做的事情</h1>
+          <p className="mt-1 font-sc text-sm text-ink-muted">
+            {openCount} 件还没完成，{candidateCount} 件待确认
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClassifyOpen}
+          disabled={classifyingOpen}
+          className="grid h-10 w-10 flex-none place-items-center rounded-xl text-rose-deep transition hover:bg-rose/10 disabled:opacity-60 focus-ring"
+          aria-label="刷新未完成任务标签"
+          title="刷新未完成任务标签"
+        >
+          {classifyingOpen ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+        </button>
+        {loading && <Loader2 className="mt-2 h-5 w-5 animate-spin text-ink-muted" />}
+      </div>
+    </header>
+  );
+}
+
+function TodoCategorySection({
+  section,
+  expanded,
+  items,
+  completedItems,
+  schedules,
+  onToggle,
+  onOpen,
+}: {
+  section: (typeof TODO_SECTIONS)[number];
+  expanded: boolean;
+  items: TodoItemOut[];
+  completedItems: TodoItemOut[];
+  schedules: TodoScheduleOut[];
+  onToggle: () => void;
+  onOpen: (id: number) => void;
+}) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-line/62 bg-surface-raised/76">
+      <button type="button" onClick={onToggle} className="flex min-h-14 w-full items-center gap-3 px-4 text-left transition hover:bg-peach/8 focus-ring" aria-expanded={expanded}>
+        <span className="grid h-9 w-9 place-items-center rounded-xl bg-peach/18 text-rose-deep">{section.icon}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-display text-base font-semibold text-ink">{section.title}</span>
+          <span className="block truncate font-sc text-xs text-ink-muted">{section.subtitle}</span>
+        </span>
+        <span className="rounded-full bg-ink/5 px-2 py-0.5 font-sc text-xs text-ink-muted">{items.length}</span>
+        <ChevronRight className={cn("h-4 w-4 text-ink-muted transition", expanded && "rotate-90")} />
+      </button>
+      {expanded && (
+        <div className="border-t border-line/52 p-3">
+          <TaskList items={items} completedItems={completedItems} schedules={schedules} onOpen={onOpen} />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CandidateQueue({
+  candidates,
+  onConfirm,
+  onDiscard,
+}: {
+  candidates: TodoCandidateOut[];
+  onConfirm: (candidate: TodoCandidateOut, selectedCandidate?: TodoRestaurantCandidate | null, category?: TodoCategory) => void | Promise<void>;
+  onDiscard: (candidateId: number) => void | Promise<void>;
+}) {
+  if (candidates.length === 0) return null;
+  return (
+    <section className="rounded-2xl border border-rose/20 bg-rose/6 p-3">
+      <div className="mb-3 flex items-center justify-between gap-2 px-1">
+        <div>
+          <h2 className="font-display text-base font-semibold text-ink">待确认</h2>
+          <p className="font-sc text-xs text-ink-muted">解析完成后确认加入对应板块。</p>
+        </div>
+        <span className="rounded-full bg-rose/10 px-2 py-0.5 font-sc text-xs text-rose-deep">{candidates.length}</span>
+      </div>
+      <div className="grid gap-2">
+        {candidates.map((candidate) => (
+          <CandidateCard key={candidate.id} candidate={candidate} onConfirm={onConfirm} onDiscard={onDiscard} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CandidateCard({
+  candidate,
+  onConfirm,
+  onDiscard,
+}: {
+  candidate: TodoCandidateOut;
+  onConfirm: (candidate: TodoCandidateOut, selectedCandidate?: TodoRestaurantCandidate | null, category?: TodoCategory) => void | Promise<void>;
+  onDiscard: (candidateId: number) => void | Promise<void>;
+}) {
+  const [expanded, setExpanded] = useState(candidate.status !== "ready");
+  const candidates = candidate.amap_candidates ?? [];
+  return (
+    <article className="rounded-xl border border-line/58 bg-surface/86 p-3">
+      <div className="flex flex-wrap items-start gap-2">
+        <button type="button" onClick={() => setExpanded((value) => !value)} className="min-w-0 flex-1 text-left focus-ring">
+          <span className="block font-display text-sm font-semibold text-ink">{candidate.raw_title}</span>
+          <span className="mt-1 block font-sc text-xs text-ink-muted">
+            {TODO_CATEGORY_LABELS[candidate.category]} · {candidate.status === "ready" ? "待增加" : candidate.status === "needs_choice" ? "需要选择地点" : candidate.status === "failed" ? "解析失败" : "解析中"}
+          </span>
+          {candidate.selected_candidate && <span className="mt-1 block truncate font-sc text-xs text-ink-muted">{candidate.selected_candidate.name}</span>}
+        </button>
+        {candidate.status === "ready" && (
+          <button type="button" onClick={() => onConfirm(candidate)} className="btn-primary min-h-9 rounded-xl px-3 font-sc text-xs focus-ring">
+            确认加入
+          </button>
+        )}
+        <button type="button" onClick={() => onDiscard(candidate.id)} className="btn-ghost min-h-9 rounded-xl px-3 font-sc text-xs focus-ring">
+          丢弃
+        </button>
+      </div>
+      {expanded && (
+        <div className="mt-3 space-y-2">
+          {candidate.parse_error && <p className="rounded-xl bg-red-50 p-2 font-sc text-xs text-red-700">{candidate.parse_error}</p>}
+          {candidate.status === "failed" && (
+            <button type="button" onClick={() => onConfirm(candidate, null, "wish")} className="btn-ghost min-h-9 rounded-xl px-3 font-sc text-xs focus-ring">
+              按原文字加入许愿
+            </button>
+          )}
+          {candidate.status === "needs_choice" && candidates.map((item, index) => (
+            <button
+              type="button"
+              key={`${item.amap_poi_id || item.name}-${index}`}
+              onClick={() => onConfirm(candidate, item)}
+              className="block w-full rounded-xl border border-line/58 bg-surface-raised/82 p-3 text-left transition hover:bg-peach/10 focus-ring"
+            >
+              <span className="block font-display text-sm font-semibold text-ink">{item.name}</span>
+              <span className="mt-1 block truncate font-sc text-xs text-ink-muted">{item.address || item.city || "高德未返回地址"}</span>
+              <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-sc text-[11px] text-ink-muted">
+                {item.poi_type && <span>{item.poi_type}</span>}
+                {item.rating != null && <span>评分 {item.rating}</span>}
+                {item.per_capita != null && <span>人均 {item.per_capita}</span>}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </article>
+  );
 }
 
 function TodoSidebar({
@@ -608,31 +800,15 @@ function StatusPill({ status }: { status: string }) {
   return <span className="rounded-full bg-peach/18 px-2 py-0.5 font-sc text-[11px] text-ink-muted">解析中</span>;
 }
 
-function QuickAddBar({
-  view,
-  onCreated,
-  onFoodIntent,
-}: {
-  view: TodoView;
-  onCreated: (item: TodoItemOut) => void;
-  onFoodIntent: () => void;
-}) {
+function QuickAddBar({ onCreated, adding }: { onCreated: (title: string) => void | Promise<void>; adding: boolean }) {
   const [title, setTitle] = useState("");
-  const category: TodoCategory = view === "food" ? "food" : view === "stay" ? "stay" : "play";
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     const next = title.trim();
     if (!next) return;
-    if (category === "food") {
-      toast.message("餐厅请先用上方搜索添加，这样可以保存地址和人均");
-      onFoodIntent();
-      return;
-    }
-    const item = await api.createTodoItem({ category, title: next });
+    await onCreated(next);
     setTitle("");
-    toast.success(`已添加到${TODO_CATEGORY_LABELS[category]}清单`);
-    await onCreated(item);
   }
 
   return (
@@ -642,12 +818,12 @@ function QuickAddBar({
         <input
           value={title}
           onChange={(event) => setTitle(event.target.value)}
-          placeholder={view === "food" ? "搜索餐厅后添加" : view === "stay" ? "添加酒店或住宿安排" : "添加任务"}
+          placeholder="写下想一起做的事"
           maxLength={200}
           className="min-w-0 flex-1 bg-transparent font-sc text-sm outline-none placeholder:text-ink-muted/82"
         />
-        <button type="submit" disabled={!title.trim()} className="rounded-xl bg-rose px-3 py-2 font-sc text-sm text-white disabled:opacity-45 focus-ring">
-          添加
+        <button type="submit" disabled={!title.trim() || adding} className="rounded-xl bg-rose px-3 py-2 font-sc text-sm text-white disabled:opacity-45 focus-ring">
+          {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : "加入队列"}
         </button>
       </div>
     </form>
@@ -919,8 +1095,8 @@ function TodoDetailPanel({
 
   async function toggleScheduleDate() {
     try {
-      if (scheduledOnSelected) {
-        await onRemoveSchedule(scheduledOnSelected.id);
+      if (currentSchedule && currentSchedule.scheduled_on === scheduleDate) {
+        await onRemoveSchedule(currentSchedule.id);
       } else {
         await onSchedule(itemId, scheduleDate);
       }
@@ -933,7 +1109,7 @@ function TodoDetailPanel({
 
   const current = detail ?? item;
   const currentSchedules = detail?.schedules ?? schedules;
-  const scheduledOnSelected = currentSchedules.find((schedule) => schedule.scheduled_on === scheduleDate);
+  const currentSchedule = currentSchedules[0] ?? null;
 
   return (
     <>
@@ -983,23 +1159,20 @@ function TodoDetailPanel({
             <div className="space-y-5">
               <section>
                 <h3 className="mb-2 font-sc text-sm font-medium text-ink">日期安排</h3>
-                <div className="flex flex-wrap gap-2">
-                  {currentSchedules.map((schedule) => (
-                    <button key={schedule.id} type="button" onClick={() => onRemoveSchedule(schedule.id)} className="inline-flex min-h-9 items-center gap-1 rounded-full bg-peach/18 px-3 font-sc text-xs text-rose-deep focus-ring">
-                      {formatShortDate(schedule.scheduled_on)}
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  ))}
-                  <label className="inline-flex min-h-9 items-center gap-2 rounded-full border border-line/70 bg-surface-raised/80 px-3 font-sc text-xs text-ink-soft focus-within:border-rose/60">
+                <div className="rounded-2xl border border-line/58 bg-surface-raised/66 p-3">
+                  <p className="mb-2 font-sc text-xs text-ink-muted">
+                    当前日期：{currentSchedule ? formatShortDate(currentSchedule.scheduled_on) : "未安排"}
+                  </p>
+                  <label className="flex min-h-11 items-center gap-2 rounded-xl border border-line/70 bg-surface/88 px-3 font-sc text-xs text-ink-soft focus-within:border-rose/60">
                     <CalendarDays className="h-3.5 w-3.5" />
-                    <input type="date" value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} className="bg-transparent outline-none" />
+                    <input type="date" value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} className="min-w-0 flex-1 bg-transparent outline-none" />
                   </label>
                   <button
                     type="button"
                     onClick={toggleScheduleDate}
-                    className="inline-flex min-h-9 items-center gap-1 rounded-full bg-rose/10 px-3 font-sc text-xs text-rose-deep focus-ring"
+                    className="mt-2 inline-flex min-h-9 items-center gap-1 rounded-full bg-rose/10 px-3 font-sc text-xs text-rose-deep focus-ring"
                   >
-                    {scheduledOnSelected ? "取消这个日期" : `安排到 ${formatShortDate(scheduleDate)}`}
+                    {currentSchedule?.scheduled_on === scheduleDate ? "清除日期" : `保存为 ${formatShortDate(scheduleDate)}`}
                   </button>
                 </div>
               </section>

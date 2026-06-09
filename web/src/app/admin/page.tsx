@@ -479,6 +479,7 @@ const CATEGORY_LABELS: Record<TodoCategory, string> = {
   food: "吃喝",
   play: "玩乐",
   stay: "住宿",
+  wish: "许愿",
 };
 
 const ADMIN_TEST_SAMPLES: Array<{ key: string; label: string; keyword: string; city: string; expected: TodoCategory | null }> = [

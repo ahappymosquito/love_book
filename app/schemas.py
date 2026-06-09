@@ -1,11 +1,11 @@
-"""Pydantic schemas for auth, editable profiles, admin saved-model AMap-grounded food/play/stay AI tests, rich AMap restaurant evidence, events, media, quotes, cycles, and todo APIs."""
+"""Pydantic schemas for auth, editable profiles, admin saved-model AMap-grounded food/play/stay AI tests, rich AMap restaurant evidence, todo candidate queues, events, media, quotes, cycles, and todo APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
-from app.models import AIProtocol, CervicalMucus, CycleFlow, CycleMood, CyclePhase, TodoCategory, TodoParseStatus, VisibilityMode
+from app.models import AIProtocol, CervicalMucus, CycleFlow, CycleMood, CyclePhase, TodoCandidateStatus, TodoCategory, TodoParseStatus, VisibilityMode
 
 
 class APIModel(BaseModel):
@@ -451,6 +451,37 @@ class TodoRestaurantCreate(APIModel):
     candidate: TodoRestaurantCandidate
     signature_dishes: str | None = Field(default=None, max_length=1000)
     per_capita: int | None = Field(default=None, ge=0, le=100000)
+
+
+class TodoCandidateCreate(APIModel):
+    raw_title: str = Field(min_length=1, max_length=200)
+
+    @field_validator("raw_title")
+    @classmethod
+    def strip_raw_title(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Title cannot be empty")
+        return value
+
+
+class TodoCandidateConfirm(APIModel):
+    category: TodoCategory | None = None
+    selected_candidate: TodoRestaurantCandidate | None = None
+
+
+class TodoCandidateOut(APIModel):
+    id: int
+    raw_title: str
+    category: TodoCategory
+    status: TodoCandidateStatus
+    amap_candidates: list[TodoRestaurantCandidate] = Field(default_factory=list)
+    selected_candidate: TodoRestaurantCandidate | None = None
+    parse_error: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class TodoLotteryRequest(APIModel):

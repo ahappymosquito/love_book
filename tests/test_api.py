@@ -1321,6 +1321,124 @@ def test_todo_restaurant_create_keeps_candidate_when_detail_fails(client: TestCl
     assert "detail failed" in restaurant["parse_error"]
 
 
+def test_todo_candidate_food_ready_confirms_to_rich_restaurant(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.api.routes.todos.complete_todo_category", lambda db, title: "food")
+    monkeypatch.setattr(
+        "app.amap_mcp.search_restaurants",
+        lambda keyword, city=None, amap_key=None: [
+            {
+                "amap_poi_id": "B0G2HCOEAE",
+                "name": "陈记川菜馆（汇银中心店）",
+                "address": "汇银中心 F1",
+                "location": "120.027121,30.288808",
+                "city": "杭州市",
+                "poi_type": "餐饮服务;中餐厅;四川菜",
+                "per_capita": 69,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        "app.amap_mcp.restaurant_detail",
+        lambda poi_id, amap_key=None: {
+            "amap_poi_id": poi_id,
+            "name": "陈记川菜馆（汇银中心店）",
+            "address": "杭州市余杭区联创街 77 号汇银中心 F1 层",
+            "location": "120.027121,30.288808",
+            "city": "杭州市",
+            "business_area": "五常街道",
+            "poi_type": "餐饮服务;中餐厅;四川菜/川菜",
+            "rating": 4.4,
+            "per_capita": 69,
+            "opening_hours": "周一至周日 11:00-23:00",
+            "meal_ordering": "0",
+            "raw": {"id": poi_id},
+        },
+    )
+
+    created = client.post(
+        "/todos/candidates",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"raw_title": "陈记川菜馆（汇银中心店）"},
+    )
+    assert created.status_code == 201
+    assert created.json()["status"] == "ready"
+    assert created.json()["category"] == "food"
+    confirmed = client.post(
+        f"/todos/candidates/{created.json()['id']}/confirm",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={},
+    )
+
+    assert confirmed.status_code == 201
+    data = confirmed.json()
+    assert data["category"] == "food"
+    assert data["restaurant"]["rating"] == 4.4
+    assert data["restaurant"]["opening_hours"] == "周一至周日 11:00-23:00"
+
+
+def test_todo_candidate_multiple_amap_choices_can_confirm_selected(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.api.routes.todos.complete_todo_category", lambda db, title: "play")
+    monkeypatch.setattr(
+        "app.amap_mcp.search_restaurants",
+        lambda keyword, city=None, amap_key=None: [
+            {"amap_poi_id": "B001", "name": "浩波台球俱乐部 A", "address": "A"},
+            {"amap_poi_id": "B002", "name": "浩波台球俱乐部(汇银中心店)", "address": "汇银中心"},
+        ],
+    )
+    monkeypatch.setattr("app.amap_mcp.restaurant_detail", lambda poi_id, amap_key=None: {"amap_poi_id": poi_id, "name": "浩波台球俱乐部(汇银中心店)", "raw": {"id": poi_id}})
+
+    created = client.post("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])), json={"raw_title": "浩波台球俱乐部"})
+    body = created.json()
+    assert body["status"] == "needs_choice"
+    confirmed = client.post(
+        f"/todos/candidates/{body['id']}/confirm",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"selected_candidate": body["amap_candidates"][1]},
+    )
+
+    assert confirmed.status_code == 201
+    assert confirmed.json()["category"] == "play"
+    assert confirmed.json()["restaurant"]["amap_poi_id"] == "B002"
+
+
+def test_todo_candidate_wish_skips_amap_and_confirms_plain_item(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+    called = False
+    monkeypatch.setattr("app.api.routes.todos.complete_todo_category", lambda db, title: "wish")
+
+    def fake_search(*args, **kwargs):
+        nonlocal called
+        called = True
+        return []
+
+    monkeypatch.setattr("app.amap_mcp.search_restaurants", fake_search)
+
+    created = client.post("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])), json={"raw_title": "想要一束花"})
+    assert created.json()["category"] == "wish"
+    assert created.json()["status"] == "ready"
+    confirmed = client.post(f"/todos/candidates/{created.json()['id']}/confirm", headers=auth(str(pair_tokens["user_a_token"])), json={})
+
+    assert called is False
+    assert confirmed.status_code == 201
+    assert confirmed.json()["category"] == "wish"
+    assert confirmed.json()["restaurant"] is None
+
+
+def test_todo_schedule_replaces_existing_date(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    item = client.post(
+        "/todos/items",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"category": "play", "title": "看展"},
+    ).json()
+
+    first = client.post(f"/todos/items/{item['id']}/schedules", headers=auth(str(pair_tokens["user_a_token"])), json={"scheduled_on": "2026-05-20"})
+    second = client.post(f"/todos/items/{item['id']}/schedules", headers=auth(str(pair_tokens["user_a_token"])), json={"scheduled_on": "2026-05-21"})
+    detail = client.get(f"/todos/items/{item['id']}", headers=auth(str(pair_tokens["user_a_token"]))).json()
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert [schedule["scheduled_on"] for schedule in detail["schedules"]] == ["2026-05-21"]
+
+
 def test_amap_mcp_resolves_windows_npx_through_cmd(monkeypatch: pytest.MonkeyPatch) -> None:
     from app import amap_mcp
 

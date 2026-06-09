@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair timelines, comment reactions, food/play/stay todo boards, rich AMap restaurant evidence, media keys, quotes, AI settings with saved model lists, and login logs."""
+"""SQLAlchemy models for pair timelines, comment reactions, food/play/stay/wish todo boards, candidate queues, rich AMap restaurant evidence, media keys, quotes, AI settings with saved model lists, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -51,6 +51,14 @@ class TodoCategory(StrEnum):
     food = "food"
     play = "play"
     stay = "stay"
+    wish = "wish"
+
+
+class TodoCandidateStatus(StrEnum):
+    parsing = "parsing"
+    needs_choice = "needs_choice"
+    ready = "ready"
+    failed = "failed"
 
 
 class TodoParseStatus(StrEnum):
@@ -234,6 +242,27 @@ class TodoRestaurant(Base):
             {"label": "门店照片", "value": self.first_photo_url, "href": self.first_photo_url},
             {"label": "地图导航", "value": self.amap_navigation_url, "href": self.amap_navigation_url},
         ]
+
+
+class TodoCandidate(Base):
+    __tablename__ = "todo_candidates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pair_id: Mapped[int] = mapped_column(ForeignKey("pairs.id"), nullable=False, index=True)
+    creator_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    raw_title: Mapped[str] = mapped_column(String(200), nullable=False)
+    category: Mapped[TodoCategory] = mapped_column(Enum(TodoCategory), nullable=False, index=True)
+    status: Mapped[TodoCandidateStatus] = mapped_column(
+        Enum(TodoCandidateStatus), default=TodoCandidateStatus.parsing, nullable=False, index=True
+    )
+    amap_candidates: Mapped[list | None] = mapped_column(JSON)
+    selected_candidate: Mapped[dict | None] = mapped_column(JSON)
+    parse_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+    pair: Mapped[Pair] = relationship()
+    creator: Mapped[User] = relationship()
 
 
 class TodoSchedule(Base):

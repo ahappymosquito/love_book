@@ -1,4 +1,4 @@
-"""Todo board routes for pair-shared tasks, due dates, two-person comment completion, shared LLM category refresh, rich AMap restaurant evidence, and images."""
+"""Todo board routes for pair-shared tasks, candidate queues, single-date schedules, two-person comment completion, shared LLM category refresh, rich AMap restaurant evidence, and images."""
 
 from __future__ import annotations
 
@@ -19,8 +19,11 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.emailer import notify_todo_schedule_created
 from app.media import MediaProcessingError, make_image_thumbnail
-from app.models import Pair, TodoCategory, TodoComment, TodoImage, TodoItem, TodoParseStatus, TodoRestaurant, TodoSchedule, User
+from app.models import Pair, TodoCandidate, TodoCandidateStatus, TodoCategory, TodoComment, TodoImage, TodoItem, TodoParseStatus, TodoRestaurant, TodoSchedule, User
 from app.schemas import (
+    TodoCandidateConfirm,
+    TodoCandidateCreate,
+    TodoCandidateOut,
     TodoCommentCreate,
     TodoCommentOut,
     TodoClassifyOpenOut,
@@ -63,6 +66,98 @@ def _merge_restaurant_candidate(candidate: TodoRestaurantCandidate, detail: dict
     else:
         data["raw"] = data.get("raw") or {}
     return data
+
+
+def _candidate_out(candidate: TodoCandidate) -> TodoCandidateOut:
+    return TodoCandidateOut(
+        id=candidate.id,
+        raw_title=candidate.raw_title,
+        category=candidate.category,
+        status=candidate.status,
+        amap_candidates=[TodoRestaurantCandidate(**item) for item in candidate.amap_candidates or []],
+        selected_candidate=TodoRestaurantCandidate(**candidate.selected_candidate) if candidate.selected_candidate else None,
+        parse_error=candidate.parse_error,
+        created_at=candidate.created_at,
+        updated_at=candidate.updated_at,
+    )
+
+
+def _infer_candidate_category(db: Session, title: str) -> TodoCategory:
+    try:
+        return TodoCategory(complete_todo_category(db, title))
+    except Exception:
+        lowered = title.lower()
+        if any(word in title for word in ("吃", "菜", "餐", "饭", "火锅", "咖啡", "奶茶")):
+            return TodoCategory.food
+        if any(word in title for word in ("酒店", "宾馆", "民宿", "住宿", "住一晚")):
+            return TodoCategory.stay
+        if any(word in title for word in ("希望", "想要", "礼物", "许愿", "愿望")):
+            return TodoCategory.wish
+        if any(word in lowered for word in ("wish", "gift")):
+            return TodoCategory.wish
+        return TodoCategory.play
+
+
+def _create_item_from_candidate(
+    db: Session,
+    pair: Pair,
+    user: User,
+    *,
+    category: TodoCategory,
+    title: str,
+    selected_candidate: TodoRestaurantCandidate | None = None,
+) -> TodoItem:
+    if selected_candidate is None:
+        item = TodoItem(pair_id=pair.id, creator_id=user.id, category=category, title=title)
+        db.add(item)
+        db.flush()
+        return item
+
+    detail: dict | None = None
+    parse_status = TodoParseStatus.resolved
+    parse_error = None
+    if selected_candidate.amap_poi_id:
+        try:
+            detail = amap_mcp.restaurant_detail(selected_candidate.amap_poi_id, effective_amap_key(db))
+        except amap_mcp.AmapMCPError as exc:
+            parse_status = TodoParseStatus.failed
+            parse_error = str(exc)
+    restaurant_data = _merge_restaurant_candidate(selected_candidate, detail)
+    item = TodoItem(
+        pair_id=pair.id,
+        creator_id=user.id,
+        category=category,
+        title=restaurant_data.get("name") or title,
+    )
+    db.add(item)
+    db.flush()
+    restaurant = TodoRestaurant(
+        item_id=item.id,
+        amap_poi_id=restaurant_data.get("amap_poi_id"),
+        name=restaurant_data.get("name") or title,
+        address=restaurant_data.get("address"),
+        location=restaurant_data.get("location"),
+        city=restaurant_data.get("city"),
+        adname=restaurant_data.get("adname"),
+        pname=restaurant_data.get("pname"),
+        poi_type=restaurant_data.get("poi_type"),
+        poi_typecode=restaurant_data.get("poi_typecode"),
+        tel=restaurant_data.get("tel"),
+        business_area=restaurant_data.get("business_area"),
+        signature_dishes=restaurant_data.get("signature_dishes"),
+        per_capita=restaurant_data.get("per_capita"),
+        rating=restaurant_data.get("rating"),
+        opening_hours=restaurant_data.get("opening_hours"),
+        meal_ordering=restaurant_data.get("meal_ordering"),
+        photos_count=restaurant_data.get("photos_count") or 0,
+        first_photo_url=restaurant_data.get("first_photo_url"),
+        parse_status=parse_status,
+        parse_error=parse_error,
+        raw=restaurant_data.get("raw"),
+    )
+    db.add(restaurant)
+    item.restaurant = restaurant
+    return item
 
 
 def _month_range(month: str) -> tuple[date, date]:
@@ -288,15 +383,12 @@ def create_schedule(
 ) -> TodoScheduleOut:
     pair = get_pair_for_user(db, current_user.id)
     item = _ensure_pair_item(db, item_id, pair)
-    existing = db.execute(
-        select(TodoSchedule).where(
-            TodoSchedule.pair_id == pair.id,
-            TodoSchedule.item_id == item.id,
-            TodoSchedule.scheduled_on == payload.scheduled_on,
-        )
-    ).scalars().first()
-    if existing:
-        return TodoScheduleOut.model_validate(existing)
+    existing_schedules = db.execute(
+        select(TodoSchedule).where(TodoSchedule.pair_id == pair.id, TodoSchedule.item_id == item.id)
+    ).scalars().all()
+    for existing in existing_schedules:
+        db.delete(existing)
+    db.flush()
     schedule = TodoSchedule(pair_id=pair.id, item_id=item.id, scheduled_on=payload.scheduled_on, created_by_id=current_user.id)
     db.add(schedule)
     db.flush()
@@ -389,6 +481,105 @@ def search_restaurants(
     return TodoRestaurantSearchOut(candidates=candidates)
 
 
+@router.get("/candidates", response_model=list[TodoCandidateOut])
+def list_candidates(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[TodoCandidateOut]:
+    pair = get_pair_for_user(db, current_user.id)
+    rows = (
+        db.execute(
+            select(TodoCandidate)
+            .where(TodoCandidate.pair_id == pair.id)
+            .order_by(TodoCandidate.created_at.desc(), TodoCandidate.id.desc())
+        )
+        .scalars()
+        .all()
+    )
+    return [_candidate_out(row) for row in rows]
+
+
+@router.post("/candidates", response_model=TodoCandidateOut, status_code=status.HTTP_201_CREATED)
+def create_candidate(
+    payload: TodoCandidateCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> TodoCandidateOut:
+    pair = get_pair_for_user(db, current_user.id)
+    category = _infer_candidate_category(db, payload.raw_title)
+    status_value = TodoCandidateStatus.ready
+    amap_candidates: list[dict] = []
+    selected_candidate: dict | None = None
+    parse_error = None
+    if category != TodoCategory.wish:
+        try:
+            amap_candidates = amap_mcp.search_restaurants(payload.raw_title, amap_key=effective_amap_key(db))[:6]
+            if len(amap_candidates) == 1:
+                selected_candidate = amap_candidates[0]
+                status_value = TodoCandidateStatus.ready
+            elif len(amap_candidates) > 1:
+                status_value = TodoCandidateStatus.needs_choice
+            else:
+                status_value = TodoCandidateStatus.failed
+                parse_error = "高德没有返回可确认的地点"
+        except amap_mcp.AmapMCPError as exc:
+            status_value = TodoCandidateStatus.failed
+            parse_error = str(exc)
+    row = TodoCandidate(
+        pair_id=pair.id,
+        creator_id=current_user.id,
+        raw_title=payload.raw_title,
+        category=category,
+        status=status_value,
+        amap_candidates=amap_candidates,
+        selected_candidate=selected_candidate,
+        parse_error=parse_error,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _candidate_out(row)
+
+
+@router.post("/candidates/{candidate_id}/confirm", response_model=TodoItemOut, status_code=status.HTTP_201_CREATED)
+def confirm_candidate(
+    candidate_id: int,
+    payload: TodoCandidateConfirm,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> TodoItemOut:
+    pair = get_pair_for_user(db, current_user.id)
+    row = db.get(TodoCandidate, candidate_id)
+    if row is None or row.pair_id != pair.id:
+        raise HTTPException(status_code=404, detail="Todo candidate not found")
+    category = payload.category or row.category
+    selected = payload.selected_candidate
+    if selected is None and row.selected_candidate:
+        selected = TodoRestaurantCandidate(**row.selected_candidate)
+    if category == TodoCategory.wish:
+        selected = None
+    item = _create_item_from_candidate(
+        db,
+        pair,
+        current_user,
+        category=category,
+        title=row.raw_title,
+        selected_candidate=selected,
+    )
+    db.delete(row)
+    db.commit()
+    db.refresh(item)
+    return _item_out(db, item)
+
+
+@router.delete("/candidates/{candidate_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_candidate(candidate_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    pair = get_pair_for_user(db, current_user.id)
+    row = db.get(TodoCandidate, candidate_id)
+    if row is None or row.pair_id != pair.id:
+        raise HTTPException(status_code=404, detail="Todo candidate not found")
+    db.delete(row)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("/restaurants", response_model=TodoItemOut, status_code=status.HTTP_201_CREATED)
 def create_restaurant_item(
     payload: TodoRestaurantCreate,
@@ -397,46 +588,12 @@ def create_restaurant_item(
 ) -> TodoItemOut:
     pair = get_pair_for_user(db, current_user.id)
     candidate = payload.candidate
-    detail: dict | None = None
-    parse_status = TodoParseStatus.resolved
-    parse_error = None
-    if candidate.amap_poi_id:
-        try:
-            detail = amap_mcp.restaurant_detail(candidate.amap_poi_id, effective_amap_key(db))
-        except amap_mcp.AmapMCPError as exc:
-            parse_status = TodoParseStatus.failed
-            parse_error = str(exc)
-    restaurant_data = _merge_restaurant_candidate(candidate, detail)
-    signature_dishes = payload.signature_dishes or restaurant_data.get("signature_dishes")
-    per_capita = payload.per_capita if payload.per_capita is not None else restaurant_data.get("per_capita")
-    item = TodoItem(pair_id=pair.id, creator_id=current_user.id, category=TodoCategory.food, title=restaurant_data.get("name") or candidate.name)
-    db.add(item)
-    db.flush()
-    restaurant = TodoRestaurant(
-        item_id=item.id,
-        amap_poi_id=restaurant_data.get("amap_poi_id"),
-        name=restaurant_data.get("name") or candidate.name,
-        address=restaurant_data.get("address"),
-        location=restaurant_data.get("location"),
-        city=restaurant_data.get("city"),
-        adname=restaurant_data.get("adname"),
-        pname=restaurant_data.get("pname"),
-        poi_type=restaurant_data.get("poi_type"),
-        poi_typecode=restaurant_data.get("poi_typecode"),
-        tel=restaurant_data.get("tel"),
-        business_area=restaurant_data.get("business_area"),
-        signature_dishes=signature_dishes,
-        per_capita=per_capita,
-        rating=restaurant_data.get("rating"),
-        opening_hours=restaurant_data.get("opening_hours"),
-        meal_ordering=restaurant_data.get("meal_ordering"),
-        photos_count=restaurant_data.get("photos_count") or 0,
-        first_photo_url=restaurant_data.get("first_photo_url"),
-        parse_status=parse_status,
-        parse_error=parse_error,
-        raw=restaurant_data.get("raw"),
-    )
-    db.add(restaurant)
+    item = _create_item_from_candidate(db, pair, current_user, category=TodoCategory.food, title=candidate.name, selected_candidate=candidate)
+    if item.restaurant:
+        if payload.signature_dishes:
+            item.restaurant.signature_dishes = payload.signature_dishes
+        if payload.per_capita is not None:
+            item.restaurant.per_capita = payload.per_capita
     db.commit()
     db.refresh(item)
     return _item_out(db, item)

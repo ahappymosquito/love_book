@@ -1,4 +1,4 @@
-"""Admin AI configuration helpers for editable endpoints, saved model lists, AMap-grounded food/play/stay tests, and LLM diagnostics."""
+"""Admin AI configuration helpers for editable endpoints, saved model lists, AMap-grounded food/play/stay tests, and LLM diagnostics for todo categories including wishes."""
 
 from __future__ import annotations
 
@@ -11,10 +11,11 @@ from app.models import AIProtocol, AISetting, User
 
 CATEGORY_SYSTEM_PROMPT = (
     "Classify this couple todo item into exactly one category. "
-    "Return only one token: food, play, or stay. "
+    "Return only one token: food, play, stay, or wish. "
     "food means eating, drinking, restaurants, cafes, snacks, meals, stores related to food. "
     "play means entertainment, activities, shopping, games, movies, sports, billiards, karaoke, or leisure places. "
-    "stay means hotels, inns, guesthouses, homestays, lodging, or overnight accommodation."
+    "stay means hotels, inns, guesthouses, homestays, lodging, or overnight accommodation. "
+    "wish means vague wishes, gifts, personal hopes, or items that are not a place or concrete activity."
 )
 
 CATEGORY_MAX_TOKENS = 64
@@ -205,6 +206,8 @@ def normalize_category_response(text: str, response_hint: str = "") -> str:
         return "play"
     if "stay" in normalized:
         return "stay"
+    if "wish" in normalized:
+        return "wish"
     if not normalized:
         hint = f"; {response_hint}" if response_hint else ""
         raise RuntimeError(f"LLM returned empty category text{hint}")

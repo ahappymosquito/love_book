@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated profiles, private avatars, customizable admin AMap-grounded AI tests, todo scheduling, events, quotes, cycles, reactions, and media.
+// Browser API client for authenticated profiles, private avatars, customizable admin AMap-grounded AI tests, todo candidate queues, scheduling, events, quotes, cycles, reactions, and media.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -27,6 +27,7 @@ import type {
   PairOut,
   QuoteOut,
   TodoCategory,
+  TodoCandidateOut,
   TodoClassifyOpenOut,
   TodoCommentOut,
   TodoDashboardOut,
@@ -297,6 +298,14 @@ export const api = {
   deleteTodoSchedule: (id: number) => apiRequest<void>(`/todos/schedules/${id}`, { method: "DELETE" }),
   classifyTodoItem: (id: number) => apiRequest<TodoItemOut>(`/todos/items/${id}/classify`, { method: "POST" }),
   classifyOpenTodoItems: () => apiRequest<TodoClassifyOpenOut>("/todos/items/classify-open", { method: "POST" }),
+  listTodoCandidates: () => apiRequest<TodoCandidateOut[]>("/todos/candidates"),
+  createTodoCandidate: (payload: { raw_title: string }) =>
+    apiRequest<TodoCandidateOut>("/todos/candidates", { method: "POST", json: payload }),
+  confirmTodoCandidate: (
+    candidateId: number,
+    payload: { category?: TodoCategory | null; selected_candidate?: TodoRestaurantCandidate | null },
+  ) => apiRequest<TodoItemOut>(`/todos/candidates/${candidateId}/confirm`, { method: "POST", json: payload }),
+  deleteTodoCandidate: (candidateId: number) => apiRequest<void>(`/todos/candidates/${candidateId}`, { method: "DELETE" }),
   searchTodoRestaurants: (payload: { keyword: string; city?: string | null }) =>
     apiRequest<{ candidates: TodoRestaurantCandidate[] }>("/todos/restaurants/search", { method: "POST", json: payload }),
   createTodoRestaurant: (payload: {
