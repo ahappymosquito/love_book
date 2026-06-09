@@ -1,7 +1,8 @@
-"""Todo board routes for pair-shared tasks, candidate queues, single-date schedules, two-person comment completion, shared LLM category refresh, rich AMap restaurant evidence, and images."""
+"""Todo board routes for pair-shared tasks, retryable candidate confirmation, single-date schedules, two-person comment completion, shared LLM category refresh, rich AMap restaurant evidence, and images."""
 
 from __future__ import annotations
 
+import logging
 import random
 from calendar import monthrange
 from datetime import date
@@ -42,6 +43,8 @@ from app.schemas import (
     TodoScheduleCreate,
     TodoScheduleOut,
 )
+
+logger = logging.getLogger(__name__)
 from app.services import active_token_for_user, counterpart
 from app.storage import (
     PRIVATE_MEDIA_CACHE_HEADERS,
@@ -555,18 +558,24 @@ def confirm_candidate(
         selected = TodoRestaurantCandidate(**row.selected_candidate)
     if category == TodoCategory.wish:
         selected = None
-    item = _create_item_from_candidate(
-        db,
-        pair,
-        current_user,
-        category=category,
-        title=row.raw_title,
-        selected_candidate=selected,
-    )
-    db.delete(row)
-    db.commit()
-    db.refresh(item)
-    return _item_out(db, item)
+    try:
+        item = _create_item_from_candidate(
+            db,
+            pair,
+            current_user,
+            category=category,
+            title=row.raw_title,
+            selected_candidate=selected,
+        )
+        item_id = item.id
+        db.delete(row)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Todo candidate confirmation failed", extra={"candidate_id": candidate_id})
+        raise HTTPException(status_code=502, detail=f"Todo candidate confirmation failed: {exc}") from exc
+    persisted_item = _ensure_pair_item(db, item_id, pair)
+    return _item_out(db, persisted_item)
 
 
 @router.delete("/candidates/{candidate_id}", status_code=status.HTTP_204_NO_CONTENT)

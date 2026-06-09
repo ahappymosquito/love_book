@@ -1,4 +1,4 @@
-"""API regression tests for auth, profiles, media, food/play/stay/wish todo candidate queues, single-date scheduling, rich AMap restaurant evidence, AMap MCP POI normalization, AMap-grounded AI tests, and fallback data."""
+"""API regression tests for auth, profiles, media, food/play/stay/wish todo candidate queues, retryable candidate confirmation, single-date scheduling, rich AMap restaurant evidence, AMap MCP POI normalization, AMap-grounded AI tests, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -1440,6 +1440,23 @@ def test_todo_candidate_single_play_poi_confirms_and_removes_candidate(client: T
     assert confirmed.json()["restaurant"]["amap_poi_id"] == "PLAY001"
     assert remaining.status_code == 200
     assert remaining.json() == []
+
+
+def test_todo_candidate_confirm_detail_crash_returns_502_and_keeps_candidate(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.api.routes.todos.complete_todo_category", lambda db, title: "play")
+    monkeypatch.setattr(
+        "app.amap_mcp.search_restaurants",
+        lambda keyword, city=None, amap_key=None: [{"amap_poi_id": "CRASH001", "name": "Crash Billiards", "address": "Huiyin Center"}],
+    )
+    monkeypatch.setattr("app.amap_mcp.restaurant_detail", lambda poi_id, amap_key=None: (_ for _ in ()).throw(RuntimeError("detail crashed")))
+
+    created = client.post("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])), json={"raw_title": "Crash Billiards"})
+    failed = client.post(f"/todos/candidates/{created.json()['id']}/confirm", headers=auth(str(pair_tokens["user_a_token"])), json={})
+    remaining = client.get("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])))
+
+    assert failed.status_code == 502
+    assert "Todo candidate confirmation failed" in failed.json()["detail"]
+    assert [candidate["id"] for candidate in remaining.json()] == [created.json()["id"]]
 
 
 def test_todo_candidate_wish_skips_amap_and_confirms_plain_item(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:

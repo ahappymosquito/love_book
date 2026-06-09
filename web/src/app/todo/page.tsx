@@ -154,10 +154,10 @@ function TodoInner() {
   const [detailId, setDetailId] = useState<number | null>(null);
   const [classifyingOpen, setClassifyingOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<TodoCategory, boolean>>({
-    food: true,
-    play: true,
-    stay: true,
-    wish: true,
+    food: false,
+    play: false,
+    stay: false,
+    wish: false,
   });
 
   useEffect(() => {
@@ -321,6 +321,7 @@ function TodoInner() {
 
           <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] sm:px-5 sm:pb-5">
             <div className="space-y-3 pt-3">
+              <QuickAddBar onCreated={addCandidate} />
               {TODO_SECTIONS.map((section) => (
                 <TodoCategorySection
                   key={section.category}
@@ -340,8 +341,6 @@ function TodoInner() {
               />
             </div>
           </div>
-
-          <QuickAddBar onCreated={addCandidate} />
         </main>
 
         <AnimatePresence>
@@ -977,7 +976,7 @@ function QuickAddBar({ onCreated }: { onCreated: (title: string) => void | Promi
   }
 
   return (
-    <form onSubmit={submit} className="sticky bottom-[calc(env(safe-area-inset-bottom,0px)+5.8rem)] z-20 border-t border-line/60 bg-surface/95 p-3 shadow-[0_-12px_26px_-24px_rgb(var(--ink)/0.45)] lg:bottom-0 sm:p-4">
+    <form onSubmit={submit} className="rounded-2xl border border-line/62 bg-surface-raised/82 p-3 shadow-[0_10px_24px_-22px_rgb(var(--ink)/0.42)] sm:p-4">
       <div className="flex min-h-12 items-center gap-2 rounded-2xl border border-line/70 bg-surface-raised/90 px-3 focus-within:border-rose/60 focus-within:shadow-[0_0_0_4px_rgb(var(--focus)/0.14)]">
         <Plus className="h-4 w-4 text-rose-deep" />
         <input
