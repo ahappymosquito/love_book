@@ -1420,14 +1420,14 @@ def test_admin_ai_connection_test_rejects_empty_completion(client: TestClient, m
     settings.llm_model = "mimo-v2.5-pro"
 
     def empty_completion(db: Session) -> str:
-        raise RuntimeError("LLM returned unsupported category: ''")
+        raise RuntimeError("LLM returned empty category text; finish_reason='length', message_keys=['content']")
 
     monkeypatch.setattr("app.api.routes.admin.test_category_completion", empty_completion)
 
     tested = client.post("/admin/ai-config/test", headers={"X-Admin-Key": "test-admin-key"})
 
     assert tested.status_code == 502
-    assert "unsupported category" in tested.json()["detail"]
+    assert "empty category text" in tested.json()["detail"]
 
 
 def test_llm_category_completion_uses_openai_chat_response(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1449,10 +1449,61 @@ def test_llm_category_completion_uses_openai_chat_response(db_session: Session, 
         assert url == "https://openai.example/v1/chat/completions"
         assert headers["Authorization"] == "Bearer secret-token-1234"
         assert json["model"] == "mimo-v2.5-pro"
-        assert "Title: 火锅" in json["messages"][0]["content"]
+        assert "Title: hotpot dinner" in json["messages"][0]["content"]
+        assert json["max_tokens"] == 64
         assert timeout == 20
         return FakeResponse()
 
     monkeypatch.setattr("app.ai_config.httpx.post", fake_post)
 
-    assert complete_todo_category(db_session, "火锅", "周末一起吃饭") == "food"
+    assert complete_todo_category(db_session, "hotpot dinner", "weekend meal together") == "food"
+
+
+def test_llm_category_completion_reports_openai_empty_response(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.ai_config import complete_todo_category
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "llm_api_key", "secret-token-1234")
+    monkeypatch.setattr(settings, "llm_model", "mimo-v2.5-pro")
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"choices": [{"finish_reason": "length", "message": {"content": ""}}]}
+
+    monkeypatch.setattr("app.ai_config.httpx.post", lambda *args, **kwargs: FakeResponse())
+
+    with pytest.raises(RuntimeError, match="finish_reason='length'"):
+        complete_todo_category(db_session, "hotpot dinner")
+
+
+def test_llm_category_completion_retries_openai_length_empty_response(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.ai_config import complete_todo_category
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "llm_api_key", "secret-token-1234")
+    monkeypatch.setattr(settings, "llm_model", "mimo-v2.5-pro")
+    calls: list[int] = []
+
+    class FakeResponse:
+        def __init__(self, payload: dict) -> None:
+            self.payload = payload
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return self.payload
+
+    def fake_post(*args, **kwargs) -> FakeResponse:
+        calls.append(kwargs["json"]["max_tokens"])
+        if len(calls) == 1:
+            return FakeResponse({"choices": [{"finish_reason": "length", "message": {"content": ""}}]})
+        return FakeResponse({"choices": [{"finish_reason": "stop", "message": {"content": "food"}}]})
+
+    monkeypatch.setattr("app.ai_config.httpx.post", fake_post)
+
+    assert complete_todo_category(db_session, "hotpot dinner") == "food"
+    assert calls == [64, 256]

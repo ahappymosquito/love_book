@@ -864,5 +864,5 @@ python -m pytest tests -q
 - 吃饭项目通过后端 `npx -y @amap/amap-maps-mcp-server` 调用高德 MCP 搜索和详情解析；Windows 本地会经 `cmd.exe` 调用 `npx` 以兼容 Node.js 批处理入口，并按该包当前 SDK 的 newline JSON stdio 协议通信，MCP 冷启动默认保留 45 秒超时。高德 key 可在管理端单独配置，`.env` / 服务器环境变量 `AMAP_MAPS_API_KEY` 作为初始默认和兜底。
 - Todo 图片写入 `MEDIA_ROOT/todo/images/...`，数据库只保存 `todo_images.storage_key` / `todo_images.thumb_storage_key`，下载接口为 `/todo-images/{image_id}/file` 和 `/todo-images/{image_id}/thumb`。
 - `/todo` 随机抽奖支持人均、城市/区域和附近 1/3/5/10km 点选筛选；附近筛选由浏览器定位提供经纬度，失败时静默保留其它筛选。
-- 管理端 `/admin` 的 AI / 模型配置区先选择 OpenAI 或 Anthropic 协议，再编辑对应地址和 token；获取模型列表后在下拉框展示模型数量，选择模型会自动保存并真实调用一次 `food/play` 补全测试，也保留手动测试按钮。该测试用于发现空回复、协议错配或模型不支持 chat/messages 的问题；高德 `AMAP_MAPS_API_KEY` 单独罗列并可自定义保存。
+- 管理端 `/admin` 的 AI / 模型配置区先选择 OpenAI 或 Anthropic 协议，再编辑对应地址和 token；获取模型列表后在下拉框展示模型数量，选择模型会自动保存并真实调用一次 `food/play` 补全测试，也保留手动测试按钮。该测试用于发现空回复、协议错配或模型不支持 chat/messages 的问题；分类补全默认给 64 tokens 输出预算，遇到长度耗尽且正文为空时用 256 tokens 重试一次；高德 `AMAP_MAPS_API_KEY` 单独罗列并可自定义保存。
 - 相关环境变量：`AMAP_MAPS_API_KEY`、`LLM_OPENAI_BASE_URL`、`LLM_ANTHROPIC_BASE_URL`、`LLM_API_KEY`、`LLM_PROTOCOL`、`LLM_MODEL`。真实密钥只放 `.env`、服务器 env 文件或管理端数据库配置，不提交仓库。

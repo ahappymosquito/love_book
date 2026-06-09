@@ -15,8 +15,10 @@ CATEGORY_SYSTEM_PROMPT = (
     "play means entertainment, activity, travel, shopping, games, movies, sports, chores, or anything else."
 )
 
-ADMIN_TEST_TITLE = "火锅"
-ADMIN_TEST_NOTE = "周末一起去吃饭"
+CATEGORY_MAX_TOKENS = 64
+CATEGORY_RETRY_MAX_TOKENS = 256
+ADMIN_TEST_TITLE = "hotpot dinner"
+ADMIN_TEST_NOTE = "weekend meal together"
 
 
 def preview_secret(value: str) -> str:
@@ -169,13 +171,40 @@ def _extract_anthropic_text(payload: object) -> str:
     return "".join(parts)
 
 
-def normalize_category_response(text: str) -> str:
+def normalize_category_response(text: str, response_hint: str = "") -> str:
     normalized = text.strip().lower()
     if "food" in normalized:
         return "food"
     if "play" in normalized:
         return "play"
+    if not normalized:
+        hint = f"; {response_hint}" if response_hint else ""
+        raise RuntimeError(f"LLM returned empty category text{hint}")
     raise RuntimeError(f"LLM returned unsupported category: {text!r}")
+
+
+def _openai_response_hint(payload: object) -> str:
+    if not isinstance(payload, dict):
+        return "OpenAI-compatible response was not a JSON object"
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return "OpenAI-compatible response did not include choices"
+    first = choices[0]
+    if not isinstance(first, dict):
+        return "OpenAI-compatible first choice was not an object"
+    finish_reason = first.get("finish_reason")
+    message = first.get("message")
+    keys = sorted(message.keys()) if isinstance(message, dict) else []
+    return f"finish_reason={finish_reason!r}, message_keys={keys}"
+
+
+def _anthropic_response_hint(payload: object) -> str:
+    if not isinstance(payload, dict):
+        return "Anthropic response was not a JSON object"
+    stop_reason = payload.get("stop_reason")
+    content = payload.get("content")
+    content_types = [item.get("type") for item in content if isinstance(item, dict)] if isinstance(content, list) else []
+    return f"stop_reason={stop_reason!r}, content_types={content_types}"
 
 
 def complete_todo_category(db: Session, title: str, note: str | None = None) -> str:
@@ -187,33 +216,47 @@ def complete_todo_category(db: Session, title: str, note: str | None = None) -> 
     base_url = protocol_base_url(db, setting.protocol)
     prompt = _category_prompt(title, note)
     if setting.protocol == AIProtocol.anthropic:
-        response = httpx.post(
-            f"{base_url}/v1/messages",
-            headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
-            json={
-                "model": model,
-                "max_tokens": 8,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            timeout=20,
-        )
-        response.raise_for_status()
-        text = _extract_anthropic_text(response.json())
+        text = ""
+        hint = ""
+        for max_tokens in (CATEGORY_MAX_TOKENS, CATEGORY_RETRY_MAX_TOKENS):
+            response = httpx.post(
+                f"{base_url}/v1/messages",
+                headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
+                json={
+                    "model": model,
+                    "max_tokens": max_tokens,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+                timeout=20,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            text = _extract_anthropic_text(payload)
+            hint = _anthropic_response_hint(payload)
+            if text.strip() or "max_tokens" not in hint:
+                break
     else:
-        response = httpx.post(
-            f"{base_url}/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0,
-                "max_tokens": 8,
-            },
-            timeout=20,
-        )
-        response.raise_for_status()
-        text = _extract_openai_text(response.json())
-    return normalize_category_response(text)
+        text = ""
+        hint = ""
+        for max_tokens in (CATEGORY_MAX_TOKENS, CATEGORY_RETRY_MAX_TOKENS):
+            response = httpx.post(
+                f"{base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0,
+                    "max_tokens": max_tokens,
+                },
+                timeout=20,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            text = _extract_openai_text(payload)
+            hint = _openai_response_hint(payload)
+            if text.strip() or "finish_reason='length'" not in hint:
+                break
+    return normalize_category_response(text, hint)
 
 
 def test_category_completion(db: Session) -> str:
