@@ -1,4 +1,4 @@
-"""API regression tests for auth, profiles, media, todo, AMap MCP command resolution, live AI config tests, and fallback data."""
+"""API regression tests for auth, profiles, media, todo, AMap MCP command resolution, AMap-grounded AI tests, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -1379,7 +1379,18 @@ def test_admin_ai_config_edits_keys_lists_models_and_saves_model(client: TestCli
     settings.amap_maps_api_key = "amap-secret-5678"
     settings.llm_model = "mimo-v2.5-pro"
     monkeypatch.setattr("app.api.routes.admin.list_models", lambda db, protocol: ["mimo-v2.5-pro", "other-model"])
-    monkeypatch.setattr("app.api.routes.admin.test_category_completion", lambda db: "food")
+    monkeypatch.setattr(
+        "app.api.routes.admin.test_category_completion",
+        lambda db: {
+            "category": "food",
+            "sample_keyword": "江西小炒(西溪北苑东区店)",
+            "amap_name": "江西小炒(西溪北苑东区店)",
+            "amap_address": "西溪北苑东区",
+            "amap_poi_type": "050000",
+            "amap_poi_id": "B001",
+            "evidence_note": "AMap evidence",
+        },
+    )
 
     config = client.get("/admin/ai-config", headers={"X-Admin-Key": "test-admin-key"})
     assert config.status_code == 200
@@ -1412,6 +1423,8 @@ def test_admin_ai_config_edits_keys_lists_models_and_saves_model(client: TestCli
     assert models.json()["models"] == ["mimo-v2.5-pro", "other-model"]
     assert tested.json()["ok"] is True
     assert tested.json()["sample_category"] == "food"
+    assert tested.json()["sample_keyword"] == "江西小炒(西溪北苑东区店)"
+    assert tested.json()["amap_name"] == "江西小炒(西溪北苑东区店)"
 
 
 def test_admin_ai_connection_test_rejects_empty_completion(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1507,3 +1520,38 @@ def test_llm_category_completion_retries_openai_length_empty_response(db_session
 
     assert complete_todo_category(db_session, "hotpot dinner") == "food"
     assert calls == [64, 256]
+
+
+def test_admin_ai_completion_uses_amap_restaurant_evidence(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import ai_config
+
+    captured: dict[str, str | None] = {}
+
+    def fake_search(keyword: str, city=None, amap_key=None) -> list[dict]:
+        assert keyword == "江西小炒(西溪北苑东区店)"
+        return [
+            {
+                "amap_poi_id": "B001",
+                "name": "江西小炒(西溪北苑东区店)",
+                "address": "杭州市西溪北苑东区",
+                "city": "杭州市",
+                "poi_type": "050000",
+            }
+        ]
+
+    def fake_complete(db: Session, title: str, note: str | None = None) -> str:
+        captured["title"] = title
+        captured["note"] = note
+        return "food"
+
+    monkeypatch.setattr(ai_config.amap_mcp, "search_restaurants", fake_search)
+    monkeypatch.setattr(ai_config, "complete_todo_category", fake_complete)
+
+    result = ai_config.test_category_completion(db_session)
+
+    assert result["category"] == "food"
+    assert result["sample_keyword"] == "江西小炒(西溪北苑东区店)"
+    assert result["amap_name"] == "江西小炒(西溪北苑东区店)"
+    assert captured["title"] == "江西小炒(西溪北苑东区店)"
+    assert "AMap MCP returned a real POI" in str(captured["note"])
+    assert "杭州市西溪北苑东区" in str(captured["note"])

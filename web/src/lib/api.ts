@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated editable profiles, private avatars, admin AI config/live tests, todo scheduling, events, quote libraries, cycles, reactions, and media requests.
+// Browser API client for authenticated profiles, private avatars, admin AMap-grounded AI tests, todo scheduling, events, quotes, cycles, reactions, and media.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";

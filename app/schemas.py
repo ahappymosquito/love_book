@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, editable profiles, admin live AI tests, events, media, quote libraries, cycles, and todo APIs."""
+"""Pydantic schemas for auth, editable profiles, admin AMap-grounded AI tests, events, media, quotes, cycles, and todo APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -507,3 +507,9 @@ class AdminAIConnectionTestOut(APIModel):
     ok: bool
     message: str
     sample_category: TodoCategory | None = None
+    sample_keyword: str | None = None
+    amap_name: str | None = None
+    amap_address: str | None = None
+    amap_poi_type: str | None = None
+    amap_poi_id: str | None = None
+    evidence_note: str | None = None

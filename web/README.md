@@ -43,7 +43,7 @@ npm run start
 | 路由 | 说明 |
 | --- | --- |
 | `/` | 三维小狗背景 + 明亮手账感登录表单，支持 `?token=` 或 `#token=` 自动登录 |
-| `/admin` | 管理控制台：先用 admin key 验证，再创建配对、选择 token 有效期、复制 token / 入口链接；Clipboard API 失败时自动降级复制；AI 配置保存后可真实调用一次 `food/play` 补全测试，确认 Todo 刷新依赖的 LLM 能正常返回结果 |
+| `/admin` | 管理控制台：先用 admin key 验证，再创建配对、选择 token 有效期、复制 token / 入口链接；Clipboard API 失败时自动降级复制；AI 配置保存后先用高德 MCP 获取“江西小炒(西溪北苑东区店)”POI 证据，再调用 LLM 完成 `food/play` 补全测试 |
 | `/timeline` | 当前用户的事件流，含纪念日、语录、todo / 周期入口和月份分组 |
 | `/timeline/[id]` | 事件详情，合并的内容流（评论 / 语音气泡 / 图片缩略），底部输入栏支持文字 / 按住说话 / 图片 |
 | `/create` | 新建事件 |

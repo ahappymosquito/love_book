@@ -1,4 +1,4 @@
-"""Admin routes for pair setup, tokens, contact details, relationship dates, login logs, and AI model config with live completion tests."""
+"""Admin routes for pair setup, tokens, contacts, login logs, and AI config with AMap-grounded live completion tests."""
 
 import secrets
 from datetime import timezone
@@ -233,7 +233,18 @@ def get_admin_ai_models(protocol: AIProtocol | None = None, db: Session = Depend
 @router.post("/ai-config/test", response_model=AdminAIConnectionTestOut, dependencies=[Depends(require_admin_key)])
 def test_admin_ai_config(db: Session = Depends(get_db)) -> AdminAIConnectionTestOut:
     try:
-        category = test_category_completion(db)
+        result = test_category_completion(db)
     except (RuntimeError, httpx.HTTPError) as exc:
         raise HTTPException(status_code=502, detail=f"AI connection test failed: {exc}") from exc
-    return AdminAIConnectionTestOut(ok=True, message=f"Completion ok, sample category: {category}", sample_category=category)
+    category = result["category"]
+    return AdminAIConnectionTestOut(
+        ok=True,
+        message=f"AMap evidence ok, completion ok, sample category: {category}",
+        sample_category=category,
+        sample_keyword=result["sample_keyword"],
+        amap_name=result["amap_name"],
+        amap_address=result["amap_address"],
+        amap_poi_type=result["amap_poi_type"],
+        amap_poi_id=result["amap_poi_id"],
+        evidence_note=result["evidence_note"],
+    )

@@ -1,4 +1,4 @@
-// Shared TypeScript contracts for API payloads, editable profile state, events, quote libraries, todo boards, admin live AI tests, cycles, and reminders.
+// Shared TypeScript contracts for API payloads, editable profile state, events, quote libraries, todo boards, admin AMap-grounded AI tests, cycles, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
 export type TodoCategory = "food" | "play";
@@ -350,6 +350,12 @@ export interface AdminAIConnectionTestOut {
   ok: boolean;
   message: string;
   sample_category: TodoCategory | null;
+  sample_keyword: string | null;
+  amap_name: string | null;
+  amap_address: string | null;
+  amap_poi_type: string | null;
+  amap_poi_id: string | null;
+  evidence_note: string | null;
 }
 
 export const AVATAR_PRESETS = [

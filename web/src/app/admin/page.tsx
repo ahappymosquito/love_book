@@ -1,6 +1,6 @@
 "use client";
 
-// Admin console with lively scrapbook panels for pairs, tokens, contact details, AI model config, avatar-aware users, and clipboard-safe entry links.
+// Admin console with scrapbook panels for pairs, tokens, contacts, AMap-grounded AI test status, avatars, and clipboard-safe links.
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -628,12 +628,29 @@ function AIConfigPanel() {
         )}
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="font-medium text-ink">真实补全测试</span>
+          <span className="font-medium text-ink">高德取证 + 真实补全测试</span>
           <span>{testResult ? `已返回 ${testResult.sample_category || "未知"}` : testError ? "测试失败" : "尚未测试"}</span>
         </div>
         <p className="mt-2 leading-relaxed">
-          {testError || testResult?.message || "保存配置后点击测试连接，会让当前模型真实回答一次 food/play 分类。"}
+          {testError || testResult?.message || "保存配置后点击测试连接，会先用高德 MCP 获取样例餐厅信息，再让当前模型基于 POI 证据回答 food/play 分类。"}
         </p>
+        {testResult && (
+          <div className="mt-3 grid gap-2 text-ink-soft sm:grid-cols-2">
+            <div className="rounded-xl bg-surface/70 p-3">
+              <p className="font-medium text-ink">1. 高德 MCP 取证</p>
+              <p className="mt-1">样例：{testResult.sample_keyword || "江西小炒(西溪北苑东区店)"}</p>
+              <p className="mt-1">POI：{testResult.amap_name || "未返回名称"}</p>
+              <p className="mt-1">地址：{testResult.amap_address || "未返回地址"}</p>
+              <p className="mt-1">类型：{testResult.amap_poi_type || "未返回类型"}</p>
+            </div>
+            <div className="rounded-xl bg-surface/70 p-3">
+              <p className="font-medium text-ink">2. LLM 基于证据判断</p>
+              <p className="mt-1">返回：{testResult.sample_category || "未知"}</p>
+              <p className="mt-1">POI ID：{testResult.amap_poi_id || "未返回"}</p>
+              <p className="mt-1 line-clamp-3">{testResult.evidence_note || "已将高德 POI 信息作为补全输入。"}</p>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="space-y-4">

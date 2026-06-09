@@ -1,10 +1,11 @@
-"""Admin AI configuration helpers for editable endpoints, keys, model listing, category completions, and connection tests."""
+"""Admin AI configuration helpers for editable endpoints, keys, model listing, AMap-grounded category completions, and connection tests."""
 
 from __future__ import annotations
 
 import httpx
 from sqlalchemy.orm import Session
 
+from app import amap_mcp
 from app.core.config import get_settings
 from app.models import AIProtocol, AISetting, User
 
@@ -17,8 +18,7 @@ CATEGORY_SYSTEM_PROMPT = (
 
 CATEGORY_MAX_TOKENS = 64
 CATEGORY_RETRY_MAX_TOKENS = 256
-ADMIN_TEST_TITLE = "hotpot dinner"
-ADMIN_TEST_NOTE = "weekend meal together"
+ADMIN_TEST_RESTAURANT_KEYWORD = "江西小炒(西溪北苑东区店)"
 
 
 def preview_secret(value: str) -> str:
@@ -259,5 +259,35 @@ def complete_todo_category(db: Session, title: str, note: str | None = None) -> 
     return normalize_category_response(text, hint)
 
 
-def test_category_completion(db: Session) -> str:
-    return complete_todo_category(db, ADMIN_TEST_TITLE, ADMIN_TEST_NOTE)
+def _restaurant_evidence_note(candidate: dict) -> str:
+    name = candidate.get("name") or ADMIN_TEST_RESTAURANT_KEYWORD
+    address = candidate.get("address") or ""
+    poi_type = candidate.get("poi_type") or ""
+    city = candidate.get("city") or ""
+    return (
+        "AMap MCP returned a real POI for this todo candidate. "
+        f"name={name}; address={address}; city={city}; poi_type={poi_type}. "
+        "Use the AMap evidence instead of guessing from the title."
+    )
+
+
+def test_category_completion(db: Session) -> dict[str, str | None]:
+    candidates = amap_mcp.search_restaurants(
+        ADMIN_TEST_RESTAURANT_KEYWORD,
+        amap_key=effective_amap_key(db),
+    )
+    if not candidates:
+        raise RuntimeError(f"AMap MCP returned no restaurant candidate for {ADMIN_TEST_RESTAURANT_KEYWORD!r}")
+    candidate = candidates[0]
+    title = str(candidate.get("name") or ADMIN_TEST_RESTAURANT_KEYWORD)
+    note = _restaurant_evidence_note(candidate)
+    category = complete_todo_category(db, title, note)
+    return {
+        "category": category,
+        "sample_keyword": ADMIN_TEST_RESTAURANT_KEYWORD,
+        "amap_name": str(candidate.get("name") or ""),
+        "amap_address": str(candidate.get("address") or ""),
+        "amap_poi_type": str(candidate.get("poi_type") or ""),
+        "amap_poi_id": str(candidate.get("amap_poi_id") or ""),
+        "evidence_note": note,
+    }
