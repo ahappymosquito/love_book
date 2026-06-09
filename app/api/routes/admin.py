@@ -1,4 +1,4 @@
-"""Admin routes for pair setup, tokens, contacts, login logs, and AI config with saved models and AMap-grounded tests."""
+"""Admin routes for pair setup, tokens, contacts, login logs, and AI config with saved models and customizable AMap-grounded tests."""
 
 import secrets
 from datetime import timezone
@@ -16,6 +16,7 @@ from app.models import AIProtocol, DeviceToken, LoginLog, Pair, User, utc_now
 from app.schemas import (
     AdminAIConfigOut,
     AdminAIConfigUpdate,
+    AdminAIConnectionTestIn,
     AdminAIConnectionTestOut,
     AdminAIModelListOut,
     LoginLogOut,
@@ -235,21 +236,46 @@ def get_admin_ai_models(protocol: AIProtocol | None = None, db: Session = Depend
 
 
 @router.post("/ai-config/test", response_model=AdminAIConnectionTestOut, dependencies=[Depends(require_admin_key)])
-def test_admin_ai_config(db: Session = Depends(get_db)) -> AdminAIConnectionTestOut:
+def test_admin_ai_config(
+    payload: AdminAIConnectionTestIn | None = None,
+    db: Session = Depends(get_db),
+) -> AdminAIConnectionTestOut:
+    keyword = payload.keyword if payload and payload.keyword else None
+    city = payload.city if payload else None
+    expected_category = payload.expected_category.value if payload and payload.expected_category else ("food" if keyword is None else None)
     try:
-        result = test_category_completion(db)
+        result = test_category_completion(
+            db,
+            keyword=keyword or "江西小炒(西溪北苑东区店)",
+            city=city,
+            expected_category=expected_category,
+        )
     except (RuntimeError, httpx.HTTPError) as exc:
         raise HTTPException(status_code=502, detail=f"AI connection test failed: {exc}") from exc
     category = result["category"]
     return AdminAIConnectionTestOut(
         ok=True,
-        message=f"AMap evidence ok, completion ok, sample category: {category}",
+        message=f"AMap evidence ok, sample category: {category}",
         sample_category=category,
         sample_keyword=result["sample_keyword"],
+        sample_city=result["sample_city"],
+        expected_category=result["expected_category"],
+        category_matched=result["category_matched"],
         amap_name=result["amap_name"],
         amap_address=result["amap_address"],
         amap_poi_type=result["amap_poi_type"],
+        amap_poi_typecode=result["amap_poi_typecode"],
         amap_poi_id=result["amap_poi_id"],
+        amap_city=result["amap_city"],
+        amap_adname=result["amap_adname"],
+        amap_tel=result["amap_tel"],
+        amap_business_area=result["amap_business_area"],
+        rating=result["rating"],
+        per_capita=result["per_capita"],
+        tags=result["tags"],
+        signature_dishes=result["signature_dishes"],
+        photos_count=result["photos_count"],
+        first_photo_url=result["first_photo_url"],
         amap_category=result["amap_category"],
         amap_category_reason=result["amap_category_reason"],
         llm_category=result["llm_category"],

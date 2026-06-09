@@ -30,7 +30,7 @@ import { useAppStore } from "@/lib/store";
 import { Avatar } from "@/components/avatar";
 import { AvatarPicker } from "@/components/avatar-picker";
 import { formatAbsolute, fromLocalInputValue, toLocalInputValue } from "@/lib/format";
-import { AVATAR_PRESETS, type AdminAIConfigOut, type AdminAIConnectionTestOut, type AIProtocol, type PairCreated, type PairOut } from "@/lib/types";
+import { AVATAR_PRESETS, type AdminAIConfigOut, type AdminAIConnectionTestOut, type AIProtocol, type PairCreated, type PairOut, type TodoCategory } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
 function toDateInputValue(date: Date): string {
@@ -475,6 +475,19 @@ export default function AdminPage() {
   );
 }
 
+const CATEGORY_LABELS: Record<TodoCategory, string> = {
+  food: "吃喝",
+  play: "玩乐",
+  stay: "住宿",
+};
+
+const ADMIN_TEST_SAMPLES: Array<{ key: string; label: string; keyword: string; city: string; expected: TodoCategory | null }> = [
+  { key: "food", label: "江西小炒", keyword: "江西小炒(西溪北苑东区店)", city: "杭州", expected: "food" },
+  { key: "play", label: "浩波台球", keyword: "浩波台球俱乐部(汇银中心店)", city: "杭州", expected: "play" },
+  { key: "stay", label: "海友酒店", keyword: "海友酒店(杭州阿里巴巴全球总部店)", city: "杭州", expected: "stay" },
+  { key: "custom", label: "自定义", keyword: "", city: "", expected: null },
+];
+
 function AIConfigPanel() {
   const [config, setConfig] = useState<AdminAIConfigOut | null>(null);
   const [protocol, setProtocol] = useState<AIProtocol>("openai");
@@ -490,6 +503,9 @@ function AIConfigPanel() {
   const [modelMessage, setModelMessage] = useState("");
   const [testResult, setTestResult] = useState<AdminAIConnectionTestOut | null>(null);
   const [testError, setTestError] = useState("");
+  const [testSampleKey, setTestSampleKey] = useState("food");
+  const [customKeyword, setCustomKeyword] = useState("");
+  const [customCity, setCustomCity] = useState("");
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
@@ -522,6 +538,10 @@ function AIConfigPanel() {
   }, [loadConfig]);
 
   const activeBaseUrl = protocol === "openai" ? openaiBaseUrl : anthropicBaseUrl;
+  const activeSample = ADMIN_TEST_SAMPLES.find((sample) => sample.key === testSampleKey) ?? ADMIN_TEST_SAMPLES[0];
+  const testKeyword = activeSample.key === "custom" ? customKeyword.trim() : activeSample.keyword;
+  const testCity = activeSample.key === "custom" ? customCity.trim() : activeSample.city;
+  const testExpected = activeSample.key === "custom" ? null : activeSample.expected;
 
   function configPayload(model = selectedModel) {
     return {
@@ -572,7 +592,11 @@ function AIConfigPanel() {
     setTesting(true);
     try {
       await saveConfig(selectedModel, false);
-      const result = await api.testAdminAIConfig();
+      const result = await api.testAdminAIConfig({
+        keyword: testKeyword || null,
+        city: testCity || null,
+        expected_category: testExpected,
+      });
       setTestResult(result);
       setTestError("");
       if (showToast) toast.success(result.message || "连接测试通过");
@@ -591,7 +615,11 @@ function AIConfigPanel() {
     if (!model) return;
     try {
       await saveConfig(model, false);
-      const result = await api.testAdminAIConfig();
+      const result = await api.testAdminAIConfig({
+        keyword: testKeyword || null,
+        city: testCity || null,
+        expected_category: testExpected,
+      });
       setTestResult(result);
       setTestError("");
       toast.success(result.message || "模型已选择，连接测试通过");
@@ -643,27 +671,83 @@ function AIConfigPanel() {
           <span>{testResult ? `已返回 ${testResult.sample_category || "未知"}` : testError ? "测试失败" : "尚未测试"}</span>
         </div>
         <p className="mt-2 leading-relaxed">
-          {testError || testResult?.message || "保存配置后点击测试连接，会先用高德 MCP 获取样例餐厅信息，以 POI 类型完成主判断，并把当前模型补全作为诊断展示。"}
+          {testError || testResult?.message || "保存配置后点击测试连接，会先用高德 MCP 获取样例 POI，以高德类型完成主判断，并把当前模型补全作为诊断展示。"}
         </p>
+        <div className="mt-3 grid gap-3 rounded-xl bg-surface/60 p-3">
+          <div className="flex flex-wrap gap-2">
+            {ADMIN_TEST_SAMPLES.map((sample) => (
+              <button
+                key={sample.key}
+                type="button"
+                onClick={() => {
+                  setTestSampleKey(sample.key);
+                  setTestResult(null);
+                  setTestError("");
+                }}
+                className={cn(
+                  "min-h-9 rounded-xl px-3 font-sc text-xs transition focus-ring",
+                  testSampleKey === sample.key ? "bg-rose/12 text-rose-deep hairline" : "bg-surface-raised/80 text-ink-soft hover:bg-peach/14",
+                )}
+              >
+                {sample.label}
+              </button>
+            ))}
+          </div>
+          {activeSample.key === "custom" ? (
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_12rem]">
+              <input
+                className="input-field min-h-10 rounded-xl text-xs"
+                value={customKeyword}
+                onChange={(event) => setCustomKeyword(event.target.value)}
+                placeholder="输入要测试的 POI 名称"
+                maxLength={100}
+              />
+              <input
+                className="input-field min-h-10 rounded-xl text-xs"
+                value={customCity}
+                onChange={(event) => setCustomCity(event.target.value)}
+                placeholder="城市，可选"
+                maxLength={100}
+              />
+            </div>
+          ) : (
+            <div className="grid gap-1 font-sc text-xs text-ink-muted sm:grid-cols-3">
+              <span>样例：{activeSample.keyword}</span>
+              <span>城市：{activeSample.city}</span>
+              <span>期望：{activeSample.expected ? CATEGORY_LABELS[activeSample.expected] : "仅展示判断"}</span>
+            </div>
+          )}
+        </div>
         {testResult && (
           <div className="mt-3 grid gap-2 text-ink-soft sm:grid-cols-3">
             <div className="rounded-xl bg-surface/70 p-3">
               <p className="font-medium text-ink">1. 高德 MCP 取证</p>
               <p className="mt-1">样例：{testResult.sample_keyword || "江西小炒(西溪北苑东区店)"}</p>
+              {testResult.sample_city && <p className="mt-1">城市：{testResult.sample_city}</p>}
               <p className="mt-1">POI：{testResult.amap_name || "未返回名称"}</p>
               <p className="mt-1">地址：{testResult.amap_address || "未返回地址"}</p>
               <p className="mt-1">类型：{testResult.amap_poi_type || "未返回类型"}</p>
+              <p className="mt-1">Typecode：{testResult.amap_poi_typecode || "未返回"}</p>
+              <p className="mt-1">区域：{[testResult.amap_city, testResult.amap_adname].filter(Boolean).join(" / ") || "未返回"}</p>
             </div>
             <div className="rounded-xl bg-surface/70 p-3">
               <p className="font-medium text-ink">2. 高德类型判断</p>
-              <p className="mt-1">分类：{testResult.amap_category || "未知"}</p>
+              <p className="mt-1">分类：{testResult.amap_category ? CATEGORY_LABELS[testResult.amap_category] : "未知"}</p>
+              <p className="mt-1">期望：{testResult.expected_category ? CATEGORY_LABELS[testResult.expected_category] : "自定义不校验"}</p>
+              <p className="mt-1">匹配：{testResult.category_matched === false ? "否" : "是"}</p>
               <p className="mt-1">{testResult.amap_category_reason || "已根据 POI 类型判断。"}</p>
               <p className="mt-1">POI ID：{testResult.amap_poi_id || "未返回"}</p>
+              <p className="mt-1">电话：{testResult.amap_tel || "未返回"}</p>
+              <p className="mt-1">商圈：{testResult.amap_business_area || "未返回"}</p>
             </div>
             <div className="rounded-xl bg-surface/70 p-3">
               <p className="font-medium text-ink">3. LLM 补全诊断</p>
               <p className="mt-1">状态：{testResult.llm_status === "ok" ? "通过" : "未给最终文本"}</p>
-              <p className="mt-1">返回：{testResult.llm_category || "无"}</p>
+              <p className="mt-1">返回：{testResult.llm_category ? CATEGORY_LABELS[testResult.llm_category] : "无"}</p>
+              <p className="mt-1">评分：{testResult.rating ?? "未返回"}</p>
+              <p className="mt-1">人均：{testResult.per_capita != null ? `${testResult.per_capita} 元` : "未返回"}</p>
+              <p className="mt-1">特色：{testResult.signature_dishes || testResult.tags?.join("、") || "未返回"}</p>
+              <p className="mt-1">照片：{testResult.photos_count || 0} 张</p>
               <p className="mt-1">{testResult.llm_message || "LLM 诊断未返回信息。"}</p>
               <p className="mt-1 line-clamp-3">{testResult.evidence_note || "已将高德 POI 信息作为补全输入。"}</p>
             </div>
@@ -777,7 +861,7 @@ function AIConfigPanel() {
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             保存配置
           </button>
-          <button type="button" onClick={() => void testConnection()} disabled={testing} className="btn-ghost min-h-11 rounded-2xl px-4 font-sc text-sm inline-flex items-center gap-2 focus-ring">
+          <button type="button" onClick={() => void testConnection()} disabled={testing || !testKeyword} className="btn-ghost min-h-11 rounded-2xl px-4 font-sc text-sm inline-flex items-center gap-2 focus-ring">
             {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             测试连接
           </button>

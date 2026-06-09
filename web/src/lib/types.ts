@@ -1,7 +1,7 @@
-// Shared TypeScript contracts for API payloads, editable profile state, events, quote libraries, todo boards, admin saved-model AMap-grounded AI tests, cycles, and reminders.
+// Shared TypeScript contracts for API payloads, editable profile state, events, quote libraries, food/play/stay todo boards, admin saved-model AMap-grounded AI tests, cycles, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
-export type TodoCategory = "food" | "play";
+export type TodoCategory = "food" | "play" | "stay";
 export type TodoParseStatus = "pending" | "resolved" | "failed";
 export type AIProtocol = "openai" | "anthropic";
 
@@ -295,9 +295,18 @@ export interface TodoRestaurantCandidate {
   address: string | null;
   location: string | null;
   city: string | null;
+  adname: string | null;
+  pname: string | null;
   poi_type: string | null;
+  poi_typecode: string | null;
   tel: string | null;
   business_area: string | null;
+  rating: number | null;
+  per_capita: number | null;
+  tags: string[];
+  signature_dishes: string | null;
+  photos_count: number;
+  first_photo_url: string | null;
   raw: Record<string, unknown> | null;
 }
 
@@ -352,10 +361,24 @@ export interface AdminAIConnectionTestOut {
   message: string;
   sample_category: TodoCategory | null;
   sample_keyword: string | null;
+  sample_city: string | null;
+  expected_category: TodoCategory | null;
+  category_matched: boolean | null;
   amap_name: string | null;
   amap_address: string | null;
   amap_poi_type: string | null;
+  amap_poi_typecode: string | null;
   amap_poi_id: string | null;
+  amap_city: string | null;
+  amap_adname: string | null;
+  amap_tel: string | null;
+  amap_business_area: string | null;
+  rating: number | null;
+  per_capita: number | null;
+  tags: string[];
+  signature_dishes: string | null;
+  photos_count: number;
+  first_photo_url: string | null;
   amap_category: TodoCategory | null;
   amap_category_reason: string | null;
   llm_category: TodoCategory | null;

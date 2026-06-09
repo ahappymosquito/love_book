@@ -1,6 +1,6 @@
 "use client";
 
-// Microsoft To Do inspired pair-shared todo workspace with detail-only scheduling, two-comment completion, one-click open-item AI category refresh, comments with authors, and folded photos.
+// Microsoft To Do inspired pair-shared food/play/stay todo workspace with detail-only scheduling, two-comment completion, one-click open-item AI category refresh, comments with authors, and folded photos.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -18,6 +18,7 @@ import {
   Music2,
   Plus,
   RefreshCw,
+  BedDouble,
   Search,
   Shuffle,
   Star,
@@ -43,7 +44,7 @@ import type {
   TodoScheduleOut,
 } from "@/lib/types";
 
-type TodoView = "all" | "important" | "planned" | "food" | "play" | "lottery";
+type TodoView = "all" | "important" | "planned" | "food" | "play" | "stay" | "lottery";
 
 const VIEW_META: Record<TodoView, { title: string; subtitle: string; icon: ReactNode }> = {
   all: { title: "任务", subtitle: "所有还没完成的小安排", icon: <ListTodo className="h-4 w-4" /> },
@@ -51,7 +52,14 @@ const VIEW_META: Record<TodoView, { title: string; subtitle: string; icon: React
   planned: { title: "计划内", subtitle: "已经设置要完成时间的事项", icon: <CalendarDays className="h-4 w-4" /> },
   food: { title: "吃饭", subtitle: "想尝试的餐厅和打卡记录", icon: <Utensils className="h-4 w-4" /> },
   play: { title: "玩乐", subtitle: "一起去做的快乐清单", icon: <Music2 className="h-4 w-4" /> },
+  stay: { title: "住宿", subtitle: "酒店、民宿和过夜安排", icon: <BedDouble className="h-4 w-4" /> },
   lottery: { title: "随机抽奖", subtitle: "不知道吃什么时交给运气", icon: <Shuffle className="h-4 w-4" /> },
+};
+
+const TODO_CATEGORY_LABELS: Record<TodoCategory, string> = {
+  food: "吃喝",
+  play: "玩乐",
+  stay: "住宿",
 };
 
 function toDateOnly(date: Date): string {
@@ -267,6 +275,7 @@ function filterItems(
       if (view === "planned") return scheduledIds.has(item.id);
       if (view === "food") return item.category === "food";
       if (view === "play") return item.category === "play";
+      if (view === "stay") return item.category === "stay";
       return true;
     })
     .filter((item) => {
@@ -304,6 +313,7 @@ function getViewCounts(items: TodoItemOut[], schedules: TodoScheduleOut[]): Reco
     planned: openItems.filter((item) => scheduledIds.has(item.id)).length,
     food: openItems.filter((item) => item.category === "food").length,
     play: openItems.filter((item) => item.category === "play").length,
+    stay: openItems.filter((item) => item.category === "stay").length,
     lottery: openItems.filter((item) => item.category === "food").length,
   };
 }
@@ -563,7 +573,7 @@ function TaskRow({
         <button type="button" onClick={onOpen} className="min-w-0 flex-1 rounded-xl text-left focus-ring">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className={cn("font-display text-base font-semibold leading-tight text-ink", item.checked_in && "text-ink-muted line-through")}>{item.title}</h3>
-            <span className="rounded-full bg-peach/16 px-2 py-0.5 font-sc text-[11px] text-ink-muted">{item.category === "food" ? "吃喝" : "玩乐"}</span>
+            <span className="rounded-full bg-peach/16 px-2 py-0.5 font-sc text-[11px] text-ink-muted">{TODO_CATEGORY_LABELS[item.category]}</span>
             {restaurant && <StatusPill status={restaurant.parse_status} />}
             {item.checked_in && <span className="rounded-full bg-sage/18 px-2 py-0.5 font-sc text-[11px] text-ink-soft">已打卡</span>}
           </div>
@@ -605,7 +615,7 @@ function QuickAddBar({
   onFoodIntent: () => void;
 }) {
   const [title, setTitle] = useState("");
-  const category: TodoCategory = view === "food" ? "food" : "play";
+  const category: TodoCategory = view === "food" ? "food" : view === "stay" ? "stay" : "play";
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -616,9 +626,9 @@ function QuickAddBar({
       onFoodIntent();
       return;
     }
-    const item = await api.createTodoItem({ category: "play", title: next });
+    const item = await api.createTodoItem({ category, title: next });
     setTitle("");
-    toast.success("已添加到玩乐清单");
+    toast.success(`已添加到${TODO_CATEGORY_LABELS[category]}清单`);
     await onCreated(item);
   }
 
@@ -629,7 +639,7 @@ function QuickAddBar({
         <input
           value={title}
           onChange={(event) => setTitle(event.target.value)}
-          placeholder={view === "food" ? "搜索餐厅后添加" : "添加任务"}
+          placeholder={view === "food" ? "搜索餐厅后添加" : view === "stay" ? "添加酒店或住宿安排" : "添加任务"}
           maxLength={200}
           className="min-w-0 flex-1 bg-transparent font-sc text-sm outline-none placeholder:text-ink-muted/82"
         />

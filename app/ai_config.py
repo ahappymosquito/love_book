@@ -1,4 +1,4 @@
-"""Admin AI configuration helpers for editable endpoints, saved model lists, AMap-grounded category tests, and LLM diagnostics."""
+"""Admin AI configuration helpers for editable endpoints, saved model lists, AMap-grounded food/play/stay tests, and LLM diagnostics."""
 
 from __future__ import annotations
 
@@ -11,16 +11,21 @@ from app.models import AIProtocol, AISetting, User
 
 CATEGORY_SYSTEM_PROMPT = (
     "Classify this couple todo item into exactly one category. "
-    "Return only one token: food or play. "
+    "Return only one token: food, play, or stay. "
     "food means eating, drinking, restaurants, cafes, snacks, meals, stores related to food. "
-    "play means entertainment, activity, travel, shopping, games, movies, sports, chores, or anything else."
+    "play means entertainment, activities, shopping, games, movies, sports, billiards, karaoke, or leisure places. "
+    "stay means hotels, inns, guesthouses, homestays, lodging, or overnight accommodation."
 )
 
 CATEGORY_MAX_TOKENS = 64
 CATEGORY_RETRY_MAX_TOKENS = 256
 ADMIN_TEST_RESTAURANT_KEYWORD = "江西小炒(西溪北苑东区店)"
 AMAP_FOOD_TYPE_PREFIX = "05"
-AMAP_FOOD_TYPE_WORDS = ("餐饮", "美食", "小吃", "中餐", "饭店", "餐厅", "火锅", "炒菜", "菜馆")
+AMAP_PLAY_TYPE_PREFIXES = ("08", "09")
+AMAP_STAY_TYPE_PREFIX = "10"
+AMAP_FOOD_TYPE_WORDS = ("餐饮", "美食", "小吃", "中餐", "饭店", "餐厅", "火锅", "炒菜", "菜馆", "咖啡", "茶饮")
+AMAP_PLAY_TYPE_WORDS = ("台球", "俱乐部", "娱乐", "休闲", "运动", "健身", "KTV", "影院", "电影院", "游乐", "棋牌")
+AMAP_STAY_TYPE_WORDS = ("酒店", "宾馆", "住宿", "旅馆", "民宿", "客栈", "公寓")
 
 
 def preview_secret(value: str) -> str:
@@ -198,6 +203,8 @@ def normalize_category_response(text: str, response_hint: str = "") -> str:
         return "food"
     if "play" in normalized:
         return "play"
+    if "stay" in normalized:
+        return "stay"
     if not normalized:
         hint = f"; {response_hint}" if response_hint else ""
         raise RuntimeError(f"LLM returned empty category text{hint}")
@@ -280,25 +287,34 @@ def complete_todo_category(db: Session, title: str, note: str | None = None) -> 
     return normalize_category_response(text, hint)
 
 
-def _restaurant_evidence_note(candidate: dict) -> str:
-    name = candidate.get("name") or ADMIN_TEST_RESTAURANT_KEYWORD
+def _amap_evidence_note(candidate: dict, keyword: str) -> str:
+    name = candidate.get("name") or keyword
     address = candidate.get("address") or ""
     poi_type = candidate.get("poi_type") or ""
+    typecode = candidate.get("poi_typecode") or ""
     city = candidate.get("city") or ""
+    per_capita = candidate.get("per_capita")
+    tags = ", ".join(candidate.get("tags") or [])
     return (
         "AMap MCP returned a real POI for this todo candidate. "
-        f"name={name}; address={address}; city={city}; poi_type={poi_type}. "
+        f"name={name}; address={address}; city={city}; poi_type={poi_type}; typecode={typecode}; "
+        f"per_capita={per_capita if per_capita is not None else ''}; tags={tags}. "
         "Use the AMap evidence instead of guessing from the title."
     )
 
 
 def classify_amap_poi(candidate: dict) -> tuple[str | None, str]:
     poi_type = str(candidate.get("poi_type") or "")
+    typecode = str(candidate.get("poi_typecode") or "")
     name = str(candidate.get("name") or "")
-    combined = f"{poi_type} {name}"
-    if poi_type.startswith(AMAP_FOOD_TYPE_PREFIX) or any(word in combined for word in AMAP_FOOD_TYPE_WORDS):
-        return "food", f"AMap POI type/name indicates food service: {poi_type or name}"
-    return None, f"AMap POI type is not recognized as food service: {poi_type or 'empty'}"
+    combined = f"{poi_type} {typecode} {name}"
+    if typecode.startswith(AMAP_FOOD_TYPE_PREFIX) or poi_type.startswith(AMAP_FOOD_TYPE_PREFIX) or any(word in combined for word in AMAP_FOOD_TYPE_WORDS):
+        return "food", f"AMap POI type/name indicates food service: {typecode or poi_type or name}"
+    if typecode.startswith(AMAP_STAY_TYPE_PREFIX) or poi_type.startswith(AMAP_STAY_TYPE_PREFIX) or any(word in combined for word in AMAP_STAY_TYPE_WORDS):
+        return "stay", f"AMap POI type/name indicates lodging service: {typecode or poi_type or name}"
+    if typecode.startswith(AMAP_PLAY_TYPE_PREFIXES) or poi_type.startswith(AMAP_PLAY_TYPE_PREFIXES) or any(word in combined for word in AMAP_PLAY_TYPE_WORDS):
+        return "play", f"AMap POI type/name indicates leisure or activity service: {typecode or poi_type or name}"
+    return None, f"AMap POI type is not recognized as food/play/stay: {typecode or poi_type or 'empty'}"
 
 
 def _llm_diagnostic(db: Session, title: str, note: str) -> tuple[str | None, str, str]:
@@ -309,27 +325,52 @@ def _llm_diagnostic(db: Session, title: str, note: str) -> tuple[str | None, str
     return category, "ok", f"LLM returned {category}"
 
 
-def test_category_completion(db: Session) -> dict[str, str | None]:
+def test_category_completion(
+    db: Session,
+    keyword: str = ADMIN_TEST_RESTAURANT_KEYWORD,
+    city: str | None = None,
+    expected_category: str | None = "food",
+) -> dict[str, object]:
+    keyword = keyword.strip() or ADMIN_TEST_RESTAURANT_KEYWORD
+    city = city.strip() if city else None
     candidates = amap_mcp.search_restaurants(
-        ADMIN_TEST_RESTAURANT_KEYWORD,
+        keyword,
+        city=city,
         amap_key=effective_amap_key(db),
     )
     if not candidates:
-        raise RuntimeError(f"AMap MCP returned no restaurant candidate for {ADMIN_TEST_RESTAURANT_KEYWORD!r}")
+        raise RuntimeError(f"AMap MCP returned no POI candidate for {keyword!r}")
     candidate = candidates[0]
-    title = str(candidate.get("name") or ADMIN_TEST_RESTAURANT_KEYWORD)
-    note = _restaurant_evidence_note(candidate)
+    title = str(candidate.get("name") or keyword)
+    note = _amap_evidence_note(candidate, keyword)
     amap_category, amap_reason = classify_amap_poi(candidate)
-    if amap_category != "food":
+    if amap_category is None:
         raise RuntimeError(amap_reason)
+    category_matched = expected_category is None or amap_category == expected_category
+    if not category_matched:
+        raise RuntimeError(f"{amap_reason}; expected {expected_category}, got {amap_category}")
     llm_category, llm_status, llm_message = _llm_diagnostic(db, title, note)
     return {
         "category": amap_category,
-        "sample_keyword": ADMIN_TEST_RESTAURANT_KEYWORD,
+        "sample_keyword": keyword,
+        "sample_city": city,
+        "expected_category": expected_category,
+        "category_matched": category_matched,
         "amap_name": str(candidate.get("name") or ""),
         "amap_address": str(candidate.get("address") or ""),
         "amap_poi_type": str(candidate.get("poi_type") or ""),
+        "amap_poi_typecode": str(candidate.get("poi_typecode") or ""),
         "amap_poi_id": str(candidate.get("amap_poi_id") or ""),
+        "amap_city": str(candidate.get("city") or ""),
+        "amap_adname": str(candidate.get("adname") or ""),
+        "amap_tel": str(candidate.get("tel") or ""),
+        "amap_business_area": str(candidate.get("business_area") or ""),
+        "rating": candidate.get("rating"),
+        "per_capita": candidate.get("per_capita"),
+        "tags": candidate.get("tags") or [],
+        "signature_dishes": candidate.get("signature_dishes"),
+        "photos_count": candidate.get("photos_count") or 0,
+        "first_photo_url": candidate.get("first_photo_url"),
         "amap_category": amap_category,
         "amap_category_reason": amap_reason,
         "llm_category": llm_category,

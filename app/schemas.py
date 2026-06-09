@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, editable profiles, admin saved-model AMap-grounded AI tests, events, media, quotes, cycles, and todo APIs."""
+"""Pydantic schemas for auth, editable profiles, admin saved-model AMap-grounded food/play/stay AI tests, events, media, quotes, cycles, and todo APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -415,9 +415,18 @@ class TodoRestaurantCandidate(APIModel):
     address: str | None = None
     location: str | None = None
     city: str | None = None
+    adname: str | None = None
+    pname: str | None = None
     poi_type: str | None = None
+    poi_typecode: str | None = None
     tel: str | None = None
     business_area: str | None = None
+    rating: float | None = None
+    per_capita: int | None = None
+    tags: list[str] = Field(default_factory=list)
+    signature_dishes: str | None = None
+    photos_count: int = 0
+    first_photo_url: str | None = None
     raw: dict | None = None
 
 
@@ -504,15 +513,43 @@ class AdminAIModelListOut(APIModel):
     models: list[str]
 
 
+class AdminAIConnectionTestIn(APIModel):
+    keyword: str | None = Field(default=None, max_length=100)
+    city: str | None = Field(default=None, max_length=100)
+    expected_category: TodoCategory | None = None
+
+    @field_validator("keyword", "city")
+    @classmethod
+    def strip_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+
 class AdminAIConnectionTestOut(APIModel):
     ok: bool
     message: str
     sample_category: TodoCategory | None = None
     sample_keyword: str | None = None
+    sample_city: str | None = None
+    expected_category: TodoCategory | None = None
+    category_matched: bool | None = None
     amap_name: str | None = None
     amap_address: str | None = None
     amap_poi_type: str | None = None
+    amap_poi_typecode: str | None = None
     amap_poi_id: str | None = None
+    amap_city: str | None = None
+    amap_adname: str | None = None
+    amap_tel: str | None = None
+    amap_business_area: str | None = None
+    rating: float | None = None
+    per_capita: int | None = None
+    tags: list[str] = Field(default_factory=list)
+    signature_dishes: str | None = None
+    photos_count: int = 0
+    first_photo_url: str | None = None
     amap_category: TodoCategory | None = None
     amap_category_reason: str | None = None
     llm_category: TodoCategory | None = None

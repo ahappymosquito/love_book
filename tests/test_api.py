@@ -1,4 +1,4 @@
-"""API regression tests for auth, profiles, media, todo, AMap MCP command resolution, AMap-grounded AI tests, and fallback data."""
+"""API regression tests for auth, profiles, media, food/play/stay todo, AMap MCP POI normalization, AMap-grounded AI tests, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -1381,13 +1381,27 @@ def test_admin_ai_config_edits_keys_lists_models_and_saves_model(client: TestCli
     monkeypatch.setattr("app.api.routes.admin.list_models", lambda db, protocol: ["mimo-v2.5-pro", "other-model"])
     monkeypatch.setattr(
         "app.api.routes.admin.test_category_completion",
-        lambda db: {
+        lambda db, keyword="江西小炒(西溪北苑东区店)", city=None, expected_category="food": {
             "category": "food",
             "sample_keyword": "江西小炒(西溪北苑东区店)",
+            "sample_city": city,
+            "expected_category": expected_category,
+            "category_matched": True,
             "amap_name": "江西小炒(西溪北苑东区店)",
             "amap_address": "西溪北苑东区",
             "amap_poi_type": "050000",
+            "amap_poi_typecode": "050000",
             "amap_poi_id": "B001",
+            "amap_city": "杭州市",
+            "amap_adname": "余杭区",
+            "amap_tel": "0571-00000000",
+            "amap_business_area": "西溪",
+            "rating": 4.6,
+            "per_capita": 58,
+            "tags": ["江西菜", "小炒"],
+            "signature_dishes": "江西菜, 小炒",
+            "photos_count": 2,
+            "first_photo_url": "https://example.com/a.jpg",
             "amap_category": "food",
             "amap_category_reason": "AMap POI type/name indicates food service: 050000",
             "llm_category": None,
@@ -1432,6 +1446,10 @@ def test_admin_ai_config_edits_keys_lists_models_and_saves_model(client: TestCli
     assert tested.json()["llm_status"] == "failed"
     assert tested.json()["sample_keyword"] == "江西小炒(西溪北苑东区店)"
     assert tested.json()["amap_name"] == "江西小炒(西溪北苑东区店)"
+    assert tested.json()["expected_category"] == "food"
+    assert tested.json()["category_matched"] is True
+    assert tested.json()["per_capita"] == 58
+    assert tested.json()["tags"] == ["江西菜", "小炒"]
     reloaded = client.get("/admin/ai-config", headers={"X-Admin-Key": "test-admin-key"})
     assert reloaded.json()["saved_models"] == ["mimo-v2.5-pro", "other-model"]
 
@@ -1441,15 +1459,15 @@ def test_admin_ai_connection_test_rejects_missing_amap_evidence(client: TestClie
     settings.llm_api_key = "secret-token-1234"
     settings.llm_model = "mimo-v2.5-pro"
 
-    def missing_amap(db: Session) -> dict:
-        raise RuntimeError("AMap MCP returned no restaurant candidate")
+    def missing_amap(db: Session, keyword="江西小炒(西溪北苑东区店)", city=None, expected_category="food") -> dict:
+        raise RuntimeError("AMap MCP returned no POI candidate")
 
     monkeypatch.setattr("app.api.routes.admin.test_category_completion", missing_amap)
 
     tested = client.post("/admin/ai-config/test", headers={"X-Admin-Key": "test-admin-key"})
 
     assert tested.status_code == 502
-    assert "AMap MCP returned no restaurant candidate" in tested.json()["detail"]
+    assert "AMap MCP returned no POI candidate" in tested.json()["detail"]
 
 
 def test_admin_ai_model_list_persists_first_model_when_none_selected(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1465,6 +1483,144 @@ def test_admin_ai_model_list_persists_first_model_when_none_selected(client: Tes
     assert models.json()["models"] == ["first-model", "second-model"]
     assert config.json()["saved_models"] == ["first-model", "second-model"]
     assert config.json()["selected_model"] == "first-model"
+
+
+def test_admin_ai_connection_test_accepts_custom_keyword(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_test(db: Session, keyword: str, city: str | None = None, expected_category: str | None = None) -> dict:
+        captured.update({"keyword": keyword, "city": city, "expected_category": expected_category})
+        return {
+            "category": "play",
+            "sample_keyword": keyword,
+            "sample_city": city,
+            "expected_category": expected_category,
+            "category_matched": True,
+            "amap_name": "浩波台球俱乐部(汇银中心店)",
+            "amap_address": "汇银中心",
+            "amap_poi_type": "体育休闲服务;运动场馆;台球厅",
+            "amap_poi_typecode": "080304",
+            "amap_poi_id": "B002",
+            "amap_city": "杭州市",
+            "amap_adname": "余杭区",
+            "amap_tel": "",
+            "amap_business_area": "未来科技城",
+            "rating": 4.7,
+            "per_capita": 69,
+            "tags": ["台球", "桌球"],
+            "signature_dishes": "台球, 桌球",
+            "photos_count": 1,
+            "first_photo_url": None,
+            "amap_category": "play",
+            "amap_category_reason": "AMap POI type/name indicates leisure or activity service: 080304",
+            "llm_category": "play",
+            "llm_status": "ok",
+            "llm_message": "LLM returned play",
+            "evidence_note": "AMap evidence",
+        }
+
+    monkeypatch.setattr("app.api.routes.admin.test_category_completion", fake_test)
+
+    tested = client.post(
+        "/admin/ai-config/test",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={"keyword": "浩波台球俱乐部(汇银中心店)", "city": "杭州"},
+    )
+
+    assert tested.status_code == 200
+    assert captured == {"keyword": "浩波台球俱乐部(汇银中心店)", "city": "杭州", "expected_category": None}
+    assert tested.json()["sample_category"] == "play"
+    assert tested.json()["expected_category"] is None
+    assert tested.json()["amap_poi_typecode"] == "080304"
+
+
+def test_admin_ai_completion_classifies_default_food_play_and_stay_samples(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app import ai_config
+
+    pois = {
+        "江西小炒(西溪北苑东区店)": {
+            "amap_poi_id": "B001",
+            "name": "江西小炒(西溪北苑东区店)",
+            "address": "西溪北苑东区",
+            "city": "杭州市",
+            "poi_type": "餐饮服务;中餐厅",
+            "poi_typecode": "050100",
+            "rating": 4.6,
+            "per_capita": 58,
+            "tags": ["江西菜", "小炒"],
+            "signature_dishes": "江西菜, 小炒",
+            "photos_count": 2,
+        },
+        "浩波台球俱乐部(汇银中心店)": {
+            "amap_poi_id": "B002",
+            "name": "浩波台球俱乐部(汇银中心店)",
+            "address": "汇银中心",
+            "city": "杭州市",
+            "poi_type": "体育休闲服务;运动场馆;台球厅",
+            "poi_typecode": "080304",
+        },
+        "海友酒店(杭州阿里巴巴全球总部店)": {
+            "amap_poi_id": "B003",
+            "name": "海友酒店(杭州阿里巴巴全球总部店)",
+            "address": "阿里巴巴全球总部附近",
+            "city": "杭州市",
+            "poi_type": "住宿服务;宾馆酒店",
+            "poi_typecode": "100100",
+        },
+    }
+
+    def fake_search(keyword: str, city=None, amap_key=None) -> list[dict]:
+        return [pois[keyword]]
+
+    monkeypatch.setattr(ai_config.amap_mcp, "search_restaurants", fake_search)
+    monkeypatch.setattr(ai_config, "complete_todo_category", lambda db, title, note=None: "play")
+
+    food = ai_config.test_category_completion(db_session, "江西小炒(西溪北苑东区店)", city="杭州", expected_category="food")
+    play = ai_config.test_category_completion(db_session, "浩波台球俱乐部(汇银中心店)", city="杭州", expected_category="play")
+    stay = ai_config.test_category_completion(db_session, "海友酒店(杭州阿里巴巴全球总部店)", city="杭州", expected_category="stay")
+
+    assert food["category"] == "food"
+    assert food["per_capita"] == 58
+    assert food["tags"] == ["江西菜", "小炒"]
+    assert play["category"] == "play"
+    assert stay["category"] == "stay"
+
+
+def test_amap_mcp_normalizes_richer_poi_fields() -> None:
+    from app import amap_mcp
+
+    pois = amap_mcp._pois_from_payload(
+        {
+            "pois": [
+                {
+                    "id": "B001",
+                    "name": "江西小炒(西溪北苑东区店)",
+                    "address": "西溪北苑东区",
+                    "cityname": "杭州市",
+                    "adname": "余杭区",
+                    "pname": "浙江省",
+                    "type": "餐饮服务;中餐厅",
+                    "typecode": "050100",
+                    "tel": "0571-00000000",
+                    "businessarea": "西溪",
+                    "biz_ext": {"rating": "4.6", "cost": "58"},
+                    "tag": "江西菜;小炒",
+                    "photos": [{"url": "https://example.com/a.jpg"}],
+                }
+            ]
+        }
+    )
+
+    assert pois[0]["poi_typecode"] == "050100"
+    assert pois[0]["adname"] == "余杭区"
+    assert pois[0]["rating"] == 4.6
+    assert pois[0]["per_capita"] == 58
+    assert pois[0]["tags"] == ["江西菜", "小炒"]
+    assert pois[0]["photos_count"] == 1
+    assert pois[0]["first_photo_url"] == "https://example.com/a.jpg"
 
 
 def test_llm_category_completion_uses_openai_chat_response(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:

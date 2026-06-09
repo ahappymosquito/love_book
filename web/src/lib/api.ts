@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated profiles, private avatars, admin AMap-grounded AI tests, todo scheduling, events, quotes, cycles, reactions, and media.
+// Browser API client for authenticated profiles, private avatars, customizable admin AMap-grounded AI tests, todo scheduling, events, quotes, cycles, reactions, and media.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -221,9 +221,10 @@ export const api = {
       withAdmin: true,
       withAuth: false,
     }),
-  testAdminAIConfig: () =>
+  testAdminAIConfig: (payload?: { keyword?: string | null; city?: string | null; expected_category?: TodoCategory | null }) =>
     apiRequest<AdminAIConnectionTestOut>("/admin/ai-config/test", {
       method: "POST",
+      json: payload,
       withAdmin: true,
       withAuth: false,
     }),

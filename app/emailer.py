@@ -1,4 +1,4 @@
-"""SMTP email helpers for timeline notices, todo schedule notices, and locked-content privacy rules."""
+"""SMTP email helpers for timeline notices, food/play/stay todo schedule notices, and locked-content privacy rules."""
 from __future__ import annotations
 
 from html import escape
@@ -111,7 +111,7 @@ def notify_todo_schedule_created(
 ) -> None:
     if not recipient_email:
         return
-    label = "吃饭" if category == "food" else "玩乐"
+    label = {"food": "吃饭", "play": "玩乐", "stay": "住宿"}.get(category, "清单")
     link = _todo_link(scheduled_on, recipient_token)
     safe_recipient_name = escape(recipient_name)
     safe_actor_name = escape(actor_name)

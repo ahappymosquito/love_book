@@ -1,4 +1,4 @@
-"""AMap MCP subprocess client that launches npx and calls newline-framed restaurant tools with configurable keys."""
+"""AMap MCP subprocess client that launches npx and normalizes richer POI evidence for restaurants, activities, and stays."""
 
 from __future__ import annotations
 
@@ -45,17 +45,71 @@ def _extract_payload(result: Any) -> Any:
 
 def _normalize_poi(raw: dict[str, Any]) -> dict[str, Any]:
     city = raw.get("cityname") or raw.get("city") or raw.get("pname")
+    biz_ext = raw.get("biz_ext") if isinstance(raw.get("biz_ext"), dict) else {}
+    photos = raw.get("photos") if isinstance(raw.get("photos"), list) else []
+    tags = _split_tags(raw.get("tag") or raw.get("tags") or raw.get("recommend") or biz_ext.get("tag"))
     return {
         "amap_poi_id": raw.get("id") or raw.get("poi_id") or raw.get("amap_poi_id"),
         "name": str(raw.get("name") or "").strip(),
         "address": raw.get("address"),
         "location": raw.get("location"),
         "city": city,
+        "adname": raw.get("adname"),
+        "pname": raw.get("pname"),
         "poi_type": raw.get("type") or raw.get("typecode"),
+        "poi_typecode": raw.get("typecode"),
         "tel": raw.get("tel"),
         "business_area": raw.get("business_area") or raw.get("businessarea"),
+        "rating": _optional_float(biz_ext.get("rating") or raw.get("rating")),
+        "per_capita": _optional_int(biz_ext.get("cost") or raw.get("cost") or raw.get("per_capita")),
+        "tags": tags,
+        "signature_dishes": ", ".join(tags) if tags else None,
+        "photos_count": len(photos),
+        "first_photo_url": _first_photo_url(photos),
         "raw": raw,
     }
+
+
+def _split_tags(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if value is None:
+        return []
+    text = str(value).strip()
+    if not text:
+        return []
+    for separator in (";", "；", "|", "、", ",", "，"):
+        text = text.replace(separator, ",")
+    return [part.strip() for part in text.split(",") if part.strip()]
+
+
+def _optional_int(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(float(str(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_float(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _first_photo_url(photos: list[Any]) -> str | None:
+    for photo in photos:
+        if isinstance(photo, dict):
+            url = photo.get("url") or photo.get("title")
+            if url:
+                return str(url)
+        elif photo:
+            return str(photo)
+    return None
 
 
 def _pois_from_payload(payload: Any) -> list[dict[str, Any]]:

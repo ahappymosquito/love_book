@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair timelines, comment reactions, todo boards, media keys, quotes, AI settings with saved model lists, and login logs."""
+"""SQLAlchemy models for pair timelines, comment reactions, food/play/stay todo boards, media keys, quotes, AI settings with saved model lists, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -49,6 +49,7 @@ class CycleMood(StrEnum):
 class TodoCategory(StrEnum):
     food = "food"
     play = "play"
+    stay = "stay"
 
 
 class TodoParseStatus(StrEnum):
