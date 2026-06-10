@@ -1,4 +1,4 @@
-"""Database setup, sessions, default quote seeding, and lightweight migrations for media, todo category enums, AI model lists, and avatars."""
+"""Database setup, sessions, default quote seeding, and lightweight migrations for media, user locations, todo category enums, AI model lists, and avatars."""
 
 """Database engine, session factory, and lightweight migrations for evolving auth, media, AI, and rich AMap restaurant schemas."""
 
@@ -54,6 +54,35 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         "users",
         "email",
         {"default": "VARCHAR(255) NULL"},
+    ),
+    (
+        "users",
+        "location_label",
+        {"default": "VARCHAR(200) NULL"},
+    ),
+    (
+        "users",
+        "location_address",
+        {"default": "VARCHAR(500) NULL"},
+    ),
+    (
+        "users",
+        "location_city",
+        {"default": "VARCHAR(100) NULL"},
+    ),
+    (
+        "users",
+        "location_coords",
+        {"default": "VARCHAR(100) NULL"},
+    ),
+    (
+        "users",
+        "location_updated_at",
+        {
+            "default": "TIMESTAMP WITH TIME ZONE NULL",
+            "mysql": "DATETIME NULL",
+            "mariadb": "DATETIME NULL",
+        },
     ),
     (
         "users",

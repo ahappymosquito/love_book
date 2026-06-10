@@ -1,4 +1,4 @@
-"""AMap MCP subprocess client that launches npx and normalizes richer POI evidence for restaurants, activities, and stays."""
+"""AMap MCP subprocess client that launches npx and normalizes location, weather, and richer POI evidence for restaurants, activities, and stays."""
 
 from __future__ import annotations
 
@@ -56,6 +56,7 @@ def _normalize_poi(raw: dict[str, Any]) -> dict[str, Any]:
         "name": name,
         "address": raw.get("address"),
         "location": location,
+        "distance_m": _optional_int(raw.get("distance")),
         "city": city,
         "adname": raw.get("adname"),
         "pname": raw.get("pname"),
@@ -252,12 +253,11 @@ def search_restaurants(keyword: str, city: str | None = None, amap_key: str | No
     return _pois_from_payload(call_amap_tool("maps_text_search", args, amap_key=amap_key))
 
 
-def around_restaurants(
-    location: str,
-    radius_m: int,
-    keyword: str = "餐厅",
-    amap_key: str | None = None,
-) -> list[dict[str, Any]]:
+def search_pois(keyword: str, city: str | None = None, amap_key: str | None = None) -> list[dict[str, Any]]:
+    return search_restaurants(keyword, city=city, amap_key=amap_key)
+
+
+def search_pois_nearby(location: str, radius_m: int = 5000, keyword: str = "", amap_key: str | None = None) -> list[dict[str, Any]]:
     return _pois_from_payload(
         call_amap_tool(
             "maps_around_search",
@@ -265,6 +265,43 @@ def around_restaurants(
             amap_key=amap_key,
         )
     )
+
+
+def around_restaurants(
+    location: str,
+    radius_m: int,
+    keyword: str = "餐厅",
+    amap_key: str | None = None,
+) -> list[dict[str, Any]]:
+    return search_pois_nearby(location, radius_m=radius_m, keyword=keyword, amap_key=amap_key)
+
+
+def geocode_address(address: str, city: str | None = None, amap_key: str | None = None) -> dict[str, Any]:
+    args: dict[str, Any] = {"address": address}
+    if city:
+        args["city"] = city
+    payload = call_amap_tool("maps_geo", args, amap_key=amap_key)
+    rows = payload.get("return") if isinstance(payload, dict) else None
+    if not isinstance(rows, list) or not rows:
+        raise AmapMCPError("AMap geocoding returned no location")
+    first = rows[0]
+    if not isinstance(first, dict) or not first.get("location"):
+        raise AmapMCPError("AMap geocoding returned no usable location")
+    return first
+
+
+def regeocode_location(location: str, amap_key: str | None = None) -> dict[str, Any]:
+    payload = call_amap_tool("maps_regeocode", {"location": location}, amap_key=amap_key)
+    if not isinstance(payload, dict):
+        raise AmapMCPError("AMap reverse geocoding returned invalid data")
+    return payload
+
+
+def weather_for_city(city: str, amap_key: str | None = None) -> dict[str, Any]:
+    payload = call_amap_tool("maps_weather", {"city": city}, amap_key=amap_key)
+    if not isinstance(payload, dict):
+        raise AmapMCPError("AMap weather returned invalid data")
+    return payload
 
 
 def restaurant_detail(amap_poi_id: str, amap_key: str | None = None) -> dict[str, Any] | None:

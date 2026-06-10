@@ -1,4 +1,4 @@
-"""API regression tests for auth, profiles, media, food/play/stay/wish todo candidate queues, category-overridable candidate confirmation, no-email single-date scheduling, rich AMap restaurant evidence, AMap MCP POI normalization, AMap-grounded AI tests, and fallback data."""
+"""API regression tests for auth, profiles, user locations, media, food/play/stay/wish todo candidate queues, category-overridable candidate confirmation, no-email single-date scheduling, rich AMap restaurant evidence, weather hints, AMap MCP POI normalization, AMap-grounded AI tests, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -208,6 +208,70 @@ def test_user_profile_update_rejects_invalid_email(client: TestClient, pair_toke
     )
 
     assert response.status_code == 422
+
+
+def test_user_can_save_browser_location_and_clear_it(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.api.routes.auth.amap_mcp.regeocode_location",
+        lambda location, amap_key=None: {"city": "杭州市", "district": "余杭区"},
+    )
+
+    saved = client.patch(
+        "/auth/me/location",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"coords": "120.027121,30.288808"},
+    )
+    reloaded = client.get("/auth/me", headers=auth(str(pair_tokens["user_a_token"])))
+    cleared = client.delete("/auth/me/location", headers=auth(str(pair_tokens["user_a_token"])))
+
+    assert saved.status_code == 200
+    assert saved.json()["location_coords"] == "120.027121,30.288808"
+    assert saved.json()["location_city"] == "杭州市"
+    assert saved.json()["location_label"] == "余杭区"
+    assert saved.json()["location_updated_at"]
+    assert reloaded.json()["user"]["location_coords"] == "120.027121,30.288808"
+    assert cleared.status_code == 200
+    assert cleared.json()["location_coords"] is None
+
+
+def test_user_can_save_manual_location_and_failed_geocode_does_not_write(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.api.routes.auth.amap_mcp.geocode_address",
+        lambda address, city=None, amap_key=None: {
+            "location": "120.028000,30.289000",
+            "city": city,
+            "district": "未来科技城",
+        },
+    )
+    saved = client.patch(
+        "/auth/me/location",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"address": "西溪北苑东区", "city": "杭州"},
+    )
+
+    from app.amap_mcp import AmapMCPError
+
+    monkeypatch.setattr(
+        "app.api.routes.auth.amap_mcp.geocode_address",
+        lambda address, city=None, amap_key=None: (_ for _ in ()).throw(AmapMCPError("geocode failed")),
+    )
+    failed = client.patch(
+        "/auth/me/location",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"address": "不存在的位置"},
+    )
+    reloaded = client.get("/auth/me", headers=auth(str(pair_tokens["user_a_token"])))
+
+    assert saved.status_code == 200
+    assert saved.json()["location_address"] == "西溪北苑东区"
+    assert saved.json()["location_city"] == "杭州"
+    assert saved.json()["location_label"] == "未来科技城"
+    assert failed.status_code == 502
+    assert reloaded.json()["user"]["location_address"] == "西溪北苑东区"
 
 
 def test_user_can_upload_and_pair_can_read_avatar(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
@@ -1331,6 +1395,67 @@ def test_todo_restaurant_create_keeps_candidate_when_detail_fails(client: TestCl
     assert "detail failed" in restaurant["parse_error"]
 
 
+def test_todo_search_uses_saved_location_nearby_first_and_text_fallback(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.api.routes.auth.amap_mcp.regeocode_location",
+        lambda location, amap_key=None: {"city": "杭州市", "district": "余杭区"},
+    )
+    client.patch(
+        "/auth/me/location",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"coords": "120.027121,30.288808"},
+    )
+    monkeypatch.setattr(
+        "app.amap_mcp.search_pois_nearby",
+        lambda location, radius_m=5000, keyword="", amap_key=None: [
+            {"amap_poi_id": "NEAR2", "name": "近处酒店 B", "address": "B", "distance_m": 800, "rating": 4.9},
+            {"amap_poi_id": "NEAR1", "name": "近处酒店 A", "address": "A", "distance_m": 300, "rating": 4.1},
+        ],
+    )
+    monkeypatch.setattr(
+        "app.amap_mcp.search_restaurants",
+        lambda keyword, city=None, amap_key=None: [
+            {"amap_poi_id": "NEAR1", "name": "重复酒店", "address": "A"},
+            {"amap_poi_id": "TEXT1", "name": "文本酒店", "address": city},
+        ],
+    )
+
+    response = client.post(
+        "/todos/restaurants/search",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"keyword": "酒店"},
+    )
+
+    assert response.status_code == 200
+    candidates = response.json()["candidates"]
+    assert [candidate["amap_poi_id"] for candidate in candidates] == ["NEAR1", "NEAR2", "TEXT1"]
+    assert candidates[0]["distance_m"] == 300
+
+
+def test_todo_search_without_location_falls_back_to_text_search(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.amap_mcp.search_pois_nearby",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("nearby search should not run")),
+    )
+    monkeypatch.setattr(
+        "app.amap_mcp.search_restaurants",
+        lambda keyword, city=None, amap_key=None: [{"amap_poi_id": "TEXT1", "name": "文本餐厅", "address": city}],
+    )
+
+    response = client.post(
+        "/todos/restaurants/search",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"keyword": "餐厅", "city": "杭州"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["candidates"][0]["amap_poi_id"] == "TEXT1"
+
+
 def test_todo_candidate_food_ready_confirms_to_rich_restaurant(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.api.routes.todos.complete_todo_category", lambda db, title: "food")
     monkeypatch.setattr(
@@ -1547,6 +1672,65 @@ def test_todo_detail_returns_saved_schedule_date(client: TestClient, pair_tokens
     assert scheduled.status_code == 201
     assert detail.status_code == 200
     assert detail.json()["schedules"][0]["scheduled_on"] == "2026-06-01"
+
+
+def test_todo_weather_hint_returns_forecast_and_silently_degrades(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("app.amap_mcp.restaurant_detail", lambda poi_id, amap_key=None: {"id": poi_id})
+    item = client.post(
+        "/todos/restaurants",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={
+            "candidate": {
+                "amap_poi_id": "B-WEATHER",
+                "name": "天气餐厅",
+                "address": "未来科技城",
+                "location": "120.1,30.2",
+                "city": "杭州市",
+            }
+        },
+    ).json()
+    client.post(
+        f"/todos/items/{item['id']}/schedules",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"scheduled_on": "2026-06-12"},
+    )
+    monkeypatch.setattr(
+        "app.amap_mcp.weather_for_city",
+        lambda city, amap_key=None: {
+            "city": city,
+            "forecasts": [
+                {"date": "2026-06-11", "dayweather": "阴"},
+                {
+                    "date": "2026-06-12",
+                    "dayweather": "晴",
+                    "nightweather": "多云",
+                    "daytemp": "30",
+                    "nighttemp": "24",
+                    "daywind": "东",
+                    "nightwind": "东南",
+                },
+            ],
+        },
+    )
+
+    weather = client.get(f"/todos/items/{item['id']}/weather", headers=auth(str(pair_tokens["user_a_token"])))
+
+    from app.amap_mcp import AmapMCPError
+
+    monkeypatch.setattr(
+        "app.amap_mcp.weather_for_city",
+        lambda city, amap_key=None: (_ for _ in ()).throw(AmapMCPError("weather failed")),
+    )
+    degraded = client.get(f"/todos/items/{item['id']}/weather", headers=auth(str(pair_tokens["user_a_token"])))
+
+    assert weather.status_code == 200
+    assert weather.json()["city"] == "杭州市"
+    assert weather.json()["report_date"] == "2026-06-12"
+    assert weather.json()["day_weather"] == "晴"
+    assert degraded.status_code == 200
+    assert degraded.json() is None
 
 
 def test_amap_mcp_resolves_windows_npx_through_cmd(monkeypatch: pytest.MonkeyPatch) -> None:

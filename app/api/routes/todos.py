@@ -1,4 +1,4 @@
-"""Todo board routes for pair-shared tasks, retryable category-overridable candidate confirmation, no-email single-date schedules, two-person comment completion, shared LLM category refresh, rich AMap restaurant evidence, and images."""
+"""Todo board routes for pair-shared tasks, location-aware AMap candidate search, retryable category-overridable candidate confirmation, no-email single-date schedules, weather hints, two-person comment completion, shared LLM category refresh, rich AMap restaurant evidence, and images."""
 
 from __future__ import annotations
 
@@ -41,6 +41,7 @@ from app.schemas import (
     TodoRestaurantSearchOut,
     TodoScheduleCreate,
     TodoScheduleOut,
+    TodoWeatherOut,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,8 @@ router = APIRouter(prefix="/todos", tags=["todos"])
 image_router = APIRouter(prefix="/todo-images", tags=["todos"])
 
 DEFAULT_PLAY_TITLES = ["唱歌", "台球", "看电影", "拼乐高"]
+NEARBY_SEARCH_RADIUS_M = 5000
+TODO_CANDIDATE_LIMIT = 6
 
 
 def _merge_restaurant_candidate(candidate: TodoRestaurantCandidate, detail: dict | None) -> dict:
@@ -81,6 +84,52 @@ def _candidate_out(candidate: TodoCandidate) -> TodoCandidateOut:
         created_at=candidate.created_at,
         updated_at=candidate.updated_at,
     )
+
+
+def _poi_sort_key(candidate: dict) -> tuple[int, int, int, int]:
+    distance = candidate.get("distance_m")
+    distance_rank = distance if isinstance(distance, int) else 10_000_000
+    rating = candidate.get("rating")
+    rating_rank = -int(float(rating) * 10) if rating is not None else 0
+    photos_rank = -int(candidate.get("photos_count") or 0)
+    detail_rank = -sum(1 for key in ("address", "business_area", "opening_hours", "per_capita") if candidate.get(key))
+    return distance_rank, rating_rank, photos_rank, detail_rank
+
+
+def _dedupe_pois(candidates: list[dict]) -> list[dict]:
+    seen: set[str] = set()
+    deduped: list[dict] = []
+    for candidate in candidates:
+        key = str(candidate.get("amap_poi_id") or f"{candidate.get('name')}|{candidate.get('address')}|{candidate.get('location')}")
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(candidate)
+    return deduped
+
+
+def _search_location_aware_pois(
+    db: Session,
+    user: User,
+    keyword: str,
+    city: str | None = None,
+    *,
+    limit: int = TODO_CANDIDATE_LIMIT,
+) -> list[dict]:
+    amap_key = effective_amap_key(db)
+    candidates: list[dict] = []
+    if user.location_coords:
+        nearby = amap_mcp.search_pois_nearby(
+            user.location_coords,
+            radius_m=NEARBY_SEARCH_RADIUS_M,
+            keyword=keyword,
+            amap_key=amap_key,
+        )
+        candidates.extend(sorted(nearby, key=_poi_sort_key))
+    fallback_city = city or user.location_city
+    if len(candidates) < limit:
+        candidates.extend(amap_mcp.search_pois(keyword, fallback_city, amap_key))
+    return sorted(_dedupe_pois(candidates), key=_poi_sort_key)[:limit]
 
 
 def _infer_candidate_category(db: Session, title: str) -> TodoCategory:
@@ -462,7 +511,7 @@ def search_restaurants(
     try:
         candidates = [
             TodoRestaurantCandidate(**candidate)
-            for candidate in amap_mcp.search_restaurants(payload.keyword, payload.city, effective_amap_key(db))
+            for candidate in _search_location_aware_pois(db, current_user, payload.keyword, payload.city)
         ]
     except amap_mcp.AmapMCPError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -498,7 +547,7 @@ def create_candidate(
     parse_error = None
     if category != TodoCategory.wish:
         try:
-            amap_candidates = amap_mcp.search_restaurants(payload.raw_title, amap_key=effective_amap_key(db))[:6]
+            amap_candidates = _search_location_aware_pois(db, current_user, payload.raw_title)
             if len(amap_candidates) == 1:
                 selected_candidate = amap_candidates[0]
                 status_value = TodoCandidateStatus.ready
@@ -646,6 +695,40 @@ def get_item_detail(item_id: int, current_user: User = Depends(get_current_user)
     )
     images = db.execute(select(TodoImage).where(TodoImage.item_id == item.id).order_by(TodoImage.created_at)).scalars().all()
     return TodoItemDetail(**out.model_dump(), comments=[_comment_out(comment) for comment in comments], images=images)
+
+
+@router.get("/items/{item_id}/weather", response_model=TodoWeatherOut | None)
+def get_item_weather(item_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> TodoWeatherOut | None:
+    pair = get_pair_for_user(db, current_user.id)
+    item = _ensure_pair_item(db, item_id, pair)
+    if not item.restaurant or not item.restaurant.city:
+        return None
+    schedules = sorted(item.schedules, key=lambda schedule: schedule.scheduled_on)
+    if not schedules:
+        return None
+    try:
+        payload = amap_mcp.weather_for_city(item.restaurant.city, effective_amap_key(db))
+    except amap_mcp.AmapMCPError:
+        return None
+    forecasts = payload.get("forecasts") if isinstance(payload, dict) else None
+    if not isinstance(forecasts, list) or not forecasts:
+        return None
+    target = schedules[0].scheduled_on.isoformat()
+    forecast = next((row for row in forecasts if isinstance(row, dict) and row.get("date") == target), None)
+    if forecast is None:
+        forecast = next((row for row in forecasts if isinstance(row, dict)), None)
+    if not isinstance(forecast, dict):
+        return None
+    return TodoWeatherOut(
+        city=str(payload.get("city") or item.restaurant.city),
+        report_date=forecast.get("date"),
+        day_weather=forecast.get("dayweather"),
+        night_weather=forecast.get("nightweather"),
+        day_temp=forecast.get("daytemp"),
+        night_temp=forecast.get("nighttemp"),
+        day_wind=forecast.get("daywind"),
+        night_wind=forecast.get("nightwind"),
+    )
 
 
 @router.post("/items/{item_id}/comments", response_model=TodoCommentOut, status_code=status.HTTP_201_CREATED)

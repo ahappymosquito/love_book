@@ -1,6 +1,6 @@
 "use client";
 
-// Four-section pair-shared todo workspace with local pending candidate queues, category override confirmation, rich AMap POI evidence, instant single-date scheduling, two-comment completion, bottom-nav-covering details, comments with authors, and folded photos.
+// Four-section pair-shared todo workspace with location-aware pending candidate queues, category override confirmation, rich AMap POI evidence, weather hints, instant single-date scheduling, two-comment completion, bottom-nav-covering details, comments with authors, and folded photos.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -9,6 +9,7 @@ import {
   Check,
   ChevronRight,
   Circle,
+  CloudSun,
   Clock3,
   ImagePlus,
   ListTodo,
@@ -41,6 +42,7 @@ import type {
   TodoItemDetail,
   TodoItemOut,
   TodoRestaurantCandidate,
+  TodoWeatherOut,
   TodoScheduleOut,
 } from "@/lib/types";
 
@@ -90,6 +92,12 @@ function formatShortDate(date: string): string {
   const parsed = new Date(`${date}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return date;
   return `${parsed.getMonth() + 1}月${parsed.getDate()}日`;
+}
+
+function formatDistance(distance: number | null | undefined): string | null {
+  if (distance == null) return null;
+  if (distance < 1000) return `约 ${distance}m`;
+  return `约 ${(distance / 1000).toFixed(distance < 10_000 ? 1 : 0)}km`;
 }
 
 function schedulesForItem(item: TodoItemOut, schedules: TodoScheduleOut[]): TodoScheduleOut[] {
@@ -647,6 +655,7 @@ function CandidatePoiSummary({ candidate, selected }: { candidate: TodoRestauran
       <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-sc text-[11px] text-ink-muted">
         {candidate.poi_type && <span>{candidate.poi_type}</span>}
         {candidate.business_area && <span>{candidate.business_area}</span>}
+        {formatDistance(candidate.distance_m) && <span>{formatDistance(candidate.distance_m)}</span>}
         {candidate.rating != null && <span>评分 {candidate.rating}</span>}
         {candidate.per_capita != null && <span>人均 {candidate.per_capita}</span>}
       </span>
@@ -1032,6 +1041,7 @@ function RestaurantCreator({ onCreated }: { onCreated: (item: TodoItemOut) => vo
                 <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-sc text-[11px] text-ink-muted">
                   {candidate.poi_type && <span>{candidate.poi_type}</span>}
                   {candidate.business_area && <span>{candidate.business_area}</span>}
+                  {formatDistance(candidate.distance_m) && <span>{formatDistance(candidate.distance_m)}</span>}
                   {candidate.rating != null && <span>评分 {candidate.rating}</span>}
                   {candidate.per_capita != null && <span>人均 {candidate.per_capita}</span>}
                 </span>
@@ -1198,6 +1208,7 @@ function TodoDetailPanel({
   const [scheduleDate, setScheduleDate] = useState(initialScheduleDate);
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [photosOpen, setPhotosOpen] = useState(false);
+  const [weather, setWeather] = useState<TodoWeatherOut | null>(null);
 
   useEffect(() => {
     setDetail(null);
@@ -1212,6 +1223,26 @@ function TodoDetailPanel({
     const savedDate = (detail?.schedules ?? schedules)[0]?.scheduled_on;
     setScheduleDate(savedDate ?? initialScheduleDate);
   }, [detail?.schedules, schedules, initialScheduleDate, itemId]);
+
+  useEffect(() => {
+    const hasSchedule = (detail?.schedules ?? schedules).length > 0;
+    if (!detail?.restaurant?.city || !hasSchedule) {
+      setWeather(null);
+      return;
+    }
+    let alive = true;
+    void api
+      .getTodoWeather(itemId)
+      .then((nextWeather) => {
+        if (alive) setWeather(nextWeather);
+      })
+      .catch(() => {
+        if (alive) setWeather(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [detail?.restaurant?.city, detail?.schedules, schedules, itemId]);
 
   async function submitComment(event: FormEvent) {
     event.preventDefault();
@@ -1349,6 +1380,8 @@ function TodoDetailPanel({
 
               {detail.restaurant && <RestaurantEvidence restaurant={detail.restaurant} />}
 
+              {weather && <TodoWeatherHint weather={weather} />}
+
               <section>
                 <h3 className="mb-2 font-sc text-sm font-medium text-ink">双方评论</h3>
                 {detail.comments.length === 0 ? (
@@ -1415,6 +1448,36 @@ function TodoDetailPanel({
         </footer>
       </motion.aside>
     </>
+  );
+}
+
+function TodoWeatherHint({ weather }: { weather: TodoWeatherOut }) {
+  const tempText = weather.day_temp || weather.night_temp ? `${weather.day_temp ?? "-"} / ${weather.night_temp ?? "-"}°C` : null;
+  const weatherText = [weather.day_weather, weather.night_weather].filter(Boolean).join(" / ");
+  const windText = [weather.day_wind, weather.night_wind].filter(Boolean).join(" / ");
+  return (
+    <section className="rounded-2xl border border-peach/48 bg-peach/12 p-3">
+      <div className="flex items-start gap-3">
+        <span className="grid h-9 w-9 flex-none place-items-center rounded-xl bg-surface/78 text-rose-deep">
+          <CloudSun className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="font-sc text-sm font-medium text-ink">约会天气</h3>
+          <p className="mt-1 font-sc text-xs text-ink-muted">
+            {weather.city}
+            {weather.report_date ? ` · ${weather.report_date}` : ""}
+            {weatherText ? ` · ${weatherText}` : ""}
+          </p>
+          {(tempText || windText) && (
+            <p className="mt-1 font-sc text-xs text-ink-soft">
+              {tempText ? `温度 ${tempText}` : ""}
+              {tempText && windText ? " · " : ""}
+              {windText ? `风向 ${windText}` : ""}
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 

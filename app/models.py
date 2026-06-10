@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair timelines, comment reactions, food/play/stay/wish todo boards, candidate queues, rich AMap restaurant evidence, media keys, quotes, AI settings with saved model lists, and login logs."""
+"""SQLAlchemy models for pair timelines, user location preferences, comment reactions, food/play/stay/wish todo boards, candidate queues, rich AMap restaurant evidence, media keys, quotes, AI settings with saved model lists, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -91,6 +91,11 @@ class User(Base):
     avatar_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     avatar_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255))
+    location_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    location_address: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    location_city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    location_coords: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    location_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     @property

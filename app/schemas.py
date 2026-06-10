@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, editable profiles, admin saved-model AMap-grounded food/play/stay AI tests, rich AMap restaurant evidence, todo candidate queues, events, media, quotes, cycles, and todo APIs."""
+"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests, rich AMap restaurant evidence, todo candidate queues, events, media, quotes, cycles, and todo APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -25,6 +25,11 @@ class UserOut(APIModel):
     avatar_has_image: bool = False
     avatar_updated_at: datetime | None = None
     email: str | None = None
+    location_label: str | None = None
+    location_address: str | None = None
+    location_city: str | None = None
+    location_coords: str | None = None
+    location_updated_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -34,6 +39,21 @@ class MeUpdate(APIModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=100)
     avatar: str | None = Field(default=None, max_length=64)
     email: str | None = Field(default=None, max_length=255)
+
+
+class MeLocationUpdate(APIModel):
+    label: str | None = Field(default=None, max_length=200)
+    address: str | None = Field(default=None, max_length=500)
+    city: str | None = Field(default=None, max_length=100)
+    coords: str | None = Field(default=None, max_length=100)
+
+    @field_validator("label", "address", "city", "coords")
+    @classmethod
+    def strip_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
 
 
 class AdminAuthRequest(APIModel):
@@ -424,6 +444,7 @@ class TodoRestaurantCandidate(APIModel):
     name: str
     address: str | None = None
     location: str | None = None
+    distance_m: int | None = None
     city: str | None = None
     adname: str | None = None
     pname: str | None = None
@@ -495,6 +516,17 @@ class TodoLotteryRequest(APIModel):
 class TodoLotteryOut(APIModel):
     item: TodoItemOut | None = None
     candidate: TodoRestaurantCandidate | None = None
+
+
+class TodoWeatherOut(APIModel):
+    city: str
+    report_date: str | None = None
+    day_weather: str | None = None
+    night_weather: str | None = None
+    day_temp: str | None = None
+    night_temp: str | None = None
+    day_wind: str | None = None
+    night_wind: str | None = None
 
 
 class TodoCommentCreate(APIModel):

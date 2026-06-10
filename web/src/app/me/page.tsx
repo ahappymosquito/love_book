@@ -1,6 +1,6 @@
 "use client";
 
-// Compact profile settings page with inline identity editing and equal-width shared/default quote rows.
+// Compact profile settings page with inline identity editing, cross-device location preferences, and equal-width shared/default quote rows.
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
@@ -8,8 +8,10 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  LocateFixed,
   Loader2,
   Mail,
+  MapPin,
   Pencil,
   Plus,
   Sparkles,
@@ -55,6 +57,10 @@ function MeInner() {
   const [editingProfile, setEditingProfile] = useState(false);
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [locationAddress, setLocationAddress] = useState(me.user.location_address ?? "");
+  const [locationCity, setLocationCity] = useState(me.user.location_city ?? "");
+  const [savingLocation, setSavingLocation] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [quotes, setQuotes] = useState<QuoteOut[] | null>(null);
   const [defaultQuotes, setDefaultQuotes] = useState<DefaultQuoteOut[] | null>(null);
   const [quoteText, setQuoteText] = useState("");
@@ -71,6 +77,11 @@ function MeInner() {
     setDisplayName(me.user.display_name);
     setEmail(me.user.email ?? "");
   }, [me.user.display_name, me.user.email]);
+
+  useEffect(() => {
+    setLocationAddress(me.user.location_address ?? "");
+    setLocationCity(me.user.location_city ?? "");
+  }, [me.user.location_address, me.user.location_city]);
 
   useEffect(() => {
     void loadQuotes();
@@ -148,6 +159,63 @@ function MeInner() {
       toast.success("头像图片已清除");
     } finally {
       setAvatarBusy(false);
+    }
+  }
+
+  async function saveManualLocation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const address = locationAddress.trim();
+    if (!address || savingLocation) return;
+    setSavingLocation(true);
+    try {
+      const updated = await api.patchMyLocation({
+        address,
+        city: locationCity.trim() || null,
+      });
+      setMe({ ...me, user: { ...me.user, ...updated } });
+      toast.success("常用位置已保存");
+    } finally {
+      setSavingLocation(false);
+    }
+  }
+
+  async function handleCurrentLocation() {
+    if (!navigator.geolocation) {
+      toast.error("当前浏览器不支持定位，可以手动输入位置");
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        void (async () => {
+          try {
+            const coords = `${position.coords.longitude},${position.coords.latitude}`;
+            const updated = await api.patchMyLocation({ coords });
+            setMe({ ...me, user: { ...me.user, ...updated } });
+            toast.success("当前位置已保存");
+          } finally {
+            setLocating(false);
+          }
+        })();
+      },
+      () => {
+        setLocating(false);
+        toast.error("定位未授权，可以手动输入位置");
+      },
+      { enableHighAccuracy: true, timeout: 8000 },
+    );
+  }
+
+  async function clearLocation() {
+    setSavingLocation(true);
+    try {
+      const updated = await api.deleteMyLocation();
+      setMe({ ...me, user: { ...me.user, ...updated } });
+      setLocationAddress("");
+      setLocationCity("");
+      toast.success("常用位置已清除");
+    } finally {
+      setSavingLocation(false);
     }
   }
 
@@ -262,6 +330,72 @@ function MeInner() {
             </div>
           </div>
         </motion.section>
+
+        <section className="mt-5 glass-card overflow-hidden rounded-3xl p-5 sm:p-6">
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 flex-none place-items-center rounded-2xl bg-peach/20 text-rose-deep">
+              <MapPin className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="font-display text-lg font-semibold text-ink">常用位置</h2>
+              <p className="mt-1 font-sc text-sm text-ink-muted">
+                {me.user.location_coords
+                  ? `${me.user.location_label || me.user.location_address || "已保存位置"}${me.user.location_city ? ` · ${me.user.location_city}` : ""}`
+                  : "用于 Todo 搜索时优先返回附近的餐馆和住宿"}
+              </p>
+              {me.user.location_address && (
+                <p className="mt-1 break-words font-sc text-xs text-ink-soft">{me.user.location_address}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void handleCurrentLocation()}
+              disabled={locating || savingLocation}
+              className="btn-primary inline-flex min-h-11 items-center gap-2 rounded-2xl px-4 font-sc text-sm focus-ring disabled:opacity-50"
+            >
+              {locating ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
+              使用当前位置
+            </button>
+            {me.user.location_coords && (
+              <button
+                type="button"
+                onClick={() => void clearLocation()}
+                disabled={savingLocation || locating}
+                className="btn-ghost min-h-11 rounded-2xl px-4 font-sc text-sm focus-ring disabled:opacity-50"
+              >
+                清除位置
+              </button>
+            )}
+          </div>
+
+          <form onSubmit={saveManualLocation} className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_150px_auto]">
+            <input
+              className="input-field text-sm"
+              value={locationAddress}
+              onChange={(event) => setLocationAddress(event.target.value)}
+              placeholder="输入常用地址或地标"
+              maxLength={500}
+            />
+            <input
+              className="input-field text-sm"
+              value={locationCity}
+              onChange={(event) => setLocationCity(event.target.value)}
+              placeholder="城市，可选"
+              maxLength={100}
+            />
+            <button
+              type="submit"
+              disabled={!locationAddress.trim() || savingLocation || locating}
+              className="btn-primary inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl px-4 font-sc text-sm focus-ring disabled:opacity-50"
+            >
+              {savingLocation ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              保存位置
+            </button>
+          </form>
+        </section>
 
         <section className="mt-5 glass-card overflow-hidden rounded-3xl">
           <QuotePanelHeader

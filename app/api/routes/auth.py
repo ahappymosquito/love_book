@@ -1,15 +1,17 @@
-"""Authenticated user routes for editable profile details, avatar upload, pair context, login logs, and home reminders."""
+"""Authenticated user routes for editable profile details, cross-device location preferences, avatar upload, pair context, login logs, and home reminders."""
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app import amap_mcp
+from app.ai_config import effective_amap_key
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.login_logs import client_ip, enrich_location, record_login
 from app.media import MediaProcessingError, make_avatar_image
 from app.models import User, utc_now
-from app.schemas import AnniversaryOut, LoginLogOut, LoginRecordCreate, MeOut, MeUpdate, UserOut
+from app.schemas import AnniversaryOut, LoginLogOut, LoginRecordCreate, MeLocationUpdate, MeOut, MeUpdate, UserOut
 from app.services import build_anniversary, counterpart, pair_love_started_on
 from app.storage import MediaStorageError, build_avatar_storage_key, write_media_file
 
@@ -25,6 +27,20 @@ def _clean_email(value: str | None) -> str | None:
     if "@" not in value or len(value) > 255:
         raise HTTPException(status_code=422, detail="邮箱格式不正确")
     return value
+
+
+def _clean_coords(value: str) -> str:
+    parts = [part.strip() for part in value.split(",")]
+    if len(parts) != 2:
+        raise HTTPException(status_code=422, detail="Location coords must be lng,lat")
+    try:
+        lng = float(parts[0])
+        lat = float(parts[1])
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Location coords must be numeric lng,lat") from exc
+    if not (-180 <= lng <= 180 and -90 <= lat <= 90):
+        raise HTTPException(status_code=422, detail="Location coords are out of range")
+    return f"{lng:.6f},{lat:.6f}"
 
 
 @router.get("/me", response_model=MeOut)
@@ -60,6 +76,59 @@ def update_me(
         current_user.avatar = data["avatar"]
     if "email" in data:
         current_user.email = _clean_email(data["email"])
+    db.flush()
+    db.commit()
+    db.refresh(current_user)
+    return UserOut.model_validate(current_user)
+
+
+@router.patch("/me/location", response_model=UserOut)
+def update_my_location(
+    payload: MeLocationUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    if not payload.coords and not payload.address:
+        raise HTTPException(status_code=422, detail="Location address or coords is required")
+    try:
+        if payload.coords:
+            coords = _clean_coords(payload.coords)
+            resolved = amap_mcp.regeocode_location(coords, effective_amap_key(db))
+            city = str(resolved.get("city") or "").strip() or payload.city
+            district = str(resolved.get("district") or "").strip()
+            address = payload.address or " ".join(part for part in (city, district) if part)
+            label = payload.label or district or city or coords
+        else:
+            address = payload.address or ""
+            resolved = amap_mcp.geocode_address(address, payload.city, effective_amap_key(db))
+            coords = _clean_coords(str(resolved["location"]))
+            city = str(resolved.get("city") or payload.city or resolved.get("province") or "").strip() or None
+            district = str(resolved.get("district") or "").strip()
+            label = payload.label or district or address
+    except amap_mcp.AmapMCPError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    current_user.location_label = label
+    current_user.location_address = address or label
+    current_user.location_city = city
+    current_user.location_coords = coords
+    current_user.location_updated_at = utc_now()
+    db.flush()
+    db.commit()
+    db.refresh(current_user)
+    return UserOut.model_validate(current_user)
+
+
+@router.delete("/me/location", response_model=UserOut)
+def delete_my_location(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    current_user.location_label = None
+    current_user.location_address = None
+    current_user.location_city = None
+    current_user.location_coords = None
+    current_user.location_updated_at = None
     db.flush()
     db.commit()
     db.refresh(current_user)

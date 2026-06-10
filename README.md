@@ -119,7 +119,7 @@ npm run dev
 - `/admin` 管理控制台（先用 `ADMIN_KEY` 验证身份，然后创建配对 / 复制 token / 复制入口链接；入口链接按当前浏览器 origin 动态生成，复制失败会自动降级到隐藏文本框复制）
 - `/timeline` 事件列表（纪念日、当前话语、月份分组和底边栏导航）
 - `/timeline/[id]` 事件详情（评论 / 语音 / 图片混排，评论支持点赞 / 倒赞 reaction，底部输入栏支持文字、录音、相册）
-- `/me` 我的页面（当前用户头像、用户名、邮箱和共享语录管理）
+- `/me` 我的页面（当前用户头像、用户名、邮箱、常用位置和共享语录管理）
 - `/create` 新建事件
 - `/todo` 共享 todo 工作区（四板块待确认队列 / 中央任务 / 右侧详情布局，默认展示全部未完成事项，按要完成时间排序，含详情内日期安排、双方评论完成、照片折叠、餐厅搜索、随机抽奖和打卡详情）
 - `/cycle` 周期日历 Dashboard（月 / 周 / 列表视图、筛选、提醒设置和移动端详情面板）
@@ -206,6 +206,8 @@ token 由管理接口生成，默认永久有效；创建 pair 时也可以指�
 | admin | GET | `/admin/pairs` | `X-Admin-Key` | 列出全部配对及其 token |
 | auth | GET | `/auth/me` | `Bearer` | 获取当前用户、对方、pair_id |
 | auth | PATCH | `/auth/me` | `Bearer` | 修改自己的昵称、邮箱或 emoji 头像 |
+| auth | PATCH | `/auth/me/location` | `Bearer` | 保存当前用户常用位置，支持坐标逆地理编码或地址地理编码 |
+| auth | DELETE | `/auth/me/location` | `Bearer` | 清除当前用户常用位置 |
 | auth | POST | `/auth/me/avatar` | `Bearer` | 上传自己的图片头像（multipart） |
 | auth | DELETE | `/auth/me/avatar` | `Bearer` | 清除自己的图片头像，回退 emoji/首字 |
 | users | GET | `/users/{user_id}/avatar` | `Bearer` 或 `X-Admin-Key` | 下载私有图片头像，同 pair 或管理员可读 |
@@ -409,7 +411,32 @@ Authorization: Bearer token-for-alice
 
 成功响应是更新后的用户对象，与 `GET /auth/me` 中 `user` 字段结构相同。当前用户可更新 `display_name`、`avatar` 和 `email`；`email` 空字符串会按 `null` 保存。
 
-### 5.1 上传、清除和读取图片头像
+### 5.1 常用位置
+
+`PATCH /auth/me/location`
+
+请求头：
+
+```http
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+浏览器定位保存：
+
+```json
+{ "coords": "120.027121,30.288808" }
+```
+
+手动地址保存：
+
+```json
+{ "address": "西溪北苑东区", "city": "杭州" }
+```
+
+位置按当前用户保存，不共享给另一半。后端会先调用高德 `maps_regeocode` 或 `maps_geo` 解析成功，再写入 `location_label`、`location_address`、`location_city`、`location_coords` 和 `location_updated_at`。高德解析失败返回 502，不写入半成品位置。`DELETE /auth/me/location` 会清空这些字段。
+
+### 5.2 上传、清除和读取图片头像
 
 图片头像和 emoji 头像并存：展示时优先显示上传图片；没有图片或图片读取失败时，回退 `avatar` emoji，再回退昵称首字。图片头像按私有媒体保存到 `MEDIA_ROOT`，数据库只保存相对 storage key 和元数据。
 
@@ -438,7 +465,7 @@ Content-Type: multipart/form-data
 
 请求头可使用当前用户 `Bearer` token 或管理员 `X-Admin-Key`。只有同一 pair 的双方和管理员可读取；未上传、已清除、文件缺失或无权限时返回 `404`。成功时返回头像 JPEG 文件，并带 `Cache-Control: private, max-age=604800`。
 
-### 5.2 共享语录库
+### 5.3 共享语录库
 
 `GET /quotes`、`POST /quotes`、`DELETE /quotes/{quote_id}`
 
@@ -862,7 +889,7 @@ python -m pytest tests -q
 - Todo 任务标签显示为“吃喝 / 玩乐 / 住宿 / 许愿”，`/todo` 主界面使用“今天想吃点 / 出去玩一玩 / 住一晚也好 / 悄悄许个愿”四个默认折叠板块，新增输入位于板块顶部。新增后会立刻进入待确认队列并显示“正在解析”，后端同步用 LLM 分类到 `food/play/stay/wish`，对非许愿项调用高德 MCP 搜索；待确认卡片默认展示 LLM 判断分类和高德候选信息，用户可在卡片里改到任意板块后确认加入或丢弃，确认失败时保留卡片和错误提示；后端确认异常返回 502 并保留候选可重试。页面不再展示手动刷新分类按钮。
 - MySQL / MariaDB 部署在后端启动时会自动修复 `todo_items.category` 和 `todo_candidates.category` 的旧 ENUM，确保 `food/play/stay/wish` 都能写入；因此住宿“确定加入”不应再因为 `Data truncated for column 'category'` 失败。
 - Todo 完成状态要求 pair 双方都至少评论过一次；评论详情展示作者名，图片上传只作为记录内容，不参与完成判定。照片在详情内折叠展示，不按上传人分组。
-- 吃饭、玩乐和住宿候选通过后端 `npx -y @amap/amap-maps-mcp-server` 调用高德 MCP 搜索和详情解析；Windows 本地会经 `cmd.exe` 调用 `npx` 以兼容 Node.js 批处理入口，并按该包当前 SDK 的 newline JSON stdio 协议通信，MCP 冷启动默认保留 45 秒超时。用户只需要在底部填写想一起做的事，确认高德候选后前端自动刷新并打开详情面板，展示店名、城市、地址、商圈、类型、评分、人均、营业时间、坐标、POI ID、点餐字段、门店照片和高德导航链接。高德 key 可在管理端单独配置，`.env` / 服务器环境变量 `AMAP_MAPS_API_KEY` 作为初始默认和兜底。
+- 吃饭、玩乐和住宿候选通过后端 `npx -y @amap/amap-maps-mcp-server` 调用高德 MCP 搜索和详情解析；Windows 本地会经 `cmd.exe` 调用 `npx` 以兼容 Node.js 批处理入口，并按该包当前 SDK 的 newline JSON stdio 协议通信，MCP 冷启动默认保留 45 秒超时。当前用户保存常用位置后，餐馆和住宿搜索会先用 5km 周边搜按距离优先返回候选，不足 6 条再用关键字/城市文本搜索补齐并去重；候选卡显示距离、地址、商圈、评分和人均。用户只需要在底部填写想一起做的事，确认高德候选后前端自动刷新并打开详情面板，展示店名、城市、地址、商圈、类型、评分、人均、营业时间、坐标、POI ID、点餐字段、门店照片和高德导航链接。有地点城市和安排日期时，详情页会通过高德天气接口展示轻量天气提醒；天气失败静默降级。高德 key 可在管理端单独配置，`.env` / 服务器环境变量 `AMAP_MAPS_API_KEY` 作为初始默认和兜底。
 - Todo 图片写入 `MEDIA_ROOT/todo/images/...`，数据库只保存 `todo_images.storage_key` / `todo_images.thumb_storage_key`，下载接口为 `/todo-images/{image_id}/file` 和 `/todo-images/{image_id}/thumb`。
 - `/todo` 随机抽奖支持人均、城市/区域和附近 1/3/5/10km 点选筛选；附近筛选由浏览器定位提供经纬度，失败时静默保留其它筛选。
 - 管理端 `/admin` 的 AI / 模型配置区先选择 OpenAI 或 Anthropic 协议，再编辑对应地址和 token；获取模型列表后按协议保存最近一次模型列表，刷新页面后继续展示上次列表和选中模型；没有选中模型时获取列表会自动保存第一个模型。测试样例内置“江西小炒(西溪北苑东区店)”`food`、“浩波台球俱乐部(汇银中心店)”`play`、“海友酒店(杭州阿里巴巴全球总部店)”`stay`，也允许输入自定义 POI 名称和城市。测试先通过高德 MCP 获取真实 POI 证据，并以高德 POI 类型作为主判断依据；取证展示名称、地址、城市、区域、类型、typecode、电话、商圈、评分、人均、标签/特色和照片摘要；LLM 只作为补全诊断展示，空回复、协议错配或模型不支持 chat/messages 不会让高德取证测试失败。界面展示“高德取证 -> 高德类型判断 -> LLM 补全诊断”过程；分类补全默认给 64 tokens 输出预算，遇到长度耗尽且正文为空时用 256 tokens 重试一次；高德 `AMAP_MAPS_API_KEY` 单独罗列并可自定义保存。

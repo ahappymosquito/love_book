@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated profiles, private avatars, customizable admin AMap-grounded AI tests, todo candidate queues, scheduling, events, quotes, cycles, reactions, and media.
+// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests, todo candidate queues, scheduling, weather hints, events, quotes, cycles, reactions, and media.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -36,6 +36,7 @@ import type {
   TodoItemOut,
   TodoLotteryOut,
   TodoRestaurantCandidate,
+  TodoWeatherOut,
   UserOut,
   VisibilityMode,
   VoiceOut,
@@ -235,6 +236,9 @@ export const api = {
   getAnniversary: () => apiRequest<AnniversaryOut>("/auth/anniversary", { silent: true }),
   patchMe: (payload: { display_name?: string; avatar?: string; email?: string | null }) =>
     apiRequest<UserOut>("/auth/me", { method: "PATCH", json: payload }),
+  patchMyLocation: (payload: { label?: string | null; address?: string | null; city?: string | null; coords?: string | null }) =>
+    apiRequest<UserOut>("/auth/me/location", { method: "PATCH", json: payload }),
+  deleteMyLocation: () => apiRequest<UserOut>("/auth/me/location", { method: "DELETE" }),
   uploadMyAvatar: (file: File) => {
     const fd = new FormData();
     fd.append("file", file, file.name);
@@ -321,6 +325,7 @@ export const api = {
     city?: string | null;
   }) => apiRequest<TodoLotteryOut>("/todos/restaurants/lottery", { method: "POST", json: payload }),
   getTodoItem: (id: number) => apiRequest<TodoItemDetail>(`/todos/items/${id}`),
+  getTodoWeather: (id: number) => apiRequest<TodoWeatherOut | null>(`/todos/items/${id}/weather`, { silent: true }),
   postTodoComment: (id: number, text: string) =>
     apiRequest<TodoCommentOut>(`/todos/items/${id}/comments`, { method: "POST", json: { text } }),
   postTodoImage: (id: number, file: File, dims?: { width?: number; height?: number }) => {

@@ -1,4 +1,4 @@
-// Shared TypeScript contracts for API payloads, editable profile state, events, quote libraries, food/play/stay/wish todo boards, candidate queues, rich AMap restaurant evidence, admin saved-model AMap-grounded AI tests, cycles, and reminders.
+// Shared TypeScript contracts for API payloads, editable profile/location state, events, quote libraries, food/play/stay/wish todo boards, candidate queues, rich AMap restaurant evidence, todo weather hints, admin saved-model AMap-grounded AI tests, cycles, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
 export type TodoCategory = "food" | "play" | "stay" | "wish";
@@ -13,6 +13,11 @@ export interface UserOut {
   avatar_has_image: boolean;
   avatar_updated_at: string | null;
   email: string | null;
+  location_label: string | null;
+  location_address: string | null;
+  location_city: string | null;
+  location_coords: string | null;
+  location_updated_at: string | null;
   created_at: string;
 }
 
@@ -241,6 +246,7 @@ export interface TodoRestaurantOut {
   name: string;
   address: string | null;
   location: string | null;
+  distance_m?: number | null;
   city: string | null;
   adname: string | null;
   pname: string | null;
@@ -317,6 +323,7 @@ export interface TodoRestaurantCandidate {
   name: string;
   address: string | null;
   location: string | null;
+  distance_m?: number | null;
   city: string | null;
   adname: string | null;
   pname: string | null;
@@ -364,6 +371,17 @@ export interface TodoItemDetail extends TodoItemOut {
 export interface TodoLotteryOut {
   item: TodoItemOut | null;
   candidate: TodoRestaurantCandidate | null;
+}
+
+export interface TodoWeatherOut {
+  city: string;
+  report_date: string | null;
+  day_weather: string | null;
+  night_weather: string | null;
+  day_temp: string | null;
+  night_temp: string | null;
+  day_wind: string | null;
+  night_wind: string | null;
 }
 
 export interface AdminAIConfigOut {
