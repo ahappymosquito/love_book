@@ -1,6 +1,6 @@
 "use client";
 
-// Four-section pair-shared todo workspace with local pending candidate queues, category override confirmation, rich AMap POI evidence, instant single-date scheduling, two-comment completion, AI category refresh, comments with authors, and folded photos.
+// Four-section pair-shared todo workspace with local pending candidate queues, category override confirmation, rich AMap POI evidence, instant single-date scheduling, two-comment completion, bottom-nav-covering details, comments with authors, and folded photos.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -17,7 +17,6 @@ import {
   Menu,
   Music2,
   Plus,
-  RefreshCw,
   BedDouble,
   Search,
   Shuffle,
@@ -153,7 +152,6 @@ function TodoInner() {
   const [localCandidates, setLocalCandidates] = useState<LocalTodoCandidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailId, setDetailId] = useState<number | null>(null);
-  const [classifyingOpen, setClassifyingOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<TodoCategory, boolean>>({
     food: false,
     play: false,
@@ -225,19 +223,6 @@ function TodoInner() {
     toast.success("已收起这个项目");
     if (detailId === itemId) setDetailId(null);
     await load();
-  }
-
-  async function classifyOpenItems() {
-    setClassifyingOpen(true);
-    try {
-      const result = await api.classifyOpenTodoItems();
-      toast.success(`已刷新 ${result.count} 个未完成标签`);
-      await load();
-    } catch {
-      // apiRequest already shows the server-provided error toast.
-    } finally {
-      setClassifyingOpen(false);
-    }
   }
 
   async function addCandidate(title: string) {
@@ -316,8 +301,6 @@ function TodoInner() {
             loading={loading}
             openCount={items.filter((item) => !item.checked_in).length}
             candidateCount={queuedCandidates.length}
-            classifyingOpen={classifyingOpen}
-            onClassifyOpen={classifyOpenItems}
           />
 
           <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] sm:px-5 sm:pb-5">
@@ -430,14 +413,10 @@ function TodoBoardHeader({
   loading,
   openCount,
   candidateCount,
-  classifyingOpen,
-  onClassifyOpen,
 }: {
   loading: boolean;
   openCount: number;
   candidateCount: number;
-  classifyingOpen: boolean;
-  onClassifyOpen: () => void;
 }) {
   return (
     <header className="border-b border-line/60 px-3 py-4 sm:px-5 sm:py-5">
@@ -451,22 +430,11 @@ function TodoBoardHeader({
             {openCount} 件还没完成，{candidateCount} 件待确认
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onClassifyOpen}
-          disabled={classifyingOpen}
-          className="grid h-10 w-10 flex-none place-items-center rounded-xl text-rose-deep transition hover:bg-rose/10 disabled:opacity-60 focus-ring"
-          aria-label="刷新未完成任务标签"
-          title="刷新未完成任务标签"
-        >
-          {classifyingOpen ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-        </button>
         {loading && <Loader2 className="mt-2 h-5 w-5 animate-spin text-ink-muted" />}
       </div>
     </header>
   );
 }
-
 function TodoCategorySection({
   section,
   expanded,
@@ -782,16 +750,12 @@ function TodoToolbar({
   view,
   loading,
   count,
-  classifyingOpen,
   onOpenSidebar,
-  onClassifyOpen,
 }: {
   view: TodoView;
   loading: boolean;
   count: number;
-  classifyingOpen: boolean;
   onOpenSidebar: () => void;
-  onClassifyOpen: () => void;
 }) {
   const meta = VIEW_META[view];
   return (
@@ -809,22 +773,11 @@ function TodoToolbar({
             </div>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onClassifyOpen}
-          disabled={classifyingOpen}
-          className="grid h-10 w-10 flex-none place-items-center rounded-xl text-rose-deep transition hover:bg-rose/10 disabled:opacity-60 focus-ring"
-          aria-label="刷新未完成任务标签"
-          title="刷新未完成任务标签"
-        >
-          {classifyingOpen ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-        </button>
         {loading && <Loader2 className="mt-2 h-5 w-5 animate-spin text-ink-muted" />}
       </div>
     </header>
   );
 }
-
 function TaskList({
   items,
   completedItems,
@@ -1332,7 +1285,7 @@ function TodoDetailPanel({
     <>
       <motion.button
         type="button"
-        className="fixed inset-0 z-50 bg-ink/30 lg:hidden"
+        className="fixed inset-0 z-[70] bg-ink/30 lg:hidden"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -1341,7 +1294,7 @@ function TodoDetailPanel({
       />
       <motion.aside
         {...panelMotion}
-        className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom,0px)+5.8rem)] z-50 flex max-h-[calc(100dvh-env(safe-area-inset-bottom,0px)-7rem)] flex-col overflow-hidden rounded-t-[1.35rem] border border-line/70 bg-surface text-ink shadow-[0_-24px_52px_-36px_rgb(var(--ink)/0.55)] lg:sticky lg:inset-auto lg:top-0 lg:z-auto lg:h-dvh lg:w-[390px] lg:flex-none lg:max-h-none lg:rounded-none lg:border-y-0 lg:border-r-0 lg:shadow-[-18px_0_42px_-34px_rgb(var(--ink)/0.5)]"
+        className="fixed inset-x-0 bottom-0 z-[80] flex max-h-[100dvh] flex-col overflow-hidden rounded-t-[1.35rem] border border-line/70 bg-surface text-ink shadow-[0_-24px_52px_-36px_rgb(var(--ink)/0.55)] lg:sticky lg:inset-auto lg:top-0 lg:z-auto lg:h-dvh lg:w-[390px] lg:flex-none lg:max-h-none lg:rounded-none lg:border-y-0 lg:border-r-0 lg:shadow-[-18px_0_42px_-34px_rgb(var(--ink)/0.5)]"
         role="dialog"
         aria-modal="true"
       >

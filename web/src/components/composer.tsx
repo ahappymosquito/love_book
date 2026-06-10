@@ -1,6 +1,6 @@
 "use client";
 
-// Chat composer for text, compressed system image picking, protected press-and-hold voice recording, and bottom-nav-safe placement.
+// Chat composer for timeline detail text, compressed system image picking, protected press-and-hold voice recording, and bottom-sheet-style placement that covers the global nav.
 
 import { Image as ImageIcon, Mic, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -245,8 +245,8 @@ export function Composer({
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom,0px)+5.7rem)] z-30 pointer-events-none">
-      <div className="pointer-events-auto bg-gradient-to-t from-cream/98 via-cream/85 to-cream/0 dark:from-cream-deep/98 dark:via-cream-deep/85 pb-3 pt-3">
+    <div className="fixed inset-x-0 bottom-0 z-[70] pointer-events-none">
+      <div className="pointer-events-auto bg-gradient-to-t from-cream/98 via-cream/85 to-cream/0 dark:from-cream-deep/98 dark:via-cream-deep/85 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-3">
         <div className="max-w-3xl mx-auto px-3">
           <div className="glass-card rounded-3xl px-3 py-2.5 sm:py-3 flex items-end gap-2">
             <button
