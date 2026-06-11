@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair timelines, user location preferences, comment reactions, food/play/stay/wish todo boards, candidate queues, rich AMap restaurant evidence, media keys, quotes, AI settings with saved model lists, and login logs."""
+"""SQLAlchemy models for pair timelines, user location preferences, comment reactions, food/play/stay/wish todo boards, personal habit check-ins, candidate queues, rich AMap restaurant evidence, media keys, quotes, AI settings with saved model lists, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -315,6 +315,54 @@ class TodoImage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     author: Mapped[User] = relationship()
+
+
+class HabitTask(Base):
+    __tablename__ = "habit_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pair_id: Mapped[int] = mapped_column(ForeignKey("pairs.id"), nullable=False, index=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    color: Mapped[str] = mapped_column(String(32), nullable=False, default="rose", server_default="rose")
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+    pair: Mapped[Pair] = relationship()
+    owner: Mapped[User] = relationship()
+    checkins: Mapped[list["HabitCheckin"]] = relationship(cascade="all, delete-orphan", back_populates="habit")
+
+
+class HabitCheckin(Base):
+    __tablename__ = "habit_checkins"
+    __table_args__ = (UniqueConstraint("habit_id", "date", name="uq_habit_checkins_habit_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pair_id: Mapped[int] = mapped_column(ForeignKey("pairs.id"), nullable=False, index=True)
+    habit_id: Mapped[int] = mapped_column(ForeignKey("habit_tasks.id"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    pair: Mapped[Pair] = relationship()
+    habit: Mapped[HabitTask] = relationship(back_populates="checkins")
+    user: Mapped[User] = relationship()
+
+
+class HabitReminderRun(Base):
+    __tablename__ = "habit_reminder_runs"
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_habit_reminder_runs_user_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pair_id: Mapped[int] = mapped_column(ForeignKey("pairs.id"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    pair: Mapped[Pair] = relationship()
+    user: Mapped[User] = relationship()
 
 
 class AISetting(Base):

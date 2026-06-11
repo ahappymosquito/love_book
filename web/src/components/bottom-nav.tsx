@@ -1,26 +1,27 @@
 "use client";
 
-// Authenticated five-slot bottom navigation with a shared liquid-glass selection lens and compact rose create action.
+// Authenticated five-slot bottom navigation with a shared liquid-glass selection lens, habit destination, settings via avatar, and compact rose create action.
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { BookHeart, ListTodo, Moon, Settings } from "lucide-react";
+import { BookHeart, CalendarCheck2, ListTodo, Moon } from "lucide-react";
 import { CreateNavAction } from "./create-nav-action";
 import { cn } from "@/lib/cn";
 import { useAppStore } from "@/lib/store";
 
-const USER_APP_PREFIXES = ["/timeline", "/create", "/cycle", "/todo", "/me"];
+const USER_APP_PREFIXES = ["/timeline", "/create", "/cycle", "/todo", "/habits", "/me"];
 
 function isUserAppPath(pathname: string): boolean {
   return USER_APP_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
-function activeKey(pathname: string): "timeline" | "cycle" | "create" | "todo" | "me" {
+function activeKey(pathname: string): "timeline" | "cycle" | "create" | "todo" | "habits" | "me" {
   if (pathname.startsWith("/cycle")) return "cycle";
   if (pathname.startsWith("/create")) return "create";
   if (pathname.startsWith("/todo")) return "todo";
+  if (pathname.startsWith("/habits")) return "habits";
   if (pathname.startsWith("/me")) return "me";
   return "timeline";
 }
@@ -53,7 +54,7 @@ export function BottomNav() {
           }}
         />
         <NavItem href="/todo" label="Todo" active={createWindowPhase === "closed" && active === "todo"} reducedMotion={reducedMotion} icon={<ListTodo className="h-5 w-5" />} />
-        <NavItem href="/me" label="设置" active={createWindowPhase === "closed" && active === "me"} reducedMotion={reducedMotion} icon={<Settings className="h-5 w-5" />} />
+        <NavItem href="/habits" label="习惯" active={createWindowPhase === "closed" && active === "habits"} reducedMotion={reducedMotion} icon={<CalendarCheck2 className="h-5 w-5" />} />
       </div>
     </nav>
   );

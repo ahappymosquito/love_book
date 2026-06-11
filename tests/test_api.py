@@ -1,4 +1,4 @@
-"""API regression tests for auth, profiles, user locations, media, food/play/stay/wish todo candidate queues, direct wish creation, category-overridable candidate confirmation, no-email single-date schedules, rich AMap restaurant evidence, weather hints, todo image deletion, AMap MCP POI normalization, AMap-grounded AI tests, and fallback data."""
+"""API regression tests for auth, profiles, user locations, habit dashboards and reminders, media, food/play/stay/wish todo candidate queues, direct wish creation, category-overridable candidate confirmation, no-email single-date schedules, rich AMap restaurant evidence, weather hints, todo image deletion, AMap MCP POI normalization, AMap-grounded AI tests, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -11,9 +11,10 @@ from sqlalchemy.orm import Session
 import app.api.routes.admin as admin_routes
 import app.core.database as database
 import app.cycles as cycles
+import app.habits as habits
 import app.services as services
 from app.core.config import get_settings
-from app.models import DefaultQuote, DeviceToken, Image as DBImage, TodoImage, Voice
+from app.models import DefaultQuote, DeviceToken, HabitReminderRun, HabitTask, Image as DBImage, TodoImage, Voice
 from app.storage import media_path
 from tests.conftest import auth
 
@@ -208,6 +209,114 @@ def test_user_profile_update_rejects_invalid_email(client: TestClient, pair_toke
     )
 
     assert response.status_code == 422
+
+
+def test_habit_dashboard_and_toggle_are_pair_scoped(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    token_a = str(pair_tokens["user_a_token"])
+    token_b = str(pair_tokens["user_b_token"])
+    created = client.post("/habits/tasks", headers=auth(token_a), json={"title": "喝水", "color": "sage"})
+    other_pair = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={"user_a_display_name": "C", "user_b_display_name": "D"},
+    ).json()
+
+    blocked = client.post(
+        f"/habits/tasks/{created.json()['id']}/toggle",
+        headers=auth(token_b),
+        params={"target_date": "2026-06-10", "start": "2026-06-01", "end": "2026-06-30"},
+    )
+    missing_for_other_pair = client.post(
+        f"/habits/tasks/{created.json()['id']}/toggle",
+        headers=auth(str(other_pair["user_a_token"])),
+        params={"target_date": "2026-06-10", "start": "2026-06-01", "end": "2026-06-30"},
+    )
+
+    assert created.status_code == 201
+    assert blocked.status_code == 404
+    assert missing_for_other_pair.status_code == 404
+
+
+def test_habit_toggle_commits_and_dashboard_counts(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    token = str(pair_tokens["user_a_token"])
+    task = client.post("/habits/tasks", headers=auth(token), json={"title": "早睡", "color": "rose"}).json()
+
+    toggled = client.post(
+        f"/habits/tasks/{task['id']}/toggle",
+        headers=auth(token),
+        params={"target_date": "2026-06-10", "start": "2026-06-01", "end": "2026-06-30"},
+    )
+    dashboard = client.get(
+        "/habits/dashboard",
+        headers=auth(token),
+        params={"start": "2026-06-01", "end": "2026-06-30"},
+    ).json()
+    untoggled = client.post(
+        f"/habits/tasks/{task['id']}/toggle",
+        headers=auth(token),
+        params={"target_date": "2026-06-10", "start": "2026-06-01", "end": "2026-06-30"},
+    )
+
+    target_day = next(day for day in dashboard["days"] if day["date"] == "2026-06-10")
+    user_day = next(item for item in target_day["users"] if item["user_id"] == pair_tokens["user_a"]["id"])
+    assert toggled.status_code == 200
+    assert toggled.json()["checked"] is True
+    assert user_day["tasks_total"] == 1
+    assert user_day["completed_count"] == 1
+    assert user_day["all_completed"] is True
+    assert untoggled.status_code == 200
+    assert untoggled.json()["checked"] is False
+
+
+def test_habit_reminder_scan_sends_only_unfinished_once(
+    client: TestClient,
+    pair_tokens: dict[str, str | int],
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token = str(pair_tokens["user_a_token"])
+    client.patch("/auth/me", headers=auth(token), json={"email": "a@example.com"})
+    task = client.post("/habits/tasks", headers=auth(token), json={"title": "拉伸", "color": "peach"}).json()
+    sent: list[dict[str, object]] = []
+    monkeypatch.setattr("app.habits.notify_habit_reminder", lambda **kwargs: sent.append(kwargs))
+
+    first_count = habits.scan_habit_reminders(db_session, date(2026, 6, 10))
+    second_count = habits.scan_habit_reminders(db_session, date(2026, 6, 10))
+    client.post(
+        f"/habits/tasks/{task['id']}/toggle",
+        headers=auth(token),
+        params={"target_date": "2026-06-11", "start": "2026-06-01", "end": "2026-06-30"},
+    )
+    completed_count = habits.scan_habit_reminders(db_session, date(2026, 6, 11))
+
+    assert first_count == 1
+    assert second_count == 0
+    assert completed_count == 0
+    assert len(sent) == 1
+    assert sent[0]["recipient_email"] == "a@example.com"
+    assert db_session.query(HabitReminderRun).filter_by(date=date(2026, 6, 10)).count() == 1
+
+
+def test_habit_reminder_skips_no_email_and_inactive_habits(
+    client: TestClient,
+    pair_tokens: dict[str, str | int],
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token = str(pair_tokens["user_a_token"])
+    task = client.post("/habits/tasks", headers=auth(token), json={"title": "阅读", "color": "sage"}).json()
+    sent: list[dict[str, object]] = []
+    monkeypatch.setattr("app.habits.notify_habit_reminder", lambda **kwargs: sent.append(kwargs))
+
+    no_email_count = habits.scan_habit_reminders(db_session, date(2026, 6, 10))
+    client.patch("/auth/me", headers=auth(token), json={"email": "a@example.com"})
+    client.delete(f"/habits/tasks/{task['id']}", headers=auth(token))
+    inactive_count = habits.scan_habit_reminders(db_session, date(2026, 6, 11))
+
+    assert no_email_count == 0
+    assert inactive_count == 0
+    assert sent == []
+    assert db_session.query(HabitTask).filter_by(id=task["id"]).one().is_active is False
 
 
 def test_user_can_save_browser_location_and_clear_it(

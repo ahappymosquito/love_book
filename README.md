@@ -894,3 +894,13 @@ python -m pytest tests -q
 - `/todo` 随机抽奖支持人均、城市/区域和附近 1/3/5/10km 点选筛选；附近筛选由浏览器定位提供经纬度，失败时静默保留其它筛选。
 - 管理端 `/admin` 的 AI / 模型配置区先选择 OpenAI 或 Anthropic 协议，再编辑对应地址和 token；获取模型列表后按协议保存最近一次模型列表，刷新页面后继续展示上次列表和选中模型；没有选中模型时获取列表会自动保存第一个模型。测试样例内置“江西小炒(西溪北苑东区店)”`food`、“浩波台球俱乐部(汇银中心店)”`play`、“海友酒店(杭州阿里巴巴全球总部店)”`stay`，也允许输入自定义 POI 名称和城市。测试先通过高德 MCP 获取真实 POI 证据，并以高德 POI 类型作为主判断依据；取证展示名称、地址、城市、区域、类型、typecode、电话、商圈、评分、人均、标签/特色和照片摘要；LLM 只作为补全诊断展示，空回复、协议错配或模型不支持 chat/messages 不会让高德取证测试失败。界面展示“高德取证 -> 高德类型判断 -> LLM 补全诊断”过程；分类补全默认给 64 tokens 输出预算，遇到长度耗尽且正文为空时用 256 tokens 重试一次；高德 `AMAP_MAPS_API_KEY` 单独罗列并可自定义保存。
 - 相关环境变量：`AMAP_MAPS_API_KEY`、`LLM_OPENAI_BASE_URL`、`LLM_ANTHROPIC_BASE_URL`、`LLM_API_KEY`、`LLM_PROTOCOL`、`LLM_MODEL`。真实密钥只放 `.env`、服务器 env 文件或管理端数据库配置，不提交仓库。
+
+## 习惯页与每日提醒
+
+- 登录后新增 `/habits` 页面，底边栏最后一项进入习惯页；原 `/me` 设置页继续存在，通过顶部用户头像进入。
+- 习惯按用户各自管理，双方互相可见：当前用户可新增、编辑颜色/标题、停用自己的习惯，对方习惯只读展示。
+- `/habits` 顶部月看板按日期展示双方完成度：每个格子双方各占一半，每半边按该用户启用习惯数量等分，完成项填充对应颜色；双方当天全部完成时显示融合彩色完成态和低干扰庆祝动画。
+- 下方清单默认展开自己、折叠对方；点击自己的习惯会对当前选中日期完成/取消，支持点击昨天或更早日期补记。
+- 后端新增 `/habits/dashboard?start=YYYY-MM-DD&end=YYYY-MM-DD`、`POST /habits/tasks`、`PATCH /habits/tasks/{id}`、`DELETE /habits/tasks/{id}`、`POST /habits/tasks/{id}/toggle`，全部复用 Bearer token 并按当前 pair 隔离。
+- 数据表包括 `habit_tasks`、`habit_checkins` 和 `habit_reminder_runs`；写接口返回前完成数据库提交。
+- FastAPI lifespan 内置轻量习惯提醒任务，每天服务器本地时间 00:01 检查昨天。用户昨天有启用习惯且未全部完成时发送邮件；全部完成、无邮箱、无启用习惯或习惯已停用时不发送。提醒邮件链接到 `/habits?date=YYYY-MM-DD`，可携带 token 免登录补记，`habit_reminder_runs` 防重复发送。

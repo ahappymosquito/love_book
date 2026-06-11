@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests, rich AMap restaurant evidence, todo candidate queues, events, media, quotes, cycles, and todo APIs."""
+"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests, rich AMap restaurant evidence, habit check-ins, todo candidate queues, events, media, quotes, cycles, and todo APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -326,6 +326,79 @@ class CycleDashboardOut(APIModel):
     logs: list[CycleDailyLogOut]
     stats: CycleStats
     is_empty: bool
+
+
+class HabitTaskCreate(APIModel):
+    title: str = Field(min_length=1, max_length=120)
+    color: str = Field(default="rose", min_length=1, max_length=32)
+
+    @field_validator("title", "color")
+    @classmethod
+    def strip_required_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Text cannot be empty")
+        return value
+
+
+class HabitTaskUpdate(APIModel):
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    color: str | None = Field(default=None, min_length=1, max_length=32)
+    sort_order: int | None = Field(default=None, ge=0, le=10000)
+    is_active: bool | None = None
+
+    @field_validator("title", "color")
+    @classmethod
+    def strip_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("Text cannot be empty")
+        return value
+
+
+class HabitTaskOut(APIModel):
+    id: int
+    pair_id: int
+    owner_id: int
+    title: str
+    color: str
+    sort_order: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class HabitUserDayOut(APIModel):
+    user_id: int
+    display_name: str
+    tasks_total: int
+    completed_count: int
+    all_completed: bool
+    completed_task_ids: list[int] = Field(default_factory=list)
+
+
+class HabitDayOut(APIModel):
+    date: date
+    users: list[HabitUserDayOut]
+    pair_all_completed: bool
+
+
+class HabitDashboardOut(APIModel):
+    start: date
+    end: date
+    tasks: list[HabitTaskOut]
+    days: list[HabitDayOut]
+
+
+class HabitToggleOut(APIModel):
+    date: date
+    task: HabitTaskOut
+    checked: bool
+    dashboard: HabitDashboardOut
 
 
 class TodoRestaurantOut(APIModel):

@@ -1,4 +1,4 @@
-"""SMTP email helpers for timeline notices, food/play/stay todo schedule notices, and locked-content privacy rules."""
+"""SMTP email helpers for timeline notices, habit reminders, food/play/stay todo schedule notices, and locked-content privacy rules."""
 from __future__ import annotations
 
 from html import escape
@@ -97,6 +97,55 @@ def _todo_link(target_date: date, recipient_token: str | None = None) -> str:
 
         return f"{base}/?token={quote(recipient_token, safe='')}&next={quote(target, safe='/?=&')}"
     return f"{base}{target}"
+
+
+def _habit_link(target_date: date, recipient_token: str | None = None) -> str:
+    """Build a habit-board link, optionally through token login."""
+    base = (get_settings().app_web_url or "").rstrip("/")
+    target = f"/habits?date={target_date.isoformat()}"
+    if not base:
+        return target
+    if recipient_token:
+        from urllib.parse import quote
+
+        return f"{base}/?token={quote(recipient_token, safe='')}&next={quote(target, safe='/?=&')}"
+    return f"{base}{target}"
+
+
+def notify_habit_reminder(
+    *,
+    recipient_email: str | None,
+    recipient_name: str,
+    recipient_token: str | None,
+    target_date: date,
+    total_count: int,
+    completed_count: int,
+) -> None:
+    if not recipient_email:
+        return
+    link = _habit_link(target_date, recipient_token)
+    safe_recipient_name = escape(recipient_name)
+    safe_date = escape(target_date.isoformat())
+    safe_link = escape(link, quote=True)
+    subject = f"【我们之间的小事】昨天的习惯记录还差一点点"
+    text_body = (
+        f"{recipient_name}，你好：\n\n"
+        f"昨天（{target_date.isoformat()}）的习惯记录还有未完成项：{completed_count}/{total_count}。\n"
+        f"可以点开日期补一下记录：{link}\n\n"
+        f"-- 我们之间的小事"
+    )
+    html_body = f"""
+    <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;line-height:1.6;color:#2b2522;max-width:560px;margin:0 auto;padding:24px;">
+      <p>{safe_recipient_name}，你好：</p>
+      <p>昨天（<strong>{safe_date}</strong>）的习惯记录还有未完成项：<strong>{completed_count}/{total_count}</strong>。</p>
+      <div style="background:#fdf6f1;border:1px solid #e9ddd3;border-radius:12px;padding:16px 18px;margin:12px 0;color:#6b605a;">
+        点开日期就可以补记，不会影响今天的记录。
+      </div>
+      <p><a href="{safe_link}" style="display:inline-block;background:#d76679;color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;">补记习惯</a></p>
+      <p style="color:#a09489;font-size:12px;margin-top:24px;">-- 我们之间的小事</p>
+    </div>
+    """
+    send_email(recipient_email, subject, text_body, html_body)
 
 
 def notify_todo_schedule_created(

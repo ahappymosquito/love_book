@@ -1,19 +1,35 @@
-"""FastAPI application factory registering auth, admin, todo, avatar, cycle, event, quote, and content routes."""
+"""FastAPI application factory registering auth, admin, habit, todo, avatar, cycle, event, quote, content routes, and the habit reminder loop."""
 
 from collections.abc import AsyncGenerator
+import asyncio
+from contextlib import suppress
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import admin, admin_auth, auth, contents, cycles, events, quotes, todos, users
-from app.core.database import init_db
+from app.api.routes import admin, admin_auth, auth, contents, cycles, events, habits, quotes, todos, users
+from app.core.database import SessionLocal, init_db
+from app.habits import reminder_target_date, scan_habit_reminders, seconds_until_next_reminder
+
+
+async def habit_reminder_loop() -> None:
+    while True:
+        await asyncio.sleep(seconds_until_next_reminder())
+        with SessionLocal() as db:
+            scan_habit_reminders(db, reminder_target_date())
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     init_db()
-    yield
+    reminder_task = asyncio.create_task(habit_reminder_loop())
+    try:
+        yield
+    finally:
+        reminder_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await reminder_task
 
 
 def create_app() -> FastAPI:
@@ -29,6 +45,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_auth.router)
     app.include_router(admin.router)
     app.include_router(auth.router)
+    app.include_router(habits.router)
     app.include_router(cycles.router)
     app.include_router(todos.router)
     app.include_router(todos.image_router)

@@ -1,4 +1,4 @@
-// Shared TypeScript contracts for API payloads, editable profile/location state, events, quote libraries, food/play/stay/wish todo boards, candidate queues, rich AMap restaurant evidence, todo weather hints, admin saved-model AMap-grounded AI tests, cycles, and reminders.
+// Shared TypeScript contracts for API payloads, editable profile/location state, events, quote libraries, habits, food/play/stay/wish todo boards, candidate queues, rich AMap restaurant evidence, todo weather hints, admin saved-model AMap-grounded AI tests, cycles, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
 export type TodoCategory = "food" | "play" | "stay" | "wish";
@@ -237,6 +237,47 @@ export interface CycleDashboardOut {
   logs: DailyLog[];
   stats: CycleStats;
   is_empty: boolean;
+}
+
+export interface HabitTaskOut {
+  id: number;
+  pair_id: number;
+  owner_id: number;
+  title: string;
+  color: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HabitUserDayOut {
+  user_id: number;
+  display_name: string;
+  tasks_total: number;
+  completed_count: number;
+  all_completed: boolean;
+  completed_task_ids: number[];
+}
+
+export interface HabitDayOut {
+  date: string;
+  users: HabitUserDayOut[];
+  pair_all_completed: boolean;
+}
+
+export interface HabitDashboardOut {
+  start: string;
+  end: string;
+  tasks: HabitTaskOut[];
+  days: HabitDayOut[];
+}
+
+export interface HabitToggleOut {
+  date: string;
+  task: HabitTaskOut;
+  checked: boolean;
+  dashboard: HabitDashboardOut;
 }
 
 export interface TodoRestaurantOut {

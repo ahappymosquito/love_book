@@ -80,3 +80,10 @@ npm run start
 - 主要组件在 `src/components/cycle-calendar-dashboard.tsx`：顶部概览、月/周/列表视图、筛选、日期详情、快速记录、阶段图例、统计卡片、周期进度条和空状态。
 - 移动端保留全宽日历、底部固定快速记录按钮和日期详情 bottom sheet；桌面端使用右侧详情面板。
 - 所有预测文案仅作个人记录参考，不提供医疗诊断或避孕建议。
+
+## Habits page
+
+- `/habits` is the authenticated daily habit page and now occupies the final bottom-nav slot.
+- `/me` remains the profile/settings surface, but users reach it from the top avatar instead of the bottom nav.
+- The page renders a monthly board where each date is split between both partners; each partner's half is divided by their active habits and filled as habits are checked off.
+- The current user's habit panel is expanded by default and supports add, rename, color change, stop, and date-specific toggle. The counterpart panel is read-only and collapsed by default.

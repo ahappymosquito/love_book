@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests, todo candidate queues, scheduling, weather hints, events, quotes, cycles, reactions, and media including todo image deletion.
+// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests, habits, todo candidate queues, scheduling, weather hints, events, quotes, cycles, reactions, and media including todo image deletion.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -19,6 +19,9 @@ import type {
   DefaultQuoteOut,
   EventDetail,
   EventSummary,
+  HabitDashboardOut,
+  HabitTaskOut,
+  HabitToggleOut,
   ImageOut,
   LoginLogOut,
   LoginRecordCreate,
@@ -281,6 +284,27 @@ export const api = {
     apiRequest<DailyLog[]>("/cycles/example-data", {
       method: "POST",
     }),
+
+  // Habits
+  getHabitDashboard: (params: { start: string; end: string }) => {
+    const search = new URLSearchParams({ start: params.start, end: params.end });
+    return apiRequest<HabitDashboardOut>(`/habits/dashboard?${search.toString()}`);
+  },
+  createHabitTask: (payload: { title: string; color: string }) =>
+    apiRequest<HabitTaskOut>("/habits/tasks", { method: "POST", json: payload }),
+  updateHabitTask: (
+    id: number,
+    payload: { title?: string; color?: string; sort_order?: number; is_active?: boolean },
+  ) => apiRequest<HabitTaskOut>(`/habits/tasks/${id}`, { method: "PATCH", json: payload }),
+  deleteHabitTask: (id: number) => apiRequest<void>(`/habits/tasks/${id}`, { method: "DELETE" }),
+  toggleHabitTask: (id: number, params: { target_date: string; start: string; end: string }) => {
+    const search = new URLSearchParams({
+      target_date: params.target_date,
+      start: params.start,
+      end: params.end,
+    });
+    return apiRequest<HabitToggleOut>(`/habits/tasks/${id}/toggle?${search.toString()}`, { method: "POST" });
+  },
 
   // Todo
   getTodoDashboard: (month: string) => apiRequest<TodoDashboardOut>(`/todos/dashboard?month=${month}`),
