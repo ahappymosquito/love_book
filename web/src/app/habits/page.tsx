@@ -1,10 +1,11 @@
 "use client";
 
-// Habit page renders the authenticated pair habit dashboard with a liquid-glass monthly board,
-// vertical collapsible check-in panels, one-time habit color selection, green completion rows, and reduced-motion-safe feedback.
+// Habit page renders the authenticated pair habit dashboard with liquid-glass week/month boards,
+// vertical collapsible check-in panels, popover habit color selection, green completion rows, and reduced-motion-safe feedback.
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   Check,
@@ -31,12 +32,20 @@ const COLOR_OPTIONS = [
   { key: "rose", label: "玫瑰", className: "bg-rose" },
   { key: "peach", label: "暖桃", className: "bg-peach-deep" },
   { key: "sage", label: "鼠尾草", className: "bg-sage" },
-  { key: "berry", label: "浆果", className: "bg-[#ad6480]" },
-  { key: "honey", label: "蜂蜜", className: "bg-[#c58d54]" },
-  { key: "mint", label: "薄荷", className: "bg-[#6f9f89]" },
+  { key: "#ff6f91", label: "亮莓", className: "" },
+  { key: "#ff9f45", label: "橘光", className: "" },
+  { key: "#f5c84b", label: "柠檬", className: "" },
+  { key: "#4da3ff", label: "晴蓝", className: "" },
+  { key: "#a978ff", label: "紫藤", className: "" },
 ] as const;
+const COLOR_HEX_BY_KEY: Record<string, string> = {
+  rose: "#c45d77",
+  peach: "#cc7856",
+  sage: "#74aa91",
+};
 
 const WEEK_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
+type CalendarMode = "week" | "month";
 
 function pad(value: number): string {
   return String(value).padStart(2, "0");
@@ -63,17 +72,37 @@ function monthLabel(date: Date): string {
   return `${date.getFullYear()} 年 ${date.getMonth() + 1} 月`;
 }
 
-function calendarRange(viewDate: Date): { start: Date; end: Date } {
-  const start = monthStart(viewDate);
+function weekStart(date: Date): Date {
+  const start = new Date(date);
   const startOffset = (start.getDay() + 6) % 7;
-  const rangeStart = new Date(start);
-  rangeStart.setDate(rangeStart.getDate() - startOffset);
+  start.setDate(start.getDate() - startOffset);
+  return start;
+}
 
+function weekEnd(date: Date): Date {
+  const end = weekStart(date);
+  end.setDate(end.getDate() + 6);
+  return end;
+}
+
+function calendarRange(viewDate: Date, mode: CalendarMode): { start: Date; end: Date } {
+  if (mode === "week") {
+    return { start: weekStart(viewDate), end: weekEnd(viewDate) };
+  }
+  const start = monthStart(viewDate);
+  const rangeStart = weekStart(start);
   const end = monthEnd(viewDate);
-  const endOffset = 6 - ((end.getDay() + 6) % 7);
-  const rangeEnd = new Date(end);
-  rangeEnd.setDate(rangeEnd.getDate() + endOffset);
+  const rangeEnd = weekEnd(end);
   return { start: rangeStart, end: rangeEnd };
+}
+
+function calendarLabel(viewDate: Date, mode: CalendarMode): string {
+  if (mode === "month") return monthLabel(viewDate);
+  const start = weekStart(viewDate);
+  const end = weekEnd(viewDate);
+  const sameMonth = start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth();
+  if (sameMonth) return `${start.getFullYear()} 年 ${start.getMonth() + 1} 月 ${start.getDate()}-${end.getDate()} 日`;
+  return `${start.getFullYear()} 年 ${start.getMonth() + 1} 月 ${start.getDate()} 日 - ${end.getFullYear()} 年 ${end.getMonth() + 1} 月 ${end.getDate()} 日`;
 }
 
 function daysBetween(start: Date, end: Date): Date[] {
@@ -87,7 +116,20 @@ function daysBetween(start: Date, end: Date): Date[] {
 }
 
 function colorClass(color: string): string {
+  if (isHexColor(color)) return "";
   return COLOR_OPTIONS.find((option) => option.key === color)?.className ?? "bg-rose";
+}
+
+function isHexColor(color: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(color);
+}
+
+function colorStyle(color: string): CSSProperties | undefined {
+  return isHexColor(color) ? { backgroundColor: color } : undefined;
+}
+
+function nativeColorValue(color: string): string {
+  return isHexColor(color) ? color : (COLOR_HEX_BY_KEY[color] ?? COLOR_HEX_BY_KEY.rose);
 }
 
 export default function HabitsPage() {
@@ -100,7 +142,8 @@ export default function HabitsPage() {
 
 function HabitsInner() {
   const me = useAppStore((s) => s.me)!;
-  const [viewDate, setViewDate] = useState(() => monthStart(new Date()));
+  const [viewDate, setViewDate] = useState(() => new Date());
+  const [calendarMode, setCalendarMode] = useState<CalendarMode>("week");
   const [selectedDate, setSelectedDate] = useState(() => toISODate(new Date()));
   const [dashboard, setDashboard] = useState<HabitDashboardOut | null>(null);
   const [loading, setLoading] = useState(true);
@@ -117,18 +160,18 @@ function HabitsInner() {
     if (!queryDate || !/^\d{4}-\d{2}-\d{2}$/.test(queryDate)) return;
     const parsed = parseISODate(queryDate);
     setSelectedDate(queryDate);
-    setViewDate(monthStart(parsed));
+    setViewDate(parsed);
   }, []);
 
   const range = useMemo(() => {
-    const { start, end } = calendarRange(viewDate);
+    const { start, end } = calendarRange(viewDate, calendarMode);
     return { start: toISODate(start), end: toISODate(end) };
-  }, [viewDate]);
+  }, [calendarMode, viewDate]);
 
   const calendarDays = useMemo(() => {
-    const { start, end } = calendarRange(viewDate);
+    const { start, end } = calendarRange(viewDate, calendarMode);
     return daysBetween(start, end);
-  }, [viewDate]);
+  }, [calendarMode, viewDate]);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -195,7 +238,9 @@ function HabitsInner() {
 
   function selectDate(date: Date, isoDate: string) {
     setSelectedDate(isoDate);
-    if (date.getMonth() !== viewDate.getMonth() || date.getFullYear() !== viewDate.getFullYear()) {
+    if (calendarMode === "week") {
+      setViewDate(date);
+    } else if (date.getMonth() !== viewDate.getMonth() || date.getFullYear() !== viewDate.getFullYear()) {
       setViewDate(monthStart(date));
     }
   }
@@ -216,15 +261,31 @@ function HabitsInner() {
             <CardHeader className="gap-4 sm:flex sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle>习惯打卡</CardTitle>
-                <CardDescription>点日期补记，点自己的事项完成或取消。</CardDescription>
+                <CardDescription>默认按周查看，点日期补记，点自己的事项完成或取消。</CardDescription>
               </div>
               <CalendarToolbar
                 viewDate={viewDate}
-                onPrev={() => setViewDate((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
-                onNext={() => setViewDate((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
+                mode={calendarMode}
+                onMode={setCalendarMode}
+                onPrev={() =>
+                  setViewDate((current) => {
+                    const next = new Date(current);
+                    next.setDate(next.getDate() + (calendarMode === "week" ? -7 : 0));
+                    if (calendarMode === "month") return new Date(current.getFullYear(), current.getMonth() - 1, 1);
+                    return next;
+                  })
+                }
+                onNext={() =>
+                  setViewDate((current) => {
+                    const next = new Date(current);
+                    next.setDate(next.getDate() + (calendarMode === "week" ? 7 : 0));
+                    if (calendarMode === "month") return new Date(current.getFullYear(), current.getMonth() + 1, 1);
+                    return next;
+                  })
+                }
                 onToday={() => {
                   const today = new Date();
-                  setViewDate(monthStart(today));
+                  setViewDate(today);
                   setSelectedDate(toISODate(today));
                 }}
               />
@@ -246,7 +307,7 @@ function HabitsInner() {
                       key={key}
                       date={day}
                       isoDate={key}
-                      currentMonth={day.getMonth() === viewDate.getMonth()}
+                      currentMonth={calendarMode === "week" || day.getMonth() === viewDate.getMonth()}
                       today={key === toISODate(new Date())}
                       selected={key === selectedDate}
                       day={daysByDate.get(key)}
@@ -325,27 +386,50 @@ function HabitsInner() {
 
 function CalendarToolbar({
   viewDate,
+  mode,
+  onMode,
   onPrev,
   onNext,
   onToday,
 }: {
   viewDate: Date;
+  mode: CalendarMode;
+  onMode: (mode: CalendarMode) => void;
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <Button variant="outline" size="icon" onClick={onPrev} aria-label="上个月">
-        <ChevronLeft className="h-4 w-4" />
-      </Button>
-      <div className="min-w-28 text-center font-sc text-sm font-medium text-ink">{monthLabel(viewDate)}</div>
-      <Button variant="outline" size="icon" onClick={onNext} aria-label="下个月">
-        <ChevronRight className="h-4 w-4" />
-      </Button>
-      <Button variant="secondary" size="sm" onClick={onToday}>
-        今天
-      </Button>
+    <div className="flex flex-col gap-3 sm:items-end">
+      <div className="liquid-chip grid grid-cols-2 rounded-full p-1">
+        {(["week", "month"] as CalendarMode[]).map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => onMode(item)}
+            className={cn(
+              "min-h-9 rounded-full px-4 font-sc text-xs font-medium text-ink-soft transition focus-ring",
+              mode === item && "bg-surface-raised text-ink shadow-[0_8px_18px_-14px_rgb(var(--rose-deep)/0.6)]",
+            )}
+          >
+            {item === "week" ? "周" : "月"}
+          </button>
+        ))}
+      </div>
+      <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+        <Button variant="outline" size="icon" onClick={onPrev} aria-label={mode === "week" ? "上一周" : "上个月"}>
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <div className="min-w-32 flex-1 text-center font-sc text-sm font-medium text-ink sm:min-w-44 sm:flex-none">
+          {calendarLabel(viewDate, mode)}
+        </div>
+        <Button variant="outline" size="icon" onClick={onNext} aria-label={mode === "week" ? "下一周" : "下个月"}>
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+        <Button variant="secondary" size="sm" onClick={onToday}>
+          今天
+        </Button>
+      </div>
     </div>
   );
 }
@@ -456,6 +540,7 @@ function DayCell({
                     <span
                       key={task.id}
                       className={cn("min-w-0 rounded-[4px] transition-colors", completed.has(task.id) ? colorClass(task.color) : "bg-line/35")}
+                      style={completed.has(task.id) ? colorStyle(task.color) : undefined}
                       aria-hidden="true"
                     />
                   ))
@@ -523,7 +608,7 @@ function HabitPanel({
 }) {
   const completed = new Set(userDay?.completed_task_ids ?? []);
   return (
-    <Card className="liquid-habit-panel overflow-hidden">
+    <Card className="liquid-habit-panel overflow-visible">
       <button
         type="button"
         onClick={onToggleOpen}
@@ -556,12 +641,13 @@ function HabitPanel({
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-            className="overflow-hidden border-t border-line/60"
+            className="border-t border-line/60"
           >
             <div className="space-y-4 p-4 sm:p-5">
               {editable && (
                 <form onSubmit={onCreate} className="liquid-subpanel p-3">
-                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                  <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+                    <ColorPicker value={newColor} onChange={onNewColor} />
                     <input
                       value={newTitle}
                       onChange={(event) => onNewTitle(event.target.value)}
@@ -569,14 +655,10 @@ function HabitPanel({
                       placeholder="新增一个每天想做的习惯"
                       maxLength={120}
                     />
-                    <Button type="submit" disabled={saving || !newTitle.trim()} className="rounded-2xl">
+                    <Button type="submit" disabled={saving || !newTitle.trim()} className="col-span-2 rounded-2xl sm:col-span-1">
                       {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                       新增习惯
                     </Button>
-                  </div>
-                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="font-sc text-xs text-ink-muted">颜色只在创建习惯时选择，之后编辑习惯时再调整。</p>
-                    <ColorPicker value={newColor} onChange={onNewColor} />
                   </div>
                 </form>
               )}
@@ -617,6 +699,70 @@ function ColorPicker({
   onChange: (value: string) => void;
   className?: string;
 }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={cn("relative", className)}>
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="liquid-color-button grid h-11 w-11 place-items-center rounded-2xl focus-ring"
+        aria-label="选择习惯颜色"
+        aria-expanded={open}
+      >
+        <span className={cn("block h-6 w-6 rounded-full", colorClass(value))} style={colorStyle(value)} />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+            className="liquid-color-popover absolute left-0 top-12 z-20 w-[244px] p-3"
+          >
+            <div className="grid grid-cols-4 gap-2">
+              {COLOR_OPTIONS.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => {
+                    onChange(option.key);
+                    setOpen(false);
+                  }}
+                  className={cn("grid h-10 place-items-center rounded-2xl border transition focus-ring", value === option.key ? "border-rose-deep bg-white/48" : "border-white/40 bg-white/18")}
+                  aria-label={`选择${option.label}`}
+                  title={option.label}
+                >
+                  <span className={cn("block h-6 w-6 rounded-full", colorClass(option.key))} style={colorStyle(option.key)} />
+                </button>
+              ))}
+            </div>
+            <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-white/45 bg-white/22 px-3 py-2">
+              <span className="font-sc text-xs text-ink-muted">自定义</span>
+              <input
+                type="color"
+                value={nativeColorValue(value)}
+                onChange={(event) => onChange(event.target.value)}
+                className="h-8 w-10 cursor-pointer rounded-xl border-0 bg-transparent p-0"
+                aria-label="自定义习惯颜色"
+              />
+            </label>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function InlineColorPicker({
+  value,
+  onChange,
+  className,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  className?: string;
+}) {
   return (
     <div className={cn("flex flex-wrap gap-2", className)}>
       {COLOR_OPTIONS.map((option) => (
@@ -628,9 +774,18 @@ function ColorPicker({
           aria-label={`选择${option.label}`}
           title={option.label}
         >
-          <span className={cn("block h-6 w-6 rounded-full", option.className)} />
+          <span className={cn("block h-6 w-6 rounded-full", colorClass(option.key))} style={colorStyle(option.key)} />
         </button>
       ))}
+      <label className="grid h-9 w-9 cursor-pointer place-items-center rounded-full border-2 border-transparent focus-within:border-rose-deep">
+        <input
+          type="color"
+          value={nativeColorValue(value)}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-6 w-6 cursor-pointer rounded-full border-0 bg-transparent p-0"
+          aria-label="自定义习惯颜色"
+        />
+      </label>
     </div>
   );
 }
@@ -680,7 +835,10 @@ function HabitTaskRow({
       animate={checked ? { scale: [1, 1.008, 1] } : { scale: 1 }}
       transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
     >
-      <span className={cn("h-8 w-1.5 flex-none rounded-full shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]", checked ? "bg-sage" : colorClass(task.color))} />
+      <span
+        className={cn("h-8 w-1.5 flex-none rounded-full shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]", checked ? "bg-sage" : colorClass(task.color))}
+        style={checked ? undefined : colorStyle(task.color)}
+      />
       {editing ? (
         <form onSubmit={submitEdit} className="grid min-w-0 flex-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
           <div className="min-w-0">
@@ -691,7 +849,7 @@ function HabitTaskRow({
               maxLength={120}
               autoFocus
             />
-            <ColorPicker value={color} onChange={setColor} className="mt-2" />
+            <InlineColorPicker value={color} onChange={setColor} className="mt-2" />
           </div>
           <div className="flex gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={cancelEdit}>
