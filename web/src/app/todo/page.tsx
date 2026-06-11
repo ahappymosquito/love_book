@@ -1,6 +1,6 @@
 "use client";
 
-// Four-section pair-shared todo workspace with location-aware pending candidate queues, direct wish creation, editable detail notes, category override confirmation, rich AMap POI evidence, weather hints, instant single-date scheduling, two-comment completion, bottom-nav-covering details, comments with authors, and viewable/deletable folded photos.
+// Four-section pair-shared todo workspace with location-aware pending candidate queues, dual-action quick add for normal items and direct wishes, editable detail notes, category override confirmation, rich AMap POI evidence, weather hints, instant single-date scheduling, two-comment completion, bottom-nav-covering details, comments with authors, and viewable/deletable folded photos.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -160,11 +160,12 @@ function TodoInner() {
   const [localCandidates, setLocalCandidates] = useState<LocalTodoCandidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailId, setDetailId] = useState<number | null>(null);
+  const [autoEditNoteId, setAutoEditNoteId] = useState<number | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<TodoCategory, boolean>>({
     food: false,
     play: false,
     stay: false,
-    wish: false,
+    wish: true,
   });
 
   useEffect(() => {
@@ -238,6 +239,8 @@ function TodoInner() {
       const item = await api.createTodoItem({ category, title });
       toast.success("已加入许愿");
       await load();
+      setExpandedSections((current) => ({ ...current, wish: true }));
+      setAutoEditNoteId(item.id);
       setDetailId(item.id);
       return;
     }
@@ -355,6 +358,8 @@ function TodoInner() {
               onSchedule={scheduleItem}
               onRemoveSchedule={removeSchedule}
               onArchive={archiveItem}
+              autoEditNote={autoEditNoteId === detailId}
+              onAutoEditNoteConsumed={() => setAutoEditNoteId(null)}
             />
           )}
         </AnimatePresence>
@@ -957,46 +962,42 @@ function StatusPill({ status }: { status: string }) {
 
 function QuickAddBar({ onCreated }: { onCreated: (title: string, category: TodoCategory) => void | Promise<void> }) {
   const [title, setTitle] = useState("");
-  const [category, setCategory] = useState<TodoCategory>("play");
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  function createAs(category: TodoCategory) {
     const next = title.trim();
     if (!next) return;
     setTitle("");
     void onCreated(next, category);
   }
 
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    createAs("play");
+  }
+
   return (
     <form onSubmit={submit} className="rounded-2xl border border-line/62 bg-surface-raised/82 p-3 shadow-[0_10px_24px_-22px_rgb(var(--ink)/0.42)] sm:p-4">
-      <div className="mb-2 grid grid-cols-4 gap-1 rounded-xl bg-ink/5 p-1">
-        {TODO_CATEGORY_OPTIONS.map((option) => (
-          <button
-            key={option}
-            type="button"
-            onClick={() => setCategory(option)}
-            className={cn(
-              "min-h-9 rounded-lg font-sc text-xs transition focus-ring",
-              category === option ? "bg-surface text-rose-deep shadow-sm" : "text-ink-muted hover:bg-surface/62",
-            )}
-          >
-            {TODO_CATEGORY_LABELS[option]}
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-line/70 bg-surface-raised/90 px-3 py-2 focus-within:border-rose/60 focus-within:shadow-[0_0_0_4px_rgb(var(--focus)/0.14)]">
+        <div className="flex min-h-11 min-w-[14rem] flex-1 items-center gap-2">
+          <Plus className="h-4 w-4 flex-none text-rose-deep" />
+          <input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="写下想一起做的事，新增会帮你找地点"
+            maxLength={200}
+            className="min-w-0 flex-1 bg-transparent font-sc text-sm outline-none placeholder:text-ink-muted/82"
+          />
+        </div>
+        <div className="flex w-full flex-none gap-2 sm:w-auto">
+          <button type="submit" disabled={!title.trim()} className="min-h-11 flex-1 rounded-xl bg-rose px-4 font-sc text-sm text-white disabled:opacity-45 focus-ring sm:flex-none">
+            新增
           </button>
-        ))}
+          <button type="button" onClick={() => createAs("wish")} disabled={!title.trim()} className="btn-ghost min-h-11 flex-1 rounded-xl px-4 font-sc text-sm disabled:opacity-45 focus-ring sm:flex-none">
+            许愿
+          </button>
+        </div>
       </div>
-      <div className="flex min-h-12 items-center gap-2 rounded-2xl border border-line/70 bg-surface-raised/90 px-3 focus-within:border-rose/60 focus-within:shadow-[0_0_0_4px_rgb(var(--focus)/0.14)]">
-        <Plus className="h-4 w-4 text-rose-deep" />
-        <input
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder="写下想一起做的事"
-          maxLength={200}
-          className="min-w-0 flex-1 bg-transparent font-sc text-sm outline-none placeholder:text-ink-muted/82"
-        />
-        <button type="submit" disabled={!title.trim()} className="rounded-xl bg-rose px-3 py-2 font-sc text-sm text-white disabled:opacity-45 focus-ring">
-          {category === "wish" ? "直接加入" : "加入队列"}
-        </button>
-      </div>
+      <p className="mt-2 px-1 font-sc text-xs leading-relaxed text-ink-muted">新增会先生成待确认卡，适合吃喝、玩乐和住宿；许愿会直接保存。</p>
     </form>
   );
 }
@@ -1213,6 +1214,8 @@ function TodoDetailPanel({
   onSchedule,
   onRemoveSchedule,
   onArchive,
+  autoEditNote,
+  onAutoEditNoteConsumed,
 }: {
   itemId: number;
   item: TodoItemOut | null;
@@ -1223,6 +1226,8 @@ function TodoDetailPanel({
   onSchedule: (id: number, date?: string) => void | Promise<void>;
   onRemoveSchedule: (id: number) => void | Promise<void>;
   onArchive: (id: number) => void;
+  autoEditNote?: boolean;
+  onAutoEditNoteConsumed?: () => void;
 }) {
   const reducedMotion = useReducedMotion();
   const [detail, setDetail] = useState<TodoItemDetail | null>(null);
@@ -1255,6 +1260,13 @@ function TodoDetailPanel({
     setNoteDraft(detail?.note ?? item?.note ?? "");
     setEditingNote(false);
   }, [detail?.note, item?.note, itemId]);
+
+  useEffect(() => {
+    if (!detail || !autoEditNote) return;
+    setNoteDraft(detail.note ?? "");
+    setEditingNote(true);
+    onAutoEditNoteConsumed?.();
+  }, [autoEditNote, detail, onAutoEditNoteConsumed]);
 
   useEffect(() => {
     const hasSchedule = (detail?.schedules ?? schedules).length > 0;
