@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests, todo candidate queues, scheduling, weather hints, events, quotes, cycles, reactions, and media.
+// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests, todo candidate queues, scheduling, weather hints, events, quotes, cycles, reactions, and media including todo image deletion.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -335,6 +335,7 @@ export const api = {
     if (dims?.height) fd.append("height", String(dims.height));
     return apiRequest<TodoImageOut>(`/todos/items/${id}/images`, { method: "POST", body: fd });
   },
+  deleteTodoImage: (id: number) => apiRequest<void>(`/todo-images/${id}`, { method: "DELETE" }),
 
   // Events
   listEvents: () => apiRequest<EventSummary[]>("/events"),

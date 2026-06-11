@@ -1,4 +1,4 @@
-"""Todo board routes for pair-shared tasks, location-aware AMap candidate search, retryable category-overridable candidate confirmation, no-email single-date schedules, weather hints, two-person comment completion, shared LLM category refresh, rich AMap restaurant evidence, and images."""
+"""Todo board routes for pair-shared tasks, location-aware AMap candidate search, retryable category-overridable candidate confirmation, no-email single-date schedules, weather hints, two-person comment completion, shared LLM category refresh, rich AMap restaurant evidence, images, and image deletion."""
 
 from __future__ import annotations
 
@@ -49,6 +49,7 @@ from app.storage import (
     PRIVATE_MEDIA_CACHE_HEADERS,
     MediaStorageError,
     build_todo_image_storage_keys,
+    delete_media_file,
     read_media_file,
     write_media_file,
 )
@@ -803,6 +804,21 @@ def _ensure_todo_image_visible(db: Session, image_id: int, user: User, pair: Pai
     if item.pair_id != pair.id:
         raise HTTPException(status_code=404, detail="Todo image not found")
     return image
+
+
+@image_router.delete("/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_todo_image(image_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    pair = get_pair_for_user(db, current_user.id)
+    image = _ensure_todo_image_visible(db, image_id, current_user, pair)
+    storage_keys = [key for key in (image.storage_key, image.thumb_storage_key) if key]
+    db.delete(image)
+    db.commit()
+    for storage_key in storage_keys:
+        try:
+            delete_media_file(storage_key)
+        except MediaStorageError:
+            logger.exception("Todo image file deletion failed", extra={"image_id": image_id, "storage_key": storage_key})
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @image_router.get("/{image_id}/file")

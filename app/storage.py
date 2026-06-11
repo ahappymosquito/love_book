@@ -1,4 +1,4 @@
-"""Local media storage helpers for avatar, timeline media, todo images, and voice files under MEDIA_ROOT."""
+"""Local media storage helpers for avatar, timeline media, todo images with deletion, and voice files under MEDIA_ROOT."""
 
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
@@ -97,3 +97,14 @@ def media_file_exists(storage_key: str, settings: Settings | None = None) -> boo
         return media_path(storage_key, settings).is_file()
     except MediaStorageError:
         return False
+
+
+def delete_media_file(storage_key: str, settings: Settings | None = None) -> bool:
+    path = media_path(storage_key, settings)
+    try:
+        path.unlink()
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise MediaStorageError(f"Could not delete media file {storage_key!r}") from exc

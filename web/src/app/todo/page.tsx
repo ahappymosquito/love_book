@@ -1,6 +1,6 @@
 "use client";
 
-// Four-section pair-shared todo workspace with location-aware pending candidate queues, category override confirmation, rich AMap POI evidence, weather hints, instant single-date scheduling, two-comment completion, bottom-nav-covering details, comments with authors, and folded photos.
+// Four-section pair-shared todo workspace with location-aware pending candidate queues, direct wish creation, editable detail notes, category override confirmation, rich AMap POI evidence, weather hints, instant single-date scheduling, two-comment completion, bottom-nav-covering details, comments with authors, and viewable/deletable folded photos.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -233,14 +233,21 @@ function TodoInner() {
     await load();
   }
 
-  async function addCandidate(title: string) {
+  async function addTodo(title: string, category: TodoCategory) {
+    if (category === "wish") {
+      const item = await api.createTodoItem({ category, title });
+      toast.success("已加入许愿");
+      await load();
+      setDetailId(item.id);
+      return;
+    }
     const now = new Date().toISOString();
     const clientId = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const localCandidate: LocalTodoCandidate = {
       client_id: clientId,
       is_local: true,
       raw_title: title,
-      category: "play",
+      category,
       status: "parsing",
       amap_candidates: [],
       selected_candidate: null,
@@ -313,7 +320,7 @@ function TodoInner() {
 
           <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] sm:px-5 sm:pb-5">
             <div className="space-y-3 pt-3">
-              <QuickAddBar onCreated={addCandidate} />
+              <QuickAddBar onCreated={addTodo} />
               {TODO_SECTIONS.map((section) => (
                 <TodoCategorySection
                   key={section.category}
@@ -948,19 +955,35 @@ function StatusPill({ status }: { status: string }) {
   return <span className="rounded-full bg-peach/18 px-2 py-0.5 font-sc text-[11px] text-ink-muted">解析中</span>;
 }
 
-function QuickAddBar({ onCreated }: { onCreated: (title: string) => void | Promise<void> }) {
+function QuickAddBar({ onCreated }: { onCreated: (title: string, category: TodoCategory) => void | Promise<void> }) {
   const [title, setTitle] = useState("");
+  const [category, setCategory] = useState<TodoCategory>("play");
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     const next = title.trim();
     if (!next) return;
     setTitle("");
-    void onCreated(next);
+    void onCreated(next, category);
   }
 
   return (
     <form onSubmit={submit} className="rounded-2xl border border-line/62 bg-surface-raised/82 p-3 shadow-[0_10px_24px_-22px_rgb(var(--ink)/0.42)] sm:p-4">
+      <div className="mb-2 grid grid-cols-4 gap-1 rounded-xl bg-ink/5 p-1">
+        {TODO_CATEGORY_OPTIONS.map((option) => (
+          <button
+            key={option}
+            type="button"
+            onClick={() => setCategory(option)}
+            className={cn(
+              "min-h-9 rounded-lg font-sc text-xs transition focus-ring",
+              category === option ? "bg-surface text-rose-deep shadow-sm" : "text-ink-muted hover:bg-surface/62",
+            )}
+          >
+            {TODO_CATEGORY_LABELS[option]}
+          </button>
+        ))}
+      </div>
       <div className="flex min-h-12 items-center gap-2 rounded-2xl border border-line/70 bg-surface-raised/90 px-3 focus-within:border-rose/60 focus-within:shadow-[0_0_0_4px_rgb(var(--focus)/0.14)]">
         <Plus className="h-4 w-4 text-rose-deep" />
         <input
@@ -971,7 +994,7 @@ function QuickAddBar({ onCreated }: { onCreated: (title: string) => void | Promi
           className="min-w-0 flex-1 bg-transparent font-sc text-sm outline-none placeholder:text-ink-muted/82"
         />
         <button type="submit" disabled={!title.trim()} className="rounded-xl bg-rose px-3 py-2 font-sc text-sm text-white disabled:opacity-45 focus-ring">
-          加入队列
+          {category === "wish" ? "直接加入" : "加入队列"}
         </button>
       </div>
     </form>
@@ -1208,6 +1231,10 @@ function TodoDetailPanel({
   const [scheduleDate, setScheduleDate] = useState(initialScheduleDate);
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [photosOpen, setPhotosOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [editingNote, setEditingNote] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<TodoImageOut | null>(null);
   const [weather, setWeather] = useState<TodoWeatherOut | null>(null);
 
   useEffect(() => {
@@ -1223,6 +1250,11 @@ function TodoDetailPanel({
     const savedDate = (detail?.schedules ?? schedules)[0]?.scheduled_on;
     setScheduleDate(savedDate ?? initialScheduleDate);
   }, [detail?.schedules, schedules, initialScheduleDate, itemId]);
+
+  useEffect(() => {
+    setNoteDraft(detail?.note ?? item?.note ?? "");
+    setEditingNote(false);
+  }, [detail?.note, item?.note, itemId]);
 
   useEffect(() => {
     const hasSchedule = (detail?.schedules ?? schedules).length > 0;
@@ -1262,6 +1294,26 @@ function TodoDetailPanel({
   async function uploadImage(file: File | null) {
     if (!file) return;
     await api.postTodoImage(itemId, file);
+    setDetail(await api.getTodoItem(itemId));
+    await onChanged();
+  }
+
+  async function saveNote(event?: FormEvent) {
+    event?.preventDefault();
+    setSavingNote(true);
+    try {
+      await api.updateTodoItem(itemId, { note: noteDraft.trim() || null });
+      setDetail(await api.getTodoItem(itemId));
+      setEditingNote(false);
+      await onChanged();
+    } finally {
+      setSavingNote(false);
+    }
+  }
+
+  async function deleteImage(imageId: number) {
+    await api.deleteTodoImage(imageId);
+    setSelectedImage((currentImage) => (currentImage?.id === imageId ? null : currentImage));
     setDetail(await api.getTodoItem(itemId));
     await onChanged();
   }
@@ -1356,6 +1408,65 @@ function TodoDetailPanel({
           ) : (
             <div className="space-y-5">
               <section>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h3 className="font-sc text-sm font-medium text-ink">描述</h3>
+                  {!editingNote && (
+                    <button
+                      type="button"
+                      onClick={() => setEditingNote(true)}
+                      className="rounded-full bg-rose/10 px-3 py-1 font-sc text-xs text-rose-deep focus-ring"
+                    >
+                      {detail.note ? "编辑" : "添加"}
+                    </button>
+                  )}
+                </div>
+                {editingNote ? (
+                  <form onSubmit={saveNote} className="rounded-2xl border border-line/58 bg-surface-raised/66 p-3">
+                    <textarea
+                      value={noteDraft}
+                      onChange={(event) => setNoteDraft(event.target.value)}
+                      maxLength={2000}
+                      rows={4}
+                      className="input-field min-h-24 w-full resize-none rounded-xl text-sm"
+                      placeholder="写一点补充描述，不会算作打卡评论"
+                    />
+                    <div className="mt-2 flex flex-wrap justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setNoteDraft("")}
+                        disabled={savingNote || !noteDraft}
+                        className="btn-ghost min-h-9 rounded-xl px-3 font-sc text-xs disabled:opacity-50 focus-ring"
+                      >
+                        清空
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNoteDraft(detail.note ?? "");
+                          setEditingNote(false);
+                        }}
+                        disabled={savingNote}
+                        className="btn-ghost min-h-9 rounded-xl px-3 font-sc text-xs disabled:opacity-50 focus-ring"
+                      >
+                        取消
+                      </button>
+                      <button type="submit" disabled={savingNote} className="btn-primary min-h-9 rounded-xl px-3 font-sc text-xs disabled:opacity-50 focus-ring">
+                        {savingNote ? <Loader2 className="h-4 w-4 animate-spin" /> : "保存描述"}
+                      </button>
+                    </div>
+                  </form>
+                ) : detail.note ? (
+                  <p className="whitespace-pre-wrap break-words rounded-2xl border border-line/58 bg-surface-raised/66 p-3 font-sc text-sm leading-relaxed text-ink-soft">
+                    {detail.note}
+                  </p>
+                ) : (
+                  <p className="rounded-2xl border border-dashed border-line/70 bg-peach/10 p-3 font-sc text-sm text-ink-muted">
+                    还没有描述，可以补充愿望、地址或准备事项。
+                  </p>
+                )}
+              </section>
+
+              <section>
                 <h3 className="mb-2 font-sc text-sm font-medium text-ink">日期安排</h3>
                 <div className="rounded-2xl border border-line/58 bg-surface-raised/66 p-3">
                   <p className="mb-2 font-sc text-xs text-ink-muted">
@@ -1383,9 +1494,9 @@ function TodoDetailPanel({
               {weather && <TodoWeatherHint weather={weather} />}
 
               <section>
-                <h3 className="mb-2 font-sc text-sm font-medium text-ink">双方评论</h3>
+                <h3 className="mb-2 font-sc text-sm font-medium text-ink">打卡评论</h3>
                 {detail.comments.length === 0 ? (
-                  <p className="rounded-xl bg-peach/14 p-4 font-sc text-sm text-ink-muted">还没有评论，写一句就算完成一次打卡。</p>
+                  <p className="rounded-xl bg-peach/14 p-4 font-sc text-sm text-ink-muted">还没有打卡评论，双方都写过一次才会自动完成。</p>
                 ) : (
                   <ul className="space-y-2">
                     {detail.comments.map((item) => (
@@ -1418,7 +1529,7 @@ function TodoDetailPanel({
                   ) : (
                     <div className="grid grid-cols-3 gap-2">
                       {detail.images.map((image) => (
-                        <TodoImageThumb key={image.id} image={image} />
+                        <TodoImageThumb key={image.id} image={image} onOpen={() => setSelectedImage(image)} />
                       ))}
                     </div>
                   )
@@ -1430,7 +1541,7 @@ function TodoDetailPanel({
 
         <footer className="border-t border-line/60 p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] lg:pb-4">
           <form onSubmit={submitComment} className="mb-3 flex gap-2">
-            <input className="input-field min-w-0 flex-1 rounded-xl text-sm" value={comment} onChange={(event) => setComment(event.target.value)} placeholder="写评论打卡" maxLength={2000} />
+            <input className="input-field min-w-0 flex-1 rounded-xl text-sm" value={comment} onChange={(event) => setComment(event.target.value)} placeholder="写打卡评论" maxLength={2000} />
             <button type="submit" disabled={saving || !comment.trim()} className="grid h-12 w-12 flex-none place-items-center rounded-xl bg-rose text-white disabled:opacity-50 focus-ring" aria-label="发送评论">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             </button>
@@ -1447,6 +1558,16 @@ function TodoDetailPanel({
           </div>
         </footer>
       </motion.aside>
+      <AnimatePresence>
+        {selectedImage && (
+          <TodoImagePreview
+            key={selectedImage.id}
+            image={selectedImage}
+            onClose={() => setSelectedImage(null)}
+            onDelete={() => deleteImage(selectedImage.id)}
+          />
+        )}
+      </AnimatePresence>
     </>
   );
 }
@@ -1529,7 +1650,7 @@ function RestaurantEvidence({ restaurant }: { restaurant: NonNullable<TodoItemDe
   );
 }
 
-function TodoImageThumb({ image }: { image: TodoImageOut }) {
+function TodoImageThumb({ image, onOpen }: { image: TodoImageOut; onOpen: () => void }) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
@@ -1544,8 +1665,84 @@ function TodoImageThumb({ image }: { image: TodoImageOut }) {
     };
   }, [image.id]);
   return src ? (
-    <img src={src} alt="打卡照片" className="aspect-square w-full rounded-xl object-cover" />
+    <button type="button" onClick={onOpen} className="aspect-square w-full overflow-hidden rounded-xl focus-ring" aria-label="查看大图">
+      <img src={src} alt="打卡照片" className="h-full w-full object-cover transition hover:scale-[1.03]" />
+    </button>
   ) : (
     <div className="aspect-square w-full rounded-xl bg-line/40" />
+  );
+}
+
+function TodoImagePreview({
+  image,
+  onClose,
+  onDelete,
+}: {
+  image: TodoImageOut;
+  onClose: () => void;
+  onDelete: () => void | Promise<void>;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    let objectUrl: string | null = null;
+    setSrc(null);
+    void fetchTodoImageBlob("file", image.id).then((url) => {
+      objectUrl = url;
+      if (alive) setSrc(url);
+    });
+    return () => {
+      alive = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [image.id]);
+
+  async function deleteCurrent() {
+    setDeleting(true);
+    try {
+      await onDelete();
+      toast.success("照片已删除");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[95] flex items-center justify-center bg-ink/82 p-4"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Todo 照片大图"
+    >
+      <button type="button" className="absolute inset-0 cursor-default" onClick={onClose} aria-label="关闭大图" />
+      <div className="relative z-10 flex max-h-[92dvh] w-full max-w-5xl flex-col gap-3">
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => void deleteCurrent()}
+            disabled={deleting}
+            className="inline-flex min-h-10 items-center gap-2 rounded-full bg-white/92 px-4 font-sc text-sm text-rose-deep shadow-sm disabled:opacity-60 focus-ring"
+          >
+            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            删除
+          </button>
+          <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full bg-white/92 text-ink shadow-sm focus-ring" aria-label="关闭">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="grid min-h-[40dvh] place-items-center overflow-hidden rounded-2xl bg-black/28">
+          {src ? (
+            <img src={src} alt="Todo 照片大图" className="max-h-[82dvh] w-auto max-w-full object-contain" />
+          ) : (
+            <Loader2 className="h-6 w-6 animate-spin text-white" />
+          )}
+        </div>
+      </div>
+    </motion.div>
   );
 }

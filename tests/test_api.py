@@ -1,4 +1,4 @@
-"""API regression tests for auth, profiles, user locations, media, food/play/stay/wish todo candidate queues, category-overridable candidate confirmation, no-email single-date scheduling, rich AMap restaurant evidence, weather hints, AMap MCP POI normalization, AMap-grounded AI tests, and fallback data."""
+"""API regression tests for auth, profiles, user locations, media, food/play/stay/wish todo candidate queues, direct wish creation, category-overridable candidate confirmation, no-email single-date schedules, rich AMap restaurant evidence, weather hints, todo image deletion, AMap MCP POI normalization, AMap-grounded AI tests, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -13,7 +13,7 @@ import app.core.database as database
 import app.cycles as cycles
 import app.services as services
 from app.core.config import get_settings
-from app.models import DefaultQuote, DeviceToken, Image as DBImage, Voice
+from app.models import DefaultQuote, DeviceToken, Image as DBImage, TodoImage, Voice
 from app.storage import media_path
 from tests.conftest import auth
 
@@ -1639,6 +1639,25 @@ def test_todo_candidate_wish_skips_amap_and_confirms_plain_item(client: TestClie
     assert confirmed.json()["restaurant"] is None
 
 
+def test_todo_direct_wish_create_does_not_call_candidate_search(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_search(*args, **kwargs):
+        raise AssertionError("wish item creation should not call AMap candidate search")
+
+    monkeypatch.setattr("app.api.routes.todos._search_location_aware_pois", fail_search)
+
+    created = client.post(
+        "/todos/items",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"category": "wish", "title": "想要一束花"},
+    )
+    candidates = client.get("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])))
+
+    assert created.status_code == 201
+    assert created.json()["category"] == "wish"
+    assert created.json()["restaurant"] is None
+    assert candidates.json() == []
+
+
 def test_todo_schedule_replaces_existing_date(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
     item = client.post(
         "/todos/items",
@@ -1801,6 +1820,70 @@ def test_todo_restaurant_detail_requires_both_users_to_comment_and_images_do_not
     assert client.get(f"/todo-images/{image_id}/thumb", headers=auth(str(pair_tokens["user_a_token"]))).status_code == 200
     image_only_detail = client.get(f"/todos/items/{image_only_item['id']}", headers=auth(str(pair_tokens["user_a_token"]))).json()
     assert image_only_detail["checked_in"] is False
+
+
+def test_todo_note_does_not_complete_item(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    item = client.post(
+        "/todos/items",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"category": "wish", "title": "想要一束花"},
+    ).json()
+
+    updated = client.patch(
+        f"/todos/items/{item['id']}",
+        headers=auth(str(pair_tokens["user_b_token"])),
+        json={"note": "先写在描述里，不算打卡"},
+    )
+    detail = client.get(f"/todos/items/{item['id']}", headers=auth(str(pair_tokens["user_a_token"])))
+
+    assert updated.status_code == 200
+    assert updated.json()["note"] == "先写在描述里，不算打卡"
+    assert updated.json()["checked_in"] is False
+    assert detail.json()["comments"] == []
+    assert detail.json()["checked_in"] is False
+
+
+def test_todo_image_full_view_and_pair_delete(client: TestClient, pair_tokens: dict[str, str | int], db_session: Session) -> None:
+    item = client.post(
+        "/todos/items",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"category": "play", "title": "上传照片"},
+    ).json()
+    upload = client.post(
+        f"/todos/items/{item['id']}/images",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        files={"file": ("photo.png", sample_png_bytes(), "image/png")},
+    )
+    image_id = upload.json()["id"]
+    stored_image = db_session.get(TodoImage, image_id)
+    assert stored_image is not None
+    original_path = media_path(stored_image.storage_key)
+    thumb_path = media_path(stored_image.thumb_storage_key)
+
+    full = client.get(f"/todo-images/{image_id}/file", headers=auth(str(pair_tokens["user_b_token"])))
+    thumb = client.get(f"/todo-images/{image_id}/thumb", headers=auth(str(pair_tokens["user_b_token"])))
+    assert original_path.is_file()
+    assert thumb_path.is_file()
+    other_pair = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={"user_a_display_name": "C", "user_b_display_name": "D"},
+    ).json()
+    blocked = client.delete(f"/todo-images/{image_id}", headers=auth(other_pair["user_a_token"]))
+    deleted = client.delete(f"/todo-images/{image_id}", headers=auth(str(pair_tokens["user_b_token"])))
+    detail = client.get(f"/todos/items/{item['id']}", headers=auth(str(pair_tokens["user_a_token"]))).json()
+
+    assert full.status_code == 200
+    assert full.headers["content-type"].startswith("image/png")
+    assert thumb.status_code == 200
+    assert thumb.headers["content-type"].startswith("image/jpeg")
+    assert blocked.status_code == 404
+    assert deleted.status_code == 204
+    assert detail["images"] == []
+    assert client.get(f"/todo-images/{image_id}/file", headers=auth(str(pair_tokens["user_a_token"]))).status_code == 404
+    assert client.get(f"/todo-images/{image_id}/thumb", headers=auth(str(pair_tokens["user_a_token"]))).status_code == 404
+    assert not original_path.exists()
+    assert not thumb_path.exists()
 
 
 def test_todo_classify_uses_llm_result_and_stays_pair_isolated(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
