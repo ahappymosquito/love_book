@@ -1,6 +1,6 @@
 "use client";
 
-// Four-section pair-shared todo workspace with location-aware pending candidate queues, dual-action quick add for normal items and direct wishes, editable detail notes, category override confirmation, rich AMap POI evidence, weather hints, instant single-date scheduling, two-comment completion, bottom-nav-covering details, comments with authors, and viewable/deletable folded photos.
+// Four-section pair-shared todo workspace with visually distinct category panels, quiet task rows without redundant category or resolved badges, location-aware pending candidate queues, dual-action quick add for normal items and direct wishes, editable detail notes, category override confirmation, rich AMap POI evidence, weather hints, instant single-date scheduling, two-comment completion, bottom-nav-covering details, comments with authors, and viewable/deletable folded photos.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -77,6 +77,40 @@ const TODO_SECTIONS: Array<{ category: TodoCategory; title: string; subtitle: st
   { category: "wish", title: "悄悄许个愿", subtitle: "还没定下来的愿望和小期待", icon: <Star className="h-4 w-4" /> },
 ];
 const TODO_CATEGORY_OPTIONS: TodoCategory[] = ["food", "play", "stay", "wish"];
+const TODO_SECTION_STYLE: Record<TodoCategory, { shell: string; header: string; icon: string; title: string; count: string; body: string }> = {
+  food: {
+    shell: "border-peach/46 bg-peach/10",
+    header: "hover:bg-peach/12",
+    icon: "bg-peach/24 text-peach-deep",
+    title: "text-ink",
+    count: "bg-peach/22 text-ink-soft",
+    body: "border-peach/30 bg-surface/40",
+  },
+  play: {
+    shell: "border-rose/28 bg-rose/7",
+    header: "hover:bg-rose/8",
+    icon: "bg-rose/14 text-rose-deep",
+    title: "text-ink",
+    count: "bg-rose/12 text-rose-deep",
+    body: "border-rose/18 bg-surface/42",
+  },
+  stay: {
+    shell: "border-sage/34 bg-sage/9",
+    header: "hover:bg-sage/10",
+    icon: "bg-sage/16 text-ink-soft",
+    title: "text-ink",
+    count: "bg-sage/16 text-ink-soft",
+    body: "border-sage/22 bg-surface/44",
+  },
+  wish: {
+    shell: "border-rose/24 bg-[linear-gradient(180deg,rgb(var(--rose)/0.07),rgb(var(--peach)/0.08))]",
+    header: "hover:bg-rose/7",
+    icon: "bg-rose/12 text-rose-deep",
+    title: "text-rose-deep",
+    count: "bg-rose/12 text-rose-deep",
+    body: "border-rose/18 bg-surface/40",
+  },
+};
 
 function toDateOnly(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -472,19 +506,20 @@ function TodoCategorySection({
   onToggle: () => void;
   onOpen: (id: number) => void;
 }) {
+  const style = TODO_SECTION_STYLE[section.category];
   return (
-    <section className="overflow-hidden rounded-2xl border border-line/62 bg-surface-raised/76">
-      <button type="button" onClick={onToggle} className="flex min-h-14 w-full items-center gap-3 px-4 text-left transition hover:bg-peach/8 focus-ring" aria-expanded={expanded}>
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-peach/18 text-rose-deep">{section.icon}</span>
+    <section className={cn("overflow-hidden rounded-2xl border", style.shell)}>
+      <button type="button" onClick={onToggle} className={cn("flex min-h-14 w-full items-center gap-3 px-4 text-left transition focus-ring", style.header)} aria-expanded={expanded}>
+        <span className={cn("grid h-9 w-9 place-items-center rounded-xl", style.icon)}>{section.icon}</span>
         <span className="min-w-0 flex-1">
-          <span className="block font-display text-base font-semibold text-ink">{section.title}</span>
+          <span className={cn("block font-display text-base font-semibold", style.title)}>{section.title}</span>
           <span className="block truncate font-sc text-xs text-ink-muted">{section.subtitle}</span>
         </span>
-        <span className="rounded-full bg-ink/5 px-2 py-0.5 font-sc text-xs text-ink-muted">{items.length}</span>
+        <span className={cn("rounded-full px-2 py-0.5 font-sc text-xs", style.count)}>{items.length}</span>
         <ChevronRight className={cn("h-4 w-4 text-ink-muted transition", expanded && "rotate-90")} />
       </button>
       {expanded && (
-        <div className="border-t border-line/52 p-3">
+        <div className={cn("border-t p-3", style.body)}>
           <TaskList items={items} completedItems={completedItems} schedules={schedules} onOpen={onOpen} />
         </div>
       )}
@@ -918,8 +953,7 @@ function TaskRow({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className={cn("font-display text-base font-semibold leading-tight text-ink", item.checked_in && "text-ink-muted line-through")}>{item.title}</h3>
-                <span className="rounded-full bg-peach/16 px-2 py-0.5 font-sc text-[11px] text-ink-muted">{TODO_CATEGORY_LABELS[item.category]}</span>
-                {restaurant && <StatusPill status={restaurant.parse_status} />}
+                {restaurant && restaurant.parse_status !== "resolved" && <StatusPill status={restaurant.parse_status} />}
                 {item.checked_in && <span className="rounded-full bg-sage/18 px-2 py-0.5 font-sc text-[11px] text-ink-soft">已打卡</span>}
               </div>
             </div>
