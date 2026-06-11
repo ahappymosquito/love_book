@@ -85,5 +85,5 @@ npm run start
 
 - `/habits` is the authenticated daily habit page and now occupies the final bottom-nav slot.
 - `/me` remains the profile/settings surface, but users reach it from the top avatar instead of the bottom nav.
-- The page renders a monthly board where each date is split between both partners; each partner's half is divided by their active habits and filled as habits are checked off.
-- The current user's habit panel is expanded by default and supports add, rename, color change, stop, and date-specific toggle. The counterpart panel is read-only and collapsed by default.
+- The page renders a liquid-glass monthly board where each date is split between both partners; each partner's half is divided by their active habits and filled as habits are checked off.
+- The current user's habit panel is expanded by default and supports add, rename, one-time color selection during create/edit, stop, and date-specific toggle. The counterpart panel is read-only and collapsed by default. Completed rows become sage green with a short completion animation instead of using a leading checkbox control.

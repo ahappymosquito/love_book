@@ -12,7 +12,7 @@ Love Book is used by a fixed pair of partners who share private tokens and retur
 
 The product gives two people a private shared place to write events, exchange comments, upload voice and image memories, arrange food/play plans, track personal daily habits, track cycle records, and revisit milestones. Success means the interface feels trustworthy enough for long-term personal use while keeping common tasks quick and clear.
 
-The habits surface is a logged-in daily check-in dashboard: the bottom navigation opens `/habits`, settings remain available from the top avatar, the month board shows both partners' progress, and the personal/counterpart checklists stay as vertical collapsible panels on all viewport sizes.
+The habits surface is a logged-in daily check-in dashboard: the bottom navigation opens `/habits`, settings remain available from the top avatar, the liquid-glass month board shows both partners' progress, and the personal/counterpart checklists stay as vertical collapsible panels on all viewport sizes. Habit colors are chosen during creation or explicit editing, while completed rows turn sage green with a short completion animation.
 
 ## Brand Personality
 

@@ -1,7 +1,7 @@
 "use client";
 
-// Habit page renders the authenticated pair habit dashboard with a cycle-style monthly board,
-// vertical collapsible check-in panels, personal habit editing, backfilled dates, and reduced-motion-safe completion feedback.
+// Habit page renders the authenticated pair habit dashboard with a liquid-glass monthly board,
+// vertical collapsible check-in panels, one-time habit color selection, green completion rows, and reduced-motion-safe feedback.
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -212,7 +212,7 @@ function HabitsInner() {
 
       <main className="mx-auto max-w-7xl px-4 pt-5 sm:px-6 scroll-pad-bottom">
         <section className="min-w-0 space-y-5">
-          <Card className="overflow-hidden">
+          <Card className="liquid-habit-panel overflow-hidden">
             <CardHeader className="gap-4 sm:flex sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle>习惯打卡</CardTitle>
@@ -238,7 +238,7 @@ function HabitsInner() {
                   </div>
                 ))}
               </div>
-              <div className="grid grid-cols-7 gap-y-1 overflow-hidden rounded-3xl border border-line/70 bg-surface-raised/88 p-1">
+              <div className="liquid-calendar-grid grid grid-cols-7 gap-y-1 overflow-hidden p-1">
                 {calendarDays.map((day) => {
                   const key = toISODate(day);
                   return (
@@ -366,7 +366,7 @@ function SelectedDateSummary({
   pairDone: boolean;
 }) {
   return (
-    <Card className="p-4 sm:p-5">
+    <Card className="liquid-habit-panel p-4 sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="font-sc text-xs text-ink-muted">当前日期</p>
@@ -388,7 +388,7 @@ function SelectedDateSummary({
 
 function ProgressChip({ user, day, label }: { user: UserOut; day?: HabitUserDayOut; label: string }) {
   return (
-    <span className="inline-flex min-h-10 items-center gap-2 rounded-full border border-line/70 bg-surface-raised px-3 font-sc text-xs text-ink-soft">
+    <span className="liquid-chip inline-flex min-h-10 items-center gap-2 rounded-full px-3 font-sc text-xs text-ink-soft">
       <Avatar user={user} size="sm" />
       <span className="font-medium text-ink">{label}</span>
       <span>
@@ -427,9 +427,9 @@ function DayCell({
       type="button"
       onClick={onSelect}
       className={cn(
-        "group relative min-h-[74px] rounded-2xl p-1 text-left transition focus-ring sm:min-h-[96px]",
-        selected && "bg-surface-raised shadow-soft ring-2 ring-rose/35",
-        !selected && "hover:bg-peach/10",
+        "liquid-day-cell group relative min-h-[74px] rounded-2xl p-1 text-left transition focus-ring sm:min-h-[96px]",
+        selected && "liquid-day-cell-selected",
+        !selected && "hover:-translate-y-0.5",
         !currentMonth && "opacity-45",
       )}
       aria-label={`${isoDate} 习惯记录`}
@@ -440,7 +440,7 @@ function DayCell({
           {today && <span className="rounded-full bg-rose px-1.5 py-0.5 text-[10px] font-medium text-white">今</span>}
         </span>
 
-        <span className="grid h-8 grid-rows-2 gap-1 overflow-hidden rounded-xl border border-line/45 bg-cream/70 p-0.5 sm:h-11">
+        <span className="grid h-8 grid-rows-2 gap-1 overflow-hidden rounded-xl border border-white/55 bg-cream/54 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] sm:h-11">
           {users.map((user) => {
             const userDay = day?.users.find((item) => item.user_id === user.id);
             const userTasks = tasks.filter((task) => task.owner_id === user.id);
@@ -471,7 +471,7 @@ function DayCell({
       <AnimatePresence>
         {pairDone && (
           <motion.span
-            className="pointer-events-none absolute inset-1 rounded-2xl ring-2 ring-sage/35"
+            className="pointer-events-none absolute inset-1 rounded-2xl bg-sage/10 ring-2 ring-sage/35"
             initial={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
             animate={reducedMotion ? { opacity: 1 } : { opacity: [0, 1, 0.7], scale: [0.98, 1.02, 1] }}
             exit={{ opacity: 0 }}
@@ -523,11 +523,11 @@ function HabitPanel({
 }) {
   const completed = new Set(userDay?.completed_task_ids ?? []);
   return (
-    <Card className="overflow-hidden">
+    <Card className="liquid-habit-panel overflow-hidden">
       <button
         type="button"
         onClick={onToggleOpen}
-        className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left transition hover:bg-peach/10 focus-ring sm:px-5"
+        className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left transition hover:bg-white/35 focus-ring sm:px-5"
         aria-expanded={open}
       >
         <span className="flex min-w-0 items-center gap-3">
@@ -541,8 +541,8 @@ function HabitPanel({
         </span>
         <span
           className={cn(
-            "grid h-10 w-10 flex-none place-items-center rounded-full border",
-            userDay?.all_completed ? "border-sage/35 bg-sage/14 text-sage" : "border-line/70 bg-surface-raised text-ink-soft",
+            "liquid-chip grid h-10 w-10 flex-none place-items-center rounded-full",
+            userDay?.all_completed ? "text-sage" : "text-ink-soft",
           )}
         >
           <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
@@ -560,7 +560,7 @@ function HabitPanel({
           >
             <div className="space-y-4 p-4 sm:p-5">
               {editable && (
-                <form onSubmit={onCreate} className="rounded-2xl border border-line/70 bg-peach/10 p-3">
+                <form onSubmit={onCreate} className="liquid-subpanel p-3">
                   <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
                     <input
                       value={newTitle}
@@ -574,13 +574,16 @@ function HabitPanel({
                       新增习惯
                     </Button>
                   </div>
-                  <ColorPicker value={newColor} onChange={onNewColor} className="mt-3" />
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="font-sc text-xs text-ink-muted">颜色只在创建习惯时选择，之后编辑习惯时再调整。</p>
+                    <ColorPicker value={newColor} onChange={onNewColor} />
+                  </div>
                 </form>
               )}
 
               <div className="grid gap-2">
                 {tasks.length === 0 ? (
-                  <p className="rounded-2xl border border-line/70 bg-surface-raised px-4 py-3 font-sc text-sm text-ink-muted">
+                  <p className="liquid-subpanel px-4 py-3 font-sc text-sm text-ink-muted">
                     {editable ? "还没有习惯，先添加一个小目标。" : "对方还没有添加习惯。"}
                   </p>
                 ) : (
@@ -649,77 +652,73 @@ function HabitTaskRow({
 }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(task.title);
+  const [color, setColor] = useState(task.color);
 
   useEffect(() => {
     setTitle(task.title);
-  }, [task.title]);
+    setColor(task.color);
+  }, [task.color, task.title]);
 
   function submitEdit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const next = title.trim();
     if (!next) return;
-    onUpdate({ title: next });
+    onUpdate({ title: next, color });
+    setEditing(false);
+  }
+
+  function cancelEdit() {
+    setTitle(task.title);
+    setColor(task.color);
     setEditing(false);
   }
 
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-2xl border border-line/70 bg-surface-raised/88 px-3 py-2">
-      <button
-        type="button"
-        onClick={editable ? onToggle : undefined}
-        disabled={!editable}
-        className={cn(
-          "grid h-10 w-10 flex-none place-items-center rounded-full border transition focus-ring",
-          checked ? `${colorClass(task.color)} border-transparent text-white` : "border-line bg-cream text-transparent",
-          !editable && "cursor-default",
-        )}
-        aria-label={checked ? "取消完成" : "标记完成"}
-      >
-        <Check className="h-4 w-4" />
-      </button>
-
+    <motion.div
+      layout
+      className={cn("liquid-habit-row relative flex min-w-0 items-center gap-3 overflow-hidden px-3 py-2.5", checked && "liquid-habit-row-done")}
+      animate={checked ? { scale: [1, 1.008, 1] } : { scale: 1 }}
+      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <span className={cn("h-8 w-1.5 flex-none rounded-full shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]", checked ? "bg-sage" : colorClass(task.color))} />
       {editing ? (
-        <form onSubmit={submitEdit} className="flex min-w-0 flex-1 gap-2">
-          <input
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            className="input-field min-h-10 min-w-0 flex-1 py-2 text-sm"
-            maxLength={120}
-            autoFocus
-          />
-          <Button type="submit" size="icon" aria-label="保存习惯">
-            <Check className="h-4 w-4" />
-          </Button>
+        <form onSubmit={submitEdit} className="grid min-w-0 flex-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="min-w-0">
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              className="input-field min-h-10 min-w-0 py-2 text-sm"
+              maxLength={120}
+              autoFocus
+            />
+            <ColorPicker value={color} onChange={setColor} className="mt-2" />
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={cancelEdit}>
+              取消
+            </Button>
+            <Button type="submit" size="sm">
+              保存
+            </Button>
+          </div>
         </form>
       ) : (
         <button
           type="button"
           onClick={editable ? onToggle : undefined}
           disabled={!editable}
-          className={cn("min-w-0 flex-1 rounded-xl px-1 py-2 text-left focus-ring", editable && "hover:bg-peach/12")}
+          className={cn("min-w-0 flex-1 rounded-xl px-1 py-2 text-left focus-ring", editable && "cursor-pointer", !editable && "cursor-default")}
+          aria-label={checked ? "取消完成" : "标记完成"}
         >
-          <span className={cn("block truncate font-sc text-sm text-ink", checked && "line-through decoration-rose-deep/70 decoration-2")}>
-            {task.title}
+          <span className="block truncate font-sc text-sm font-medium text-ink">{task.title}</span>
+          <span className={cn("mt-0.5 block font-sc text-xs", checked ? "text-sage" : "text-ink-muted")}>
+            {checked ? "已完成" : editable ? "点一下完成" : "未完成"}
           </span>
         </button>
       )}
 
       {editable && !editing && (
         <>
-          <div className="hidden gap-1 sm:flex">
-            {COLOR_OPTIONS.map((option) => (
-              <button
-                key={option.key}
-                type="button"
-                onClick={() => onUpdate({ color: option.key })}
-                className={cn("grid h-8 w-8 place-items-center rounded-full border focus-ring", task.color === option.key ? "border-rose-deep" : "border-transparent")}
-                aria-label={`改为${option.label}`}
-                title={option.label}
-              >
-                <span className={cn("block h-4 w-4 rounded-full", option.className)} />
-              </button>
-            ))}
-          </div>
           <Button type="button" variant="ghost" size="icon" onClick={() => setEditing(true)} aria-label="编辑习惯">
             <Pencil className="h-4 w-4" />
           </Button>
@@ -728,6 +727,20 @@ function HabitTaskRow({
           </Button>
         </>
       )}
-    </div>
+      <AnimatePresence>
+        {checked && (
+          <motion.span
+            className="pointer-events-none grid h-9 w-9 flex-none place-items-center rounded-full bg-sage text-white shadow-[0_10px_22px_-14px_rgb(var(--sage)/0.82),inset_0_1px_0_rgba(255,255,255,0.5)]"
+            initial={{ opacity: 0, scale: 0.72, rotate: -18 }}
+            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+            exit={{ opacity: 0, scale: 0.72, rotate: 12 }}
+            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+            aria-hidden="true"
+          >
+            <Check className="h-4 w-4" />
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }
