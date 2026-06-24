@@ -1,6 +1,6 @@
 "use client";
 
-// Radix Dialog based sheet for warm mobile and side panels with accessible configurable close controls.
+// Radix Dialog based sheet for warm mobile and side panels with safer mobile height, close affordances, and motion presets shared by create and detail flows.
 
 import * as Dialog from "@radix-ui/react-dialog";
 import type React from "react";
@@ -41,7 +41,7 @@ export function SheetContent({
           className={cn(
             "fixed z-50 bg-surface-raised text-ink shadow-glow outline-none hairline",
             side === "bottom"
-              ? "inset-x-0 bottom-0 max-h-[88dvh] rounded-t-3xl p-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)]"
+              ? "inset-x-0 bottom-0 max-h-[92dvh] rounded-t-[1.75rem] p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1.15rem)] pt-5 sm:max-h-[90dvh] sm:p-5 sm:pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)]"
               : "right-0 top-0 h-dvh w-full max-w-md rounded-none p-5",
             className,
           )}

@@ -1,19 +1,19 @@
 "use client";
 
-// Login screen with token auto-login, admin entry, lively 3D puppy background, and bright scrapbook access form.
+// Mobile-first login screen with a dedicated puppy hero stage, token auto-login, admin entry, and a touch-friendly scrapbook access form.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Eye, EyeOff, Heart, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, Eye, EyeOff, Heart, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { api, APIError } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 
 const PuppyScene = dynamic(
-  () => import("@/components/puppy-scene").then((m) => m.PuppyScene),
+  () => import("@/components/puppy-scene").then((module) => module.PuppyScene),
   { ssr: false },
 );
 
@@ -37,46 +37,50 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const autoRan = useRef(false);
 
-  const doLogin = useCallback(async (t: string, next?: string | null) => {
-    setSubmitting(true);
-    setToken(t);
-    try {
-      const me = await api.me();
-      setMe(me);
-      toast.success(`欢迎回来，${me.user.display_name}`);
-      void reportLoginFingerprint();
-      const target = sanitizeNext(next) || "/timeline";
-      router.replace(target);
-    } catch (err) {
-      setToken(null);
-      if (err instanceof APIError && err.status === 401) {
-        toast.error(err.message.includes("expired") ? "这个入口 token 已过期" : "token 不对劲，请确认后再试");
+  const canSubmit = useMemo(() => tokenInput.trim().length > 0 && !submitting, [submitting, tokenInput]);
+
+  const doLogin = useCallback(
+    async (nextToken: string, next?: string | null) => {
+      setSubmitting(true);
+      setToken(nextToken);
+      try {
+        const me = await api.me();
+        setMe(me);
+        toast.success(`欢迎回来，${me.user.display_name}`);
+        void reportLoginFingerprint();
+        router.replace(sanitizeNext(next) || "/timeline");
+      } catch (error) {
+        setToken(null);
+        if (error instanceof APIError && error.status === 401) {
+          toast.error(error.message.includes("expired") ? "这个入口 token 已经过期" : "token 不对劲，请确认后再试");
+        } else {
+          toast.error("登录失败了，请稍后再试");
+        }
+      } finally {
+        setSubmitting(false);
       }
-    } finally {
-      setSubmitting(false);
-    }
-  }, [router, setMe, setToken]);
+    },
+    [router, setMe, setToken],
+  );
 
   async function reportLoginFingerprint() {
     if (typeof window === "undefined") return;
     try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const screen = `${window.screen.width}x${window.screen.height}@${window.devicePixelRatio || 1}`;
       await api.recordLogin({
         user_agent: navigator.userAgent,
         locale: navigator.language,
-        timezone_name: tz,
+        timezone_name: timeZone,
         screen,
       });
     } catch {
-      // 静默忽略，登录日志不影响主流程
+      // 登录记录失败不影响主流程。
     }
   }
 
   useEffect(() => {
-    if (!hydrated) return;
-
-    if (autoRan.current) return;
+    if (!hydrated || autoRan.current) return;
 
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -84,15 +88,15 @@ export default function LoginPage() {
       const hashParams = new URLSearchParams(hash);
       const queryToken = url.searchParams.get("token");
       const hashToken = hashParams.get("token");
-      const incoming = queryToken || hashToken;
+      const incomingToken = queryToken || hashToken;
       const nextParam = url.searchParams.get("next") || hashParams.get("next");
-      if (incoming) {
+
+      if (incomingToken) {
         autoRan.current = true;
         url.searchParams.delete("token");
         url.searchParams.delete("next");
-        const cleanUrl = `${url.pathname}${url.search}`;
-        window.history.replaceState(null, "", cleanUrl);
-        void doLogin(incoming, nextParam);
+        window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+        void doLogin(incomingToken, nextParam);
         return;
       }
 
@@ -108,63 +112,88 @@ export default function LoginPage() {
     if (token) {
       router.replace("/timeline");
     }
-  }, [doLogin, hydrated, token, router]);
+  }, [doLogin, hydrated, router, token]);
 
-  function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!tokenInput.trim()) return;
-    void doLogin(tokenInput.trim());
+  function onSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    const nextToken = tokenInput.trim();
+    if (!nextToken) return;
+    void doLogin(nextToken);
   }
 
   return (
-    <div className="relative min-h-dvh w-full overflow-hidden">
-      {/* 3D background */}
-      <PuppyScene />
+    <div className="relative min-h-dvh overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgb(255_255_255_/_0.72),transparent_42%),linear-gradient(180deg,rgb(var(--cream))_0%,rgb(253_243_238)_48%,rgb(247_251_246)_100%)] dark:bg-[radial-gradient(circle_at_top,rgb(255_255_255_/_0.12),transparent_38%),linear-gradient(180deg,rgb(var(--cream-deep))_0%,rgb(42_30_35)_54%,rgb(32_44_39)_100%)]" />
 
-      {/* Warm overlay keeps the puppy visible while preserving form contrast. */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-cream/20 via-cream/35 to-cream/70 dark:from-cream/35 dark:via-cream/55 dark:to-cream/82" />
-
-      {/* Foreground content */}
-      <div className="relative z-10 min-h-dvh flex flex-col px-6 pt-[calc(env(safe-area-inset-top,0px)+1rem)] pb-[calc(env(safe-area-inset-bottom,0px)+2rem)]">
-        <header className="flex items-center justify-between text-ink/85">
-          <div className="inline-flex items-center gap-2 rounded-full bg-surface-raised/70 px-3 py-2 font-display text-base font-semibold shadow-soft hairline">
+      <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pt-[calc(env(safe-area-inset-top,0px)+0.9rem)] sm:px-6 lg:px-8">
+        <header className="flex items-center justify-between gap-3">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/65 bg-surface-raised/84 px-3.5 py-2 text-sm font-semibold text-ink shadow-[0_12px_30px_-24px_rgb(var(--rose)/0.45),inset_0_1px_0_rgba(255,255,255,0.7)]">
             <Heart className="h-4 w-4 text-rose" fill="currentColor" />
-            <span>love · book</span>
+            <span className="font-display">love book</span>
           </div>
           <Link
             href="/admin"
-            className="rounded-full bg-surface-raised/70 px-3 py-2 font-sc text-xs text-rose-deep transition-colors hover:bg-rose/10 focus-ring hairline"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-white/60 bg-surface-raised/78 px-4 py-2 font-sc text-xs font-medium text-rose-deep shadow-[0_10px_24px_-22px_rgb(var(--rose)/0.42)] transition hover:bg-surface-raised focus-ring"
           >
-            管理员入口 →
+            管理员入口
+            <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </header>
 
-        <div className="flex-1 flex items-center justify-center pt-2 pb-4">
-          <motion.div
-            initial={{ opacity: 0, y: 24, scale: 0.96 }}
+        <main className="flex flex-1 flex-col justify-end py-4 lg:grid lg:grid-cols-[minmax(0,1.18fr)_minmax(380px,460px)] lg:items-stretch lg:gap-6 lg:py-6">
+          <section className="login-stage relative min-h-[40svh] overflow-hidden rounded-[2rem] lg:min-h-0 lg:rounded-[2.4rem]">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_10%,rgb(255_255_255_/_0.72),transparent_32%),linear-gradient(180deg,rgb(var(--rose-soft)/0.2),transparent_34%),linear-gradient(180deg,transparent_52%,rgb(var(--cream))/0.62_100%)] dark:bg-[radial-gradient(circle_at_50%_8%,rgb(255_255_255_/_0.14),transparent_34%),linear-gradient(180deg,rgb(var(--rose)/0.14),transparent_38%),linear-gradient(180deg,transparent_50%,rgb(var(--cream-deep))/0.66_100%)]" />
+            <PuppyScene
+              variant="hero"
+              interactive
+              reducedMotionFallback="soft"
+              className="absolute inset-0"
+            />
+
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 p-4 sm:p-5 lg:p-6">
+              <div className="login-hero-note ml-auto max-w-[20rem] rounded-[1.6rem] px-4 py-3 text-left">
+                <p className="font-sc text-[11px] font-semibold uppercase tracking-[0.08em] text-rose-deep/85">
+                  陪你进门
+                </p>
+                <p className="mt-1 font-display text-lg leading-tight text-ink">
+                  轻点一下小狗，它会摇尾巴欢迎你。
+                </p>
+                <p className="mt-2 font-sc text-xs leading-relaxed text-ink-soft">
+                  手机端会把主角留在上半屏，输入区贴近拇指，键盘弹起时也不挤乱布局。
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <motion.section
+            initial={{ opacity: 0, y: 18, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-            className="w-full max-w-md"
+            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+            className="glass-card mt-4 rounded-[2rem] p-5 sm:p-6 lg:mt-0 lg:self-center lg:rounded-[2.2rem] lg:p-7"
           >
-            <div className="mb-6 select-none text-center">
-              <p className="mb-2 font-sc text-xs font-semibold text-rose-deep">暖暖小书 · 两个人专属</p>
-              <h1 className="font-display text-4xl font-bold leading-tight text-ink sm:text-5xl">
-                我们之间的小事
+            <div className="mb-6">
+              <p className="font-sc text-xs font-semibold text-rose-deep">暖暖小书，只给两个人看</p>
+              <h1 className="mt-2 font-display text-[2rem] font-bold leading-tight text-ink sm:text-[2.35rem]">
+                把心动和日常，写成一本会陪着长大的小书。
               </h1>
-              <p className="mx-auto mt-3 max-w-sm font-sc text-sm leading-relaxed text-ink-soft">
-                把心动、约会和日常小计划，写成热乎乎的一本书。
+              <p className="mt-3 max-w-md font-sc text-sm leading-relaxed text-ink-soft">
+                粘贴对方发来的入口口令，马上回到你们的时间线、纪念日提醒和想一起完成的小计划。
               </p>
             </div>
 
-            <form
-              onSubmit={onSubmit}
-              className="glass-card space-y-5 rounded-3xl p-5 sm:p-6"
-            >
+            <div className="mb-5 flex flex-wrap gap-2">
+              <span className="pill inline-flex items-center gap-1.5 bg-rose/12 text-rose-deep">
+                <Sparkles className="h-3.5 w-3.5" />
+                自动识别链接 token
+              </span>
+              <span className="pill inline-flex items-center gap-1.5 bg-peach/22 text-ink-soft">
+                手机端单手可点
+              </span>
+            </div>
+
+            <form onSubmit={onSubmit} className="space-y-5">
               <div className="space-y-2">
-                <label
-                  htmlFor="token"
-                  className="font-sc text-xs font-medium text-ink-muted"
-                >
+                <label htmlFor="token" className="font-sc text-xs font-medium text-ink-muted">
                   你的 token
                 </label>
                 <div className="relative">
@@ -176,16 +205,17 @@ export default function LoginPage() {
                     inputMode="text"
                     placeholder="粘贴对方发给你的入口口令"
                     value={tokenInput}
-                    onChange={(e) => setTokenInput(e.target.value)}
-                    className="input-field pr-12 text-base"
+                    onChange={(event) => setTokenInput(event.target.value)}
+                    className="input-field min-h-[52px] pr-12 text-base"
                     spellCheck={false}
                     disabled={submitting}
                   />
                   <button
                     type="button"
-                    onClick={() => setReveal((v) => !v)}
+                    onClick={() => setReveal((value) => !value)}
+                    disabled={submitting}
                     aria-label={reveal ? "隐藏 token" : "显示 token"}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 h-9 w-9 grid place-items-center rounded-full hover:bg-ink/5 focus-ring text-ink-soft"
+                    className="absolute right-3 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full text-ink-soft transition hover:bg-ink/5 focus-ring disabled:opacity-50"
                   >
                     {reveal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -194,8 +224,8 @@ export default function LoginPage() {
 
               <button
                 type="submit"
-                disabled={submitting || !tokenInput.trim()}
-                className="btn-primary inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl px-5 py-3.5 font-sc text-[15px] font-medium focus-ring"
+                disabled={!canSubmit}
+                className="btn-primary inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-[1.25rem] px-5 py-3.5 font-sc text-[15px] font-medium focus-ring"
               >
                 {submitting ? (
                   <>
@@ -209,16 +239,19 @@ export default function LoginPage() {
                   </>
                 )}
               </button>
-
-              <p className="px-2 text-center font-sc text-[11px] leading-relaxed text-ink-muted">
-                轻轻点一下小狗，它会摇尾巴跟你打招呼。
-              </p>
             </form>
-          </motion.div>
-        </div>
 
-        <footer className="text-center font-sc text-[11px] text-ink-muted/80 pt-2">
-          © {new Date().getFullYear()} love · book — 一座两个人的小博物馆
+            <div className="mt-5 rounded-[1.25rem] border border-line/60 bg-surface-raised/66 px-4 py-3">
+              <p className="font-sc text-xs leading-relaxed text-ink-soft">
+                你也可以直接打开带有 <span className="font-semibold text-rose-deep">?token=</span> 或
+                <span className="font-semibold text-rose-deep"> #token=</span> 的入口链接，页面会自动帮你登录。
+              </p>
+            </div>
+          </motion.section>
+        </main>
+
+        <footer className="pt-3 text-center font-sc text-[11px] text-ink-muted/85">
+          © {new Date().getFullYear()} love book，一本只属于两个人的小书。
         </footer>
       </div>
     </div>
