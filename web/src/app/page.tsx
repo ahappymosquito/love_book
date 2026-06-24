@@ -1,6 +1,6 @@
 "use client";
 
-// Mobile-first login screen with a dedicated puppy hero stage, token auto-login, admin entry, and a touch-friendly scrapbook access form.
+// Full-screen puppy login stage with an offset foreground token panel, token auto-login, and a minimal sweetheart welcome path.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -123,75 +123,36 @@ export default function LoginPage() {
 
   return (
     <div className="relative min-h-dvh overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgb(255_255_255_/_0.72),transparent_42%),linear-gradient(180deg,rgb(var(--cream))_0%,rgb(253_243_238)_48%,rgb(247_251_246)_100%)] dark:bg-[radial-gradient(circle_at_top,rgb(255_255_255_/_0.12),transparent_38%),linear-gradient(180deg,rgb(var(--cream-deep))_0%,rgb(42_30_35)_54%,rgb(32_44_39)_100%)]" />
+      <div className="absolute inset-0">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgb(255_255_255_/_0.86),transparent_28%),radial-gradient(circle_at_18%_18%,rgb(255_234_238_/_0.38),transparent_24%),linear-gradient(180deg,rgb(255_250_245_/_0.12)_0%,rgb(255_249_243_/_0.08)_38%,rgb(255_249_243_/_0.72)_100%)] dark:bg-[radial-gradient(circle_at_50%_0%,rgb(255_255_255_/_0.16),transparent_24%),radial-gradient(circle_at_18%_18%,rgb(224_132_153_/_0.16),transparent_22%),linear-gradient(180deg,rgb(20_16_19_/_0.18)_0%,rgb(35_27_30_/_0.22)_42%,rgb(27_21_24_/_0.78)_100%)]" />
+        <PuppyScene variant="hero" interactive reducedMotionFallback="soft" className="absolute inset-0" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[34svh] bg-[linear-gradient(180deg,transparent_0%,rgb(255_249_243_/_0.14)_26%,rgb(255_249_243_/_0.78)_100%)] dark:bg-[linear-gradient(180deg,transparent_0%,rgb(35_27_30_/_0.18)_30%,rgb(27_21_24_/_0.82)_100%)]" />
+      </div>
 
-      <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pt-[calc(env(safe-area-inset-top,0px)+0.9rem)] sm:px-6 lg:px-8">
-        <header className="flex items-center justify-between gap-3">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/65 bg-surface-raised/84 px-3.5 py-2 text-sm font-semibold text-ink shadow-[0_12px_30px_-24px_rgb(var(--rose)/0.45),inset_0_1px_0_rgba(255,255,255,0.7)]">
+      <div className="relative z-10 flex min-h-dvh flex-col px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pt-[calc(env(safe-area-inset-top,0px)+1rem)] sm:px-6 lg:px-8">
+        <div className="flex items-start justify-between">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-surface-raised/82 px-3.5 py-2 text-sm font-semibold text-ink shadow-[0_12px_26px_-22px_rgb(var(--rose)/0.4)] backdrop-blur-sm">
             <Heart className="h-4 w-4 text-rose" fill="currentColor" />
             <span className="font-display">love book</span>
           </div>
-          <Link
-            href="/admin"
-            className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-white/60 bg-surface-raised/78 px-4 py-2 font-sc text-xs font-medium text-rose-deep shadow-[0_10px_24px_-22px_rgb(var(--rose)/0.42)] transition hover:bg-surface-raised focus-ring"
-          >
-            管理员入口
-            <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        </header>
+        </div>
 
-        <main className="flex flex-1 flex-col justify-end py-4 lg:grid lg:grid-cols-[minmax(0,1.18fr)_minmax(380px,460px)] lg:items-stretch lg:gap-6 lg:py-6">
-          <section className="login-stage relative min-h-[40svh] overflow-hidden rounded-[2rem] lg:min-h-0 lg:rounded-[2.4rem]">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_10%,rgb(255_255_255_/_0.72),transparent_32%),linear-gradient(180deg,rgb(var(--rose-soft)/0.2),transparent_34%),linear-gradient(180deg,transparent_52%,rgb(var(--cream))/0.62_100%)] dark:bg-[radial-gradient(circle_at_50%_8%,rgb(255_255_255_/_0.14),transparent_34%),linear-gradient(180deg,rgb(var(--rose)/0.14),transparent_38%),linear-gradient(180deg,transparent_50%,rgb(var(--cream-deep))/0.66_100%)]" />
-            <PuppyScene
-              variant="hero"
-              interactive
-              reducedMotionFallback="soft"
-              className="absolute inset-0"
-            />
-
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 p-4 sm:p-5 lg:p-6">
-              <div className="login-hero-note ml-auto max-w-[20rem] rounded-[1.6rem] px-4 py-3 text-left">
-                <p className="font-sc text-[11px] font-semibold uppercase tracking-[0.08em] text-rose-deep/85">
-                  陪你进门
-                </p>
-                <p className="mt-1 font-display text-lg leading-tight text-ink">
-                  轻点一下小狗，它会摇尾巴欢迎你。
-                </p>
-                <p className="mt-2 font-sc text-xs leading-relaxed text-ink-soft">
-                  手机端会把主角留在上半屏，输入区贴近拇指，键盘弹起时也不挤乱布局。
-                </p>
-              </div>
-            </div>
-          </section>
-
+        <main className="flex flex-1 items-end pb-2 sm:pb-4 lg:items-end lg:pb-[7vh]">
           <motion.section
-            initial={{ opacity: 0, y: 18, scale: 0.98 }}
+            initial={{ opacity: 0, y: 24, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-            className="glass-card mt-4 rounded-[2rem] p-5 sm:p-6 lg:mt-0 lg:self-center lg:rounded-[2.2rem] lg:p-7"
+            className="login-floating-panel w-full max-w-[23rem] sm:max-w-[25rem] lg:ml-auto lg:mr-[6vw] xl:mr-[8vw]"
           >
             <div className="mb-6">
-              <p className="font-sc text-xs font-semibold text-rose-deep">暖暖小书，只给两个人看</p>
-              <h1 className="mt-2 font-display text-[2rem] font-bold leading-tight text-ink sm:text-[2.35rem]">
-                把心动和日常，写成一本会陪着长大的小书。
+              <p className="font-sc text-[11px] font-semibold tracking-[0.04em] text-rose-deep/90">欢迎回家</p>
+              <h1 className="mt-2 max-w-[10ch] text-balance font-display text-[2rem] font-bold leading-tight text-ink sm:text-[2.3rem]">
+                小狗在等你。
               </h1>
-              <p className="mt-3 max-w-md font-sc text-sm leading-relaxed text-ink-soft">
-                粘贴对方发来的入口口令，马上回到你们的时间线、纪念日提醒和想一起完成的小计划。
-              </p>
+              <p className="mt-3 font-sc text-sm leading-6 text-ink-soft">把口令贴进来，我们就继续今天。</p>
             </div>
 
-            <div className="mb-5 flex flex-wrap gap-2">
-              <span className="pill inline-flex items-center gap-1.5 bg-rose/12 text-rose-deep">
-                <Sparkles className="h-3.5 w-3.5" />
-                自动识别链接 token
-              </span>
-              <span className="pill inline-flex items-center gap-1.5 bg-peach/22 text-ink-soft">
-                手机端单手可点
-              </span>
-            </div>
-
-            <form onSubmit={onSubmit} className="space-y-5">
+            <form onSubmit={onSubmit} className="space-y-4">
               <div className="space-y-2">
                 <label htmlFor="token" className="font-sc text-xs font-medium text-ink-muted">
                   你的 token
@@ -225,7 +186,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={!canSubmit}
-                className="btn-primary inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-[1.25rem] px-5 py-3.5 font-sc text-[15px] font-medium focus-ring"
+                className="btn-primary inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-[1rem] px-5 py-3.5 font-sc text-[15px] font-medium focus-ring"
               >
                 {submitting ? (
                   <>
@@ -241,18 +202,15 @@ export default function LoginPage() {
               </button>
             </form>
 
-            <div className="mt-5 rounded-[1.25rem] border border-line/60 bg-surface-raised/66 px-4 py-3">
-              <p className="font-sc text-xs leading-relaxed text-ink-soft">
-                你也可以直接打开带有 <span className="font-semibold text-rose-deep">?token=</span> 或
-                <span className="font-semibold text-rose-deep"> #token=</span> 的入口链接，页面会自动帮你登录。
-              </p>
-            </div>
+            <Link
+              href="/admin"
+              className="mt-4 inline-flex min-h-11 items-center gap-1.5 rounded-full px-1 font-sc text-sm font-medium text-rose-deep transition hover:text-rose focus-ring"
+            >
+              管理员入口
+              <ArrowRight className="h-4 w-4" />
+            </Link>
           </motion.section>
         </main>
-
-        <footer className="pt-3 text-center font-sc text-[11px] text-ink-muted/85">
-          © {new Date().getFullYear()} love book，一本只属于两个人的小书。
-        </footer>
       </div>
     </div>
   );

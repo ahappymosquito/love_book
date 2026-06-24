@@ -1,4 +1,4 @@
-/* Global theme tokens, soft scrapbook surfaces, login and timeline puppy stages, reusable controls, liquid-glass navigation and habit surfaces, create-window sizing, and smooth focus styles. */
+/* Global theme tokens, soft scrapbook surfaces, full-screen puppy login staging, reusable controls, liquid-glass navigation and habit surfaces, create-window sizing, and smooth focus styles. */
 
 @tailwind base;
 @tailwind components;
@@ -362,27 +362,26 @@
     max-height: 92dvh !important;
   }
 
-  .login-stage {
-    border: 1px solid rgb(255 255 255 / 0.62);
+  .login-floating-panel {
+    border: 1px solid rgb(255 255 255 / 0.66);
+    border-radius: 1.5rem;
     background:
-      radial-gradient(circle at 20% 0%, rgb(255 255 255 / 0.82), transparent 34%),
-      linear-gradient(180deg, rgb(var(--surface-raised) / 0.54), rgb(var(--surface) / 0.24)),
-      rgb(var(--surface) / 0.38);
+      radial-gradient(circle at 18% 0%, rgb(255 255 255 / 0.92), transparent 32%),
+      linear-gradient(180deg, rgb(var(--surface-raised) / 0.94), rgb(var(--surface) / 0.78)),
+      rgb(var(--surface) / 0.88);
     box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.86) inset,
-      0 22px 52px -36px rgb(var(--rose-deep) / 0.38);
+      0 1px 0 rgb(255 255 255 / 0.88) inset,
+      0 22px 48px -28px rgb(var(--ink) / 0.28),
+      0 12px 32px -24px rgb(var(--rose-deep) / 0.3);
+    backdrop-filter: blur(18px) saturate(132%);
+    -webkit-backdrop-filter: blur(18px) saturate(132%);
+    padding: 1.35rem;
   }
 
-  .login-hero-note {
-    border: 1px solid rgb(255 255 255 / 0.56);
-    background:
-      linear-gradient(180deg, rgb(255 255 255 / 0.78), rgb(var(--surface-raised) / 0.64)),
-      rgb(var(--surface) / 0.78);
-    box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.84) inset,
-      0 20px 36px -30px rgb(var(--ink) / 0.32);
-    backdrop-filter: blur(12px) saturate(138%);
-    -webkit-backdrop-filter: blur(12px) saturate(138%);
+  @media (min-width: 640px) {
+    .login-floating-panel {
+      padding: 1.55rem;
+    }
   }
 
   .puppy-scene-hero,
@@ -506,7 +505,6 @@
         rgb(var(--surface) / 0.44);
     }
 
-    .login-stage,
     .timeline-hero-panel,
     .inline-puppy-shell {
       border-color: rgb(255 255 255 / 0.14);
@@ -515,21 +513,15 @@
         0 20px 44px -34px rgb(0 0 0 / 0.72);
     }
 
-    .login-stage {
+    .login-floating-panel {
+      border-color: rgb(255 255 255 / 0.16);
       background:
-        radial-gradient(circle at 20% 0%, rgb(255 255 255 / 0.08), transparent 34%),
-        linear-gradient(180deg, rgb(var(--surface-raised) / 0.54), rgb(var(--surface) / 0.24)),
-        rgb(var(--surface) / 0.34);
-    }
-
-    .login-hero-note {
-      border-color: rgb(255 255 255 / 0.14);
-      background:
-        linear-gradient(180deg, rgb(255 255 255 / 0.08), rgb(var(--surface-raised) / 0.58)),
-        rgb(var(--surface) / 0.76);
+        radial-gradient(circle at 18% 0%, rgb(255 255 255 / 0.14), transparent 32%),
+        linear-gradient(180deg, rgb(var(--surface-raised) / 0.88), rgb(var(--surface) / 0.82)),
+        rgb(var(--surface) / 0.84);
       box-shadow:
         0 1px 0 rgb(255 255 255 / 0.08) inset,
-        0 20px 36px -30px rgb(0 0 0 / 0.6);
+        0 24px 44px -28px rgb(0 0 0 / 0.62);
     }
 
     .timeline-hero-panel {

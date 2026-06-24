@@ -1,6 +1,6 @@
 "use client";
 
-// Shared puppy scene with hero and inline variants, touch-safe interaction, responsive camera framing, and reduced-motion-aware animation levels for the login and empty states.
+// Shared puppy scene with hero and inline variants, touch-safe interaction, biased login framing, and reduced-motion-aware animation levels for the login and empty states.
 
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Float, Stars } from "@react-three/drei";
@@ -309,8 +309,8 @@ function ResponsiveCamera({
     const next =
       variant === "hero"
         ? isMobile
-          ? { position: [0, 0.5, 5.25] as [number, number, number], fov: 44 }
-          : { position: [0, 0.68, 4.6] as [number, number, number], fov: 38 }
+          ? { position: [0.22, 0.58, 5.15] as [number, number, number], fov: 44 }
+          : { position: [-0.32, 0.72, 4.72] as [number, number, number], fov: 39 }
         : isMobile
           ? { position: [0, 0.34, 5.95] as [number, number, number], fov: 52 }
           : { position: [0, 0.45, 5.2] as [number, number, number], fov: 46 };
@@ -378,7 +378,8 @@ export function PuppyScene({
   const starCount = variant === "hero" ? (isMobile ? 180 : 300) : 80;
   const particleCount = variant === "hero" ? (isMobile ? 10 : 14) : 6;
   const puppyScale = variant === "hero" ? (isMobile ? 1 : 1.04) : isMobile ? 0.88 : 0.92;
-  const puppyPosition = variant === "hero" ? (isMobile ? [0, -0.16, 0] : [0, -0.06, 0]) : [0, -0.24, 0];
+  const puppyPosition =
+    variant === "hero" ? (isMobile ? [0.26, -0.18, 0] : [-0.44, -0.05, 0]) : [0, -0.24, 0];
   const stageClassName = variant === "hero" ? "puppy-scene-hero" : "puppy-scene-inline";
 
   return (

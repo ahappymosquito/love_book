@@ -8,6 +8,7 @@ media/
 pytest-cache-files-*/
 .env
 .idea
+.qoder
 
 # web/ frontend
 web/node_modules/
