@@ -1308,6 +1308,70 @@ def test_cycle_log_delete_removes_single_day(client: TestClient, pair_tokens: di
     assert dashboard["logs"][0]["source"] == "predicted"
 
 
+def test_cycle_dashboard_write_returns_recomputed_prediction(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 3, 25))
+    token = str(pair_tokens["user_a_token"])
+    for start in ["2026-01-29", "2026-02-26"]:
+        client.put(
+            f"/cycles/logs/{start}",
+            headers=auth(token),
+            json={"phase": "menstrual", "is_period": True, "flow": "medium"},
+        )
+    before = client.get("/cycles/dashboard?start=2026-03-01&end=2026-04-30", headers=auth(token)).json()
+    assert before["stats"]["next_period_start"] == "2026-03-26"
+
+    updated = client.put(
+        "/cycles/logs/2026-03-25/dashboard?start=2026-03-01&end=2026-04-30",
+        headers=auth(token),
+        json={"phase": "menstrual", "is_period": True, "flow": "medium"},
+    )
+
+    assert updated.status_code == 200
+    payload = updated.json()
+    assert payload["stats"]["last_period_start"] == "2026-03-25"
+    assert payload["stats"]["next_period_start"] == "2026-04-22"
+    assert next(log for log in payload["logs"] if log["date"] == "2026-03-25")["source"] == "recorded"
+
+
+def test_cycle_prediction_filters_unreasonable_cycle_gaps(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 3, 21))
+    token = str(pair_tokens["user_a_token"])
+    for start in ["2026-01-01", "2026-01-29", "2026-03-20"]:
+        client.put(
+            f"/cycles/logs/{start}",
+            headers=auth(token),
+            json={"phase": "menstrual", "is_period": True, "flow": "medium"},
+        )
+
+    dashboard = client.get("/cycles/dashboard?start=2026-03-01&end=2026-04-30", headers=auth(token)).json()
+
+    assert dashboard["stats"]["average_cycle_length"] == 28
+    assert dashboard["stats"]["last_period_start"] == "2026-03-20"
+    assert dashboard["stats"]["next_period_start"] == "2026-04-17"
+
+
+def test_cycle_prediction_weights_recent_cycles(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 7, 7))
+    token = str(pair_tokens["user_a_token"])
+    for start in ["2026-01-01", "2026-01-29", "2026-02-26", "2026-03-26", "2026-04-29", "2026-06-02", "2026-07-06"]:
+        client.put(
+            f"/cycles/logs/{start}",
+            headers=auth(token),
+            json={"phase": "menstrual", "is_period": True, "flow": "medium"},
+        )
+
+    dashboard = client.get("/cycles/dashboard?start=2026-07-01&end=2026-08-31", headers=auth(token)).json()
+
+    assert dashboard["stats"]["average_cycle_length"] == 32
+    assert dashboard["stats"]["next_period_start"] == "2026-08-07"
+
+
 def test_todo_dashboard_requires_login_and_seeds_default_play_items(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
     assert client.get("/todos/dashboard?month=2026-05").status_code == 401
 

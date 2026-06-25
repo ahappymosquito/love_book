@@ -1,4 +1,4 @@
-"""Cycle record persistence helpers, dashboard aggregation, and reference-only prediction logic."""
+"""Cycle record persistence helpers, dashboard aggregation, and weighted reference-only prediction logic."""
 
 from datetime import date, timedelta
 
@@ -11,6 +11,12 @@ from app.schemas import CycleDailyLogOut, CycleDailyLogUpsert, CycleDashboardOut
 DEFAULT_CYCLE_LENGTH = 28
 DEFAULT_PERIOD_LENGTH = 5
 DEFAULT_CURRENT_OFFSET = 17
+MIN_REASONABLE_CYCLE_LENGTH = 21
+MAX_REASONABLE_CYCLE_LENGTH = 45
+MIN_REASONABLE_PERIOD_LENGTH = 2
+MAX_REASONABLE_PERIOD_LENGTH = 10
+RECENT_CYCLE_LIMIT = 6
+RECENT_WEIGHTED_LIMIT = 3
 
 
 def local_today() -> date:
@@ -59,14 +65,46 @@ def _mean_int(values: list[int], fallback: int) -> int:
     return max(1, round(sum(values) / len(values)))
 
 
-def _confidence(starts: list[date]) -> tuple[str, int]:
+def _reasonable_values(values: list[int], minimum: int, maximum: int) -> list[int]:
+    return [value for value in values if minimum <= value <= maximum]
+
+
+def _cycle_lengths(starts: list[date]) -> list[int]:
     lengths = [(right - left).days for left, right in zip(starts, starts[1:]) if (right - left).days > 0]
+    return _reasonable_values(lengths, MIN_REASONABLE_CYCLE_LENGTH, MAX_REASONABLE_CYCLE_LENGTH)
+
+
+def _weighted_recent_mean(values: list[int], fallback: int) -> int:
+    recent = values[-RECENT_CYCLE_LIMIT:]
+    if not recent:
+        return fallback
+    weighted_total = 0
+    weight_total = 0
+    weighted_start = max(0, len(recent) - RECENT_WEIGHTED_LIMIT)
+    for index, value in enumerate(recent):
+        weight = 2 if index >= weighted_start else 1
+        weighted_total += value * weight
+        weight_total += weight
+    return max(1, round(weighted_total / weight_total))
+
+
+def _recent_period_length(logs: list[CycleDailyLog]) -> int:
+    lengths = _reasonable_values(
+        _period_lengths(logs),
+        MIN_REASONABLE_PERIOD_LENGTH,
+        MAX_REASONABLE_PERIOD_LENGTH,
+    )
+    return _mean_int(lengths[-RECENT_CYCLE_LIMIT:], DEFAULT_PERIOD_LENGTH)
+
+
+def _confidence(lengths: list[int]) -> tuple[str, int]:
     if not lengths:
         return "low", 0
-    variation = max(lengths) - min(lengths)
-    if len(lengths) >= 3 and variation <= 3:
+    recent = lengths[-RECENT_CYCLE_LIMIT:]
+    variation = max(recent) - min(recent)
+    if len(recent) >= 4 and variation <= 3:
         return "high", variation
-    if len(lengths) >= 2 and variation <= 7:
+    if len(recent) >= 2 and variation <= 7:
         return "medium", variation
     return "low", variation
 
@@ -87,10 +125,10 @@ def _phase_for_cycle_day(day_index: int, cycle_length: int, period_length: int) 
 
 def _stats(all_logs: list[CycleDailyLog], today: date) -> CycleStats:
     starts = _period_starts(all_logs)
-    lengths = [(right - left).days for left, right in zip(starts, starts[1:]) if (right - left).days > 0]
-    average_cycle = _mean_int(lengths, DEFAULT_CYCLE_LENGTH)
-    average_period = _mean_int(_period_lengths(all_logs), DEFAULT_PERIOD_LENGTH)
-    confidence, variation = _confidence(starts)
+    lengths = _cycle_lengths(starts)
+    average_cycle = _weighted_recent_mean(lengths, DEFAULT_CYCLE_LENGTH)
+    average_period = _recent_period_length(all_logs)
+    confidence, variation = _confidence(lengths)
 
     last_start = max((start for start in starts if start <= today), default=None)
     if last_start is None:

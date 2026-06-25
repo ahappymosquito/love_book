@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests, habits, todo candidate queues, scheduling, weather hints, events, quotes, cycles, reactions, and media including todo image deletion.
+// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests, habits, todo candidate queues, scheduling, weather hints, events, quotes, live cycle dashboards, reactions, and media including todo image deletion.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -278,6 +278,13 @@ export const api = {
       method: "PUT",
       json: payload,
     }),
+  upsertCycleLogDashboard: (date: string, params: { start: string; end: string }, payload: DailyLogInput) => {
+    const search = new URLSearchParams({ start: params.start, end: params.end });
+    return apiRequest<CycleDashboardOut>(`/cycles/logs/${date}/dashboard?${search.toString()}`, {
+      method: "PUT",
+      json: payload,
+    });
+  },
   deleteCycleLog: (date: string) => apiRequest<void>(`/cycles/logs/${date}`, { method: "DELETE" }),
   clearCycleLogs: () => apiRequest<void>("/cycles/logs", { method: "DELETE" }),
   seedCycleExampleData: () =>

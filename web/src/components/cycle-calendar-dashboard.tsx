@@ -1,6 +1,6 @@
 "use client";
 
-// CycleCalendarDashboard lets the pair record daily cycle status, review reference predictions, and configure home reminders.
+// CycleCalendarDashboard records daily cycle status, refreshes live predictions after edits, and configures home reminders.
 
 import Link from "next/link";
 import {
@@ -249,16 +249,16 @@ export function CycleCalendarDashboard() {
   const todayLog = logsByDate.get(toISODate(new Date()));
 
   async function saveLog(date: string, input: DailyLogInput) {
-    const saved = await api.upsertCycleLog(date, input);
-    setDashboard((prev) =>
-      prev
-        ? {
-            ...prev,
-            is_empty: false,
-            logs: prev.logs.map((log) => (log.date === date ? saved : log)),
-          }
-        : prev,
+    const range = dashboardRange(viewDate, viewMode);
+    const updatedDashboard = await api.upsertCycleLogDashboard(
+      date,
+      {
+        start: toISODate(range.start),
+        end: toISODate(range.end),
+      },
+      input,
     );
+    setDashboard(updatedDashboard);
     setEditing(false);
     toast.success("记录已保存");
   }
