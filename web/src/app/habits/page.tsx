@@ -1,7 +1,6 @@
 "use client";
 
-// Habit page renders the authenticated pair habit dashboard with liquid-glass week/month boards,
-// vertical collapsible check-in panels, popover habit color selection, green completion rows, and reduced-motion-safe feedback.
+// Habit page lets both partners review daily progress, add personal habits, and mark completion for the selected date.
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -261,7 +260,7 @@ function HabitsInner() {
             <CardHeader className="gap-4 sm:flex sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle>习惯打卡</CardTitle>
-                <CardDescription>默认按周查看，点日期补记，点自己的事项完成或取消。</CardDescription>
+                <CardDescription>选一天看看进度，也可以补记过去的打卡；自己的事项点一下就能完成或取消。</CardDescription>
               </div>
               <CalendarToolbar
                 viewDate={viewDate}

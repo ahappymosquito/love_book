@@ -1,6 +1,6 @@
 "use client";
 
-// Four-section pair-shared todo workspace with stronger but soft category panel contrast, quiet task rows without redundant category or resolved badges, location-aware pending candidate queues, dual-action quick add for normal items and direct wishes, editable detail notes, category override confirmation, rich AMap POI evidence, weather hints, instant single-date scheduling, two-comment completion, bottom-nav-covering details, comments with authors, and viewable/deletable folded photos.
+// Pair-shared todo workspace for collecting date ideas, confirming place candidates, scheduling plans, and checking in together.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -989,7 +989,7 @@ function TaskRow({
 }
 
 function StatusPill({ status }: { status: string }) {
-  if (status === "resolved") return <span className="rounded-full bg-sage/18 px-2 py-0.5 font-sc text-[11px] text-ink-soft">已解析</span>;
+  if (status === "resolved") return null;
   if (status === "failed") return <span className="rounded-full bg-red-100 px-2 py-0.5 font-sc text-[11px] text-red-700">解析失败</span>;
   return <span className="rounded-full bg-peach/18 px-2 py-0.5 font-sc text-[11px] text-ink-muted">解析中</span>;
 }
@@ -1017,7 +1017,7 @@ function QuickAddBar({ onCreated }: { onCreated: (title: string, category: TodoC
           <input
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="写下想一起做的事，新增会帮你找地点"
+            placeholder="写下想一起做的事，或想去的店和地方"
             maxLength={200}
             className="min-w-0 flex-1 bg-transparent font-sc text-sm outline-none placeholder:text-ink-muted/82"
           />
@@ -1031,7 +1031,7 @@ function QuickAddBar({ onCreated }: { onCreated: (title: string, category: TodoC
           </button>
         </div>
       </div>
-      <p className="mt-2 px-1 font-sc text-xs leading-relaxed text-ink-muted">新增会先生成待确认卡，适合吃喝、玩乐和住宿；许愿会直接保存。</p>
+      <p className="mt-2 px-1 font-sc text-xs leading-relaxed text-ink-muted">吃喝、玩乐和住宿会先放进待确认；许愿会直接收进愿望里。</p>
     </form>
   );
 }

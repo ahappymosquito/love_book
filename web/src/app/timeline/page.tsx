@@ -1,6 +1,6 @@
 "use client";
 
-// Mobile-first timeline home screen with a tighter relationship header, refreshed anniversary hierarchy, lighter month groups, puppy-assisted empty state, and create-window entry points.
+// Timeline home screen for reading shared memories, checking relationship reminders, and opening the create flow.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -292,7 +292,7 @@ function HomeHero({
             让每一次心动、想念和见面，都能在这里留下好看的位置。
           </h1>
           <p className="mt-3 max-w-2xl font-sc text-sm leading-relaxed text-ink-soft">
-            首页现在把你们的关系状态、纪念日提醒和时间线入口收得更紧凑，手机上滑动和点按都会更顺手。
+            先看一眼今天的提醒，再把新的小事写进时间线。重要的日子和日常片刻，都会慢慢排成只属于你们的故事。
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <span className="pill inline-flex items-center gap-1.5 bg-rose/12 text-rose-deep">

@@ -1,7 +1,6 @@
 "use client";
 
-// CycleCalendarDashboard implements the authenticated shared pair cycle calendar with warm scrapbook dashboard layout,
-// reminder timing settings, filters, statistics, quick daily logging, mobile detail panels, and bottom-nav-safe spacing backed by /cycles.
+// CycleCalendarDashboard lets the pair record daily cycle status, review reference predictions, and configure home reminders.
 
 import Link from "next/link";
 import {
@@ -323,7 +322,7 @@ export function CycleCalendarDashboard() {
             <CardHeader className="gap-4 sm:flex sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle>周期日历</CardTitle>
-                <CardDescription>不同阶段以连续时间带展示，已记录日期会显示小圆点。</CardDescription>
+                <CardDescription>颜色连成每段周期位置，记录过的日期会多一个小圆点。</CardDescription>
               </div>
               <CalendarToolbar
                 viewDate={viewDate}
@@ -1046,7 +1045,7 @@ export function CycleTimeline({ stats }: { stats: CycleDashboardOut["stats"] }) 
     <Card>
       <CardHeader>
         <CardTitle>当前周期进度</CardTitle>
-        <CardDescription>横向时间轴展示一个完整周期，圆点为今天。</CardDescription>
+        <CardDescription>横向时间轴标出当前周期位置，圆点停在今天。</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="relative h-4 overflow-hidden rounded-full bg-peach/20">
@@ -1108,7 +1107,7 @@ export function EmptyState({ onStart }: { onStart: () => void }) {
         <div>
           <h2 className="font-display text-xl font-semibold text-ink">还没有周期记录</h2>
           <p className="mt-2 font-sc text-sm leading-relaxed text-ink-soft">
-            可以先记录一次经期，之后日历会根据历史记录展示参考预测。
+            可以先记录一次经期，之后日历会按历史记录给出参考预测。
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
             <Button onClick={onStart}>
