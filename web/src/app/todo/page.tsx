@@ -1,6 +1,6 @@
 "use client";
 
-// Pair-shared todo workspace with the unified AppHeader for collecting date ideas, manually choosing categories when AI is off, confirming place candidates, scheduling plans, and checking in together.
+// Pair-shared todo workspace with the unified AppHeader for collecting date ideas, separating normal food/play/stay quick-add classification from direct wish creation, confirming place candidates, scheduling plans, and checking in together.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -78,6 +78,7 @@ const TODO_SECTIONS: Array<{ category: TodoCategory; title: string; subtitle: st
   { category: "wish", title: "悄悄许个愿", subtitle: "还没定下来的愿望和小期待", icon: <Star className="h-4 w-4" /> },
 ];
 const TODO_CATEGORY_OPTIONS: TodoCategory[] = ["food", "play", "stay", "wish"];
+const QUICK_ADD_CATEGORY_OPTIONS: TodoCategory[] = ["food", "play", "stay"];
 const TODO_SECTION_STYLE: Record<TodoCategory, { shell: string; header: string; icon: string; title: string; count: string; body: string }> = {
   food: {
     shell: "border-peach/68 bg-peach/18",
@@ -1040,8 +1041,8 @@ function QuickAddBar({ onCreated, llmEnabled }: { onCreated: (title: string, cat
           />
         </div>
         <div className="flex w-full flex-none gap-2 sm:w-auto">
-          <div className="grid flex-1 grid-cols-4 gap-1 rounded-xl bg-ink/5 p-1 sm:w-64 sm:flex-none">
-            {TODO_CATEGORY_OPTIONS.map((item) => (
+          <div className="grid flex-1 grid-cols-3 gap-1 rounded-xl bg-ink/5 p-1 sm:w-52 sm:flex-none">
+            {QUICK_ADD_CATEGORY_OPTIONS.map((item) => (
               <button
                 key={item}
                 type="button"
@@ -1066,7 +1067,7 @@ function QuickAddBar({ onCreated, llmEnabled }: { onCreated: (title: string, cat
         </div>
       </div>
       <p className="mt-2 px-1 font-sc text-xs leading-relaxed text-ink-muted">
-        {llmEnabled ? "新增后会先智能分类，当前选择会作为失败时的回退分类；许愿会直接收进愿望里。" : "AI 已关闭，新增会使用你手动选中的分类；许愿会直接收进愿望里。"}
+        {llmEnabled ? "新增后会先智能分类，当前选择会作为失败时的回退分类；许愿请用右侧按钮直接收进愿望里。" : "AI 已关闭，新增会使用你手动选中的分类；许愿请用右侧按钮直接收进愿望里。"}
       </p>
     </form>
   );
