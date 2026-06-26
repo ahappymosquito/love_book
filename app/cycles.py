@@ -1,4 +1,4 @@
-"""Cycle record persistence helpers, dashboard aggregation, and future-only weighted prediction logic."""
+"""Cycle record persistence helpers, fact-only log storage, and future-only weighted prediction logic."""
 
 from datetime import date, timedelta
 
@@ -123,6 +123,12 @@ def _phase_for_cycle_day(day_index: int, cycle_length: int, period_length: int) 
     return CyclePhase.luteal
 
 
+def _normalize_log_data(data: dict[str, object]) -> dict[str, object]:
+    data["phase"] = CyclePhase.menstrual if data.get("is_period") else CyclePhase.unknown
+    data["is_predicted"] = False
+    return data
+
+
 def _stats(all_logs: list[CycleDailyLog], today: date) -> CycleStats:
     starts = _period_starts(all_logs)
     lengths = _cycle_lengths(starts)
@@ -198,6 +204,21 @@ def _predicted_log(day: date, stats: CycleStats) -> CycleDailyLogOut:
     )
 
 
+def _anchor_for_day(day: date, starts: list[date], stats: CycleStats) -> date:
+    return max((start for start in starts if start <= day), default=stats.last_period_start)
+
+
+def _non_period_phase(day: date, starts: list[date], stats: CycleStats) -> CyclePhase:
+    anchor = _anchor_for_day(day, starts, stats)
+    distance = (day - anchor).days
+    phase = _phase_for_cycle_day(
+        distance % stats.average_cycle_length,
+        stats.average_cycle_length,
+        stats.average_period_length,
+    )
+    return CyclePhase.follicular if phase == CyclePhase.menstrual else phase
+
+
 def _empty_log(day: date) -> CycleDailyLogOut:
     return CycleDailyLogOut(
         date=day,
@@ -217,9 +238,10 @@ def _empty_log(day: date) -> CycleDailyLogOut:
 
 
 def _log_out(log: CycleDailyLog) -> CycleDailyLogOut:
+    phase = CyclePhase.menstrual if log.is_period else log.phase
     return CycleDailyLogOut(
         date=log.date,
-        phase=log.phase,
+        phase=phase,
         is_period=log.is_period,
         is_predicted=log.is_predicted,
         flow=log.flow,
@@ -234,9 +256,22 @@ def _log_out(log: CycleDailyLog) -> CycleDailyLogOut:
     )
 
 
-def _dashboard_log(day: date, today: date, range_logs: dict[date, CycleDailyLog], stats: CycleStats) -> CycleDailyLogOut:
+def _recorded_dashboard_log(log: CycleDailyLog, starts: list[date], stats: CycleStats) -> CycleDailyLogOut:
+    output = _log_out(log)
+    if not log.is_period:
+        output.phase = _non_period_phase(log.date, starts, stats)
+    return output
+
+
+def _dashboard_log(
+    day: date,
+    today: date,
+    range_logs: dict[date, CycleDailyLog],
+    starts: list[date],
+    stats: CycleStats,
+) -> CycleDailyLogOut:
     if day in range_logs:
-        return _log_out(range_logs[day])
+        return _recorded_dashboard_log(range_logs[day], starts, stats)
     if day > today:
         return _predicted_log(day, stats)
     return _empty_log(day)
@@ -248,8 +283,9 @@ def dashboard(db: Session, pair: Pair, start: date, end: date, today: date | Non
         select(CycleDailyLog).where(CycleDailyLog.pair_id == pair.id).order_by(CycleDailyLog.date)
     ).scalars().all()
     range_logs = {log.date: log for log in all_logs if start <= log.date <= end}
+    starts = _period_starts(all_logs)
     stats = _stats(all_logs, today)
-    logs = [_dashboard_log(day, today, range_logs, stats) for day in _date_range(start, end)]
+    logs = [_dashboard_log(day, today, range_logs, starts, stats) for day in _date_range(start, end)]
     return CycleDashboardOut(logs=logs, stats=stats, is_empty=len(all_logs) == 0)
 
 
@@ -257,7 +293,7 @@ def upsert_log(db: Session, pair: Pair, user: User, day: date, payload: CycleDai
     log = db.execute(
         select(CycleDailyLog).where(CycleDailyLog.pair_id == pair.id, CycleDailyLog.date == day)
     ).scalar_one_or_none()
-    data = payload.model_dump()
+    data = _normalize_log_data(payload.model_dump())
     if log is None:
         log = CycleDailyLog(pair_id=pair.id, date=day, created_by_id=user.id, updated_by_id=user.id, **data)
         db.add(log)

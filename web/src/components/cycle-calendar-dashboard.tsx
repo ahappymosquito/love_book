@@ -1,6 +1,6 @@
 "use client";
 
-// CycleCalendarDashboard records daily cycle status, leaves unrecorded past days empty, refreshes future predictions after edits, and configures home reminders.
+// CycleCalendarDashboard records period facts, leaves unrecorded past days empty, refreshes predicted phases after edits, and configures home reminders.
 
 import Link from "next/link";
 import {
@@ -886,7 +886,7 @@ export function QuickLogForm({
     setSaving(true);
     try {
       await onSave(log.date, {
-        phase: isPeriod ? "menstrual" : log.phase === "predicted_period" ? "unknown" : log.phase,
+        phase: isPeriod ? "menstrual" : "unknown",
         is_period: isPeriod,
         is_predicted: false,
         flow,

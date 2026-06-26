@@ -1,4 +1,4 @@
-"""API regression tests for auth, profiles, user locations, habit dashboards and reminders, media, food/play/stay/wish todo candidate queues, direct wish creation, category-overridable candidate confirmation, no-email single-date schedules, rich AMap restaurant evidence, weather hints, todo image deletion, AMap MCP POI normalization, AMap-grounded AI tests, and fallback data."""
+"""API regression tests for auth, profiles, user locations, habit dashboards and reminders, media, todo boards, cycle fact storage with predicted phases, AMap-grounded AI tests, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -6,6 +6,7 @@ from io import BytesIO
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image as PILImage
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import app.api.routes.admin as admin_routes
@@ -14,7 +15,7 @@ import app.cycles as cycles
 import app.habits as habits
 import app.services as services
 from app.core.config import get_settings
-from app.models import DefaultQuote, DeviceToken, HabitReminderRun, HabitTask, Image as DBImage, TodoImage, Voice
+from app.models import CycleDailyLog, CyclePhase, DefaultQuote, DeviceToken, HabitReminderRun, HabitTask, Image as DBImage, TodoImage, Voice
 from app.storage import media_path
 from tests.conftest import auth
 
@@ -1345,6 +1346,67 @@ def test_cycle_dashboard_predicts_only_future_unrecorded_days(
     assert logs["2026-05-21"]["source"] == "empty"
     assert logs["2026-05-22"]["source"] == "empty"
     assert logs["2026-05-23"]["source"] == "predicted"
+
+
+def test_cycle_non_period_submission_stores_fact_not_client_phase(
+    client: TestClient,
+    pair_tokens: dict[str, str | int],
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 2, 15))
+    token = str(pair_tokens["user_a_token"])
+    for start in ["2026-01-01", "2026-01-29"]:
+        client.put(
+            f"/cycles/logs/{start}",
+            headers=auth(token),
+            json={"phase": "menstrual", "is_period": True, "flow": "medium"},
+        )
+
+    created = client.put(
+        "/cycles/logs/2026-02-10",
+        headers=auth(token),
+        json={"phase": "ovulation", "is_period": False, "flow": "none"},
+    )
+
+    assert created.status_code == 200
+    assert created.json()["phase"] == "unknown"
+    stored = db_session.execute(
+        select(CycleDailyLog).where(CycleDailyLog.pair_id == pair_tokens["pair_id"], CycleDailyLog.date == date(2026, 2, 10))
+    ).scalar_one()
+    assert stored.phase == CyclePhase.unknown
+    assert stored.is_period is False
+
+    dashboard = client.get("/cycles/dashboard?start=2026-02-10&end=2026-02-10", headers=auth(token)).json()
+    log = dashboard["logs"][0]
+    assert log["source"] == "recorded"
+    assert log["is_period"] is False
+    assert log["phase"] == "fertile"
+
+
+def test_cycle_recorded_non_period_fact_overrides_predicted_period_window(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 5, 22))
+    token = str(pair_tokens["user_a_token"])
+    client.put(
+        "/cycles/logs/2026-05-20",
+        headers=auth(token),
+        json={"phase": "menstrual", "is_period": True, "flow": "medium"},
+    )
+    client.put(
+        "/cycles/logs/2026-05-21",
+        headers=auth(token),
+        json={"phase": "menstrual", "is_period": False, "flow": "none"},
+    )
+
+    dashboard = client.get("/cycles/dashboard?start=2026-05-20&end=2026-05-21", headers=auth(token)).json()
+    logs = {log["date"]: log for log in dashboard["logs"]}
+
+    assert logs["2026-05-20"]["phase"] == "menstrual"
+    assert logs["2026-05-21"]["source"] == "recorded"
+    assert logs["2026-05-21"]["is_period"] is False
+    assert logs["2026-05-21"]["phase"] == "follicular"
 
 
 def test_cycle_dashboard_write_returns_recomputed_prediction(
