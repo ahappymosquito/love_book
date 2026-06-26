@@ -1,6 +1,6 @@
 "use client";
 
-// CycleCalendarDashboard records period facts, leaves unrecorded past days empty, refreshes predicted phases after edits, and configures home reminders.
+// CycleCalendarDashboard records period facts, refreshes predicted phases after edits, keeps next-period windows consistent, and explains cycle terms.
 
 import Link from "next/link";
 import {
@@ -198,6 +198,25 @@ function confidenceLabel(value: "high" | "medium" | "low"): string {
   return value === "high" ? "较高" : value === "medium" ? "中等" : "较低";
 }
 
+function formatPeriodWindow(stats: CycleDashboardOut["stats"], compact = false): string {
+  const pattern = compact ? "M/d" : "M 月 d 日";
+  return `${format(parseISO(stats.next_period_start), pattern)} - ${format(parseISO(stats.next_period_end), pattern)}`;
+}
+
+function formatStartWindow(stats: CycleDashboardOut["stats"], compact = false): string {
+  const pattern = compact ? "M/d" : "M 月 d 日";
+  return `${format(parseISO(stats.prediction_start), pattern)} - ${format(parseISO(stats.prediction_end), pattern)}`;
+}
+
+function hasStartWindow(stats: CycleDashboardOut["stats"]): boolean {
+  return stats.prediction_start !== stats.prediction_end;
+}
+
+function nextPeriodHint(stats: CycleDashboardOut["stats"]): string {
+  const confidence = `可信度：${confidenceLabel(stats.confidence)}`;
+  return hasStartWindow(stats) ? `${confidence} · 开始日可能在 ${formatStartWindow(stats)}` : confidence;
+}
+
 export function CycleCalendarDashboard() {
   const pairId = useAppStore((s) => s.me?.pair_id);
   const [viewDate, setViewDate] = useState(() => new Date());
@@ -373,6 +392,7 @@ export function CycleCalendarDashboard() {
 
           {dashboard && <CycleTimeline stats={dashboard.stats} />}
           <PhaseLegend />
+          <CycleKnowledgeCard />
           {dashboard && <StatsCards dashboard={dashboard} />}
 
           <Card className="p-5">
@@ -502,13 +522,10 @@ export function HeaderSummaryCards({
   todayRecorded: boolean;
   onQuickLog: () => void;
 }) {
-  const nextText =
-    stats.confidence === "low"
-      ? `预计 ${format(parseISO(stats.prediction_start), "M 月 d 日")} - ${format(parseISO(stats.prediction_end), "M 月 d 日")}`
-      : `预计 ${format(parseISO(stats.next_period_start), "M 月 d 日")}`;
+  const nextText = `预计 ${formatPeriodWindow(stats)}`;
   const cards = [
     { icon: HeartPulse, label: "当前周期", value: `周期第 ${stats.current_cycle_day} 天`, hint: phaseMeta[stats.current_phase].name },
-    { icon: Droplet, label: "下次经期", value: nextText, hint: `可信度：${confidenceLabel(stats.confidence)}` },
+    { icon: Droplet, label: "下次经期", value: nextText, hint: nextPeriodHint(stats) },
     { icon: ClipboardList, label: "今日状态", value: todayRecorded ? "今日已记录" : "今日尚未记录", hint: "10 秒快速记录" },
   ];
   return (
@@ -771,6 +788,32 @@ export function PhaseLegend() {
               </div>
             </div>
           ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function CycleKnowledgeCard() {
+  const terms = [
+    ["基础体温 BBT", "醒来后、起床前测到的体温，更适合看连续趋势。"],
+    ["宫颈黏液", "记录分泌物的质地，比如干燥、湿润、乳霜状或蛋清状。"],
+    ["易孕期 / 排卵日", "按已有周期估算出的参考窗口，帮助回顾身体信号。"],
+    ["卵泡期 / 黄体期", "分别指经期后的前半段、排卵后的后半段，用来理解周期位置。"],
+    ["可信度", "由记录数量和周期波动估算；较低时，开始日可能前后浮动。"],
+  ];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>周期小词条</CardTitle>
+        <CardDescription>这些词只帮助理解记录和预测，不替代医生判断。</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3 sm:grid-cols-2">
+        {terms.map(([title, desc]) => (
+          <div key={title} className="rounded-2xl border border-line/70 bg-surface-raised/70 p-3">
+            <p className="font-sc text-sm font-medium text-ink">{title}</p>
+            <p className="mt-1 font-sc text-xs leading-relaxed text-ink-muted">{desc}</p>
+          </div>
+        ))}
       </CardContent>
     </Card>
   );
@@ -1074,12 +1117,8 @@ export function StatsCards({ dashboard }: { dashboard: CycleDashboardOut }) {
     ["平均周期长度", `${stats.average_cycle_length} 天`],
     ["平均经期长度", `${stats.average_period_length} 天`],
     ["最近一次经期开始", format(parseISO(stats.last_period_start), "M 月 d 日")],
-    [
-      "下次经期预测",
-      stats.confidence === "low"
-        ? `${format(parseISO(stats.prediction_start), "M/d")} - ${format(parseISO(stats.prediction_end), "M/d")}`
-        : `${format(parseISO(stats.next_period_start), "M 月 d 日")}`,
-    ],
+    ["下次经期预测", formatPeriodWindow(stats, true)],
+    ["开始日参考范围", hasStartWindow(stats) ? formatStartWindow(stats, true) : format(parseISO(stats.next_period_start), "M/d")],
     ["预测可信度", confidenceLabel(stats.confidence)],
     ["本月已记录天数", `${dashboard.logs.filter((log) => log.source === "recorded").length} 天`],
   ];
