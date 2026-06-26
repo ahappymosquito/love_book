@@ -1,8 +1,7 @@
 "use client";
 
-// Habit page lets both partners review daily progress, add personal habits, and mark completion for the selected date.
+// Habit page lets both partners review daily progress under the unified AppHeader, add personal habits, and mark completion for the selected date.
 
-import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -19,7 +18,7 @@ import {
 import { toast } from "sonner";
 import { AuthGate } from "@/components/auth-gate";
 import { Avatar } from "@/components/avatar";
-import { TimelineHeader } from "@/components/timeline-header";
+import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
@@ -244,15 +243,9 @@ function HabitsInner() {
     }
   }
 
-  const headerAvatar = (
-    <Link href="/me" className="grid h-10 w-10 place-items-center rounded-full focus-ring" aria-label="打开设置">
-      <Avatar user={me.user} size="sm" />
-    </Link>
-  );
-
   return (
     <div className="min-h-dvh w-full">
-      <TimelineHeader title="习惯" rightSlot={headerAvatar} />
+      <AppHeader title="习惯" />
 
       <main className="mx-auto max-w-7xl px-4 pt-5 sm:px-6 scroll-pad-bottom">
         <section className="min-w-0 space-y-5">

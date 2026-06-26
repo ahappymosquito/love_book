@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home screen for reading shared memories, checking relationship reminders, and opening the create flow.
+// Timeline home screen for reading shared memories, checking relationship reminders, and using the unified authenticated AppHeader.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -20,7 +20,7 @@ import {
 import { AuthGate } from "@/components/auth-gate";
 import { Avatar } from "@/components/avatar";
 import { LoadingScreen } from "@/components/loading-screen";
-import { TimelineHeader } from "@/components/timeline-header";
+import { AppHeader } from "@/components/app-header";
 import { SubmissionBadge, VisibilityBadge } from "@/components/visibility-badge";
 import { api } from "@/lib/api";
 import {
@@ -218,7 +218,7 @@ function TimelineInner() {
 
   return (
     <div className="min-h-dvh w-full">
-      <TimelineHeader mode="compact" />
+      <AppHeader mode="compact" />
 
       <main className="mx-auto w-full max-w-5xl px-4 pb-[calc(env(safe-area-inset-bottom,0px)+7.6rem)] pt-5 sm:px-6 sm:pt-6">
         <HomeHero

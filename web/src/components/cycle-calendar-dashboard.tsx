@@ -1,8 +1,7 @@
 "use client";
 
-// CycleCalendarDashboard records period facts, refreshes predicted phases after edits, keeps next-period windows consistent, and links cycle terms to mainland-friendly encyclopedia search.
+// CycleCalendarDashboard records period facts below the unified AppHeader, refreshes predicted phases after edits, keeps next-period windows consistent, and links cycle terms to mainland-friendly encyclopedia search.
 
-import Link from "next/link";
 import {
   addDays,
   addMonths,
@@ -19,7 +18,6 @@ import {
 import { zhCN } from "date-fns/locale";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  ArrowLeft,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -41,6 +39,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type React from "react";
 import { toast } from "sonner";
+import { AppHeader } from "@/components/app-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -342,22 +341,16 @@ export function CycleCalendarDashboard() {
 
   return (
     <div className="min-h-dvh w-full pb-[calc(env(safe-area-inset-bottom,0px)+9rem)]">
-      <header className="sticky top-0 z-30 frosted-bar">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <Link href="/timeline" className="btn-ghost inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-sm focus-ring">
-            <ArrowLeft className="h-4 w-4" />
-            时间线
-          </Link>
-          <div className="min-w-0 text-center">
-            <h1 className="font-display text-lg font-semibold leading-tight text-ink sm:text-xl">周期日历</h1>
-            <p className="font-sc text-xs text-ink-muted">记录和预测仅供参考</p>
-          </div>
+      <AppHeader
+        title="周期日历"
+        subtitle="记录和预测仅供参考"
+        rightSlot={
           <Button size="sm" onClick={() => setEditing(true)} className="rounded-full">
             <Plus className="h-4 w-4" />
             <span className="hidden sm:inline">快速记录</span>
           </Button>
-        </div>
-      </header>
+        }
+      />
 
       <main className="mx-auto grid max-w-7xl gap-5 px-4 pt-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section className="min-w-0 space-y-5">

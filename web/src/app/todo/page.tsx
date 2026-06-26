@@ -1,6 +1,6 @@
 "use client";
 
-// Pair-shared todo workspace for collecting date ideas, confirming place candidates, scheduling plans, and checking in together.
+// Pair-shared todo workspace with the unified AppHeader for collecting date ideas, confirming place candidates, scheduling plans, and checking in together.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { AppHeader } from "@/components/app-header";
 import { AuthGate } from "@/components/auth-gate";
 import { Avatar } from "@/components/avatar";
 import { TodoLotteryScene } from "@/components/todo-lottery-scene";
@@ -347,7 +348,9 @@ function TodoInner() {
 
   return (
     <div className="min-h-dvh bg-[rgb(var(--cream)/0.68)] pb-[calc(env(safe-area-inset-bottom,0px)+9rem)] text-ink">
-      <div className="mx-auto flex min-h-dvh max-w-6xl gap-0 px-3 py-3 sm:px-5 lg:px-6">
+      <AppHeader title="Todo" subtitle="想吃、想玩和想许的愿望都收进来" />
+
+      <div className="mx-auto flex min-h-[calc(100dvh-64px)] max-w-7xl gap-0 px-3 py-3 sm:px-5 lg:px-6">
         <main className="min-w-0 flex flex-1 flex-col overflow-hidden rounded-[1.4rem] bg-surface/82 shadow-[0_12px_34px_-28px_rgb(var(--rose)/0.42)] hairline">
           <TodoBoardHeader
             loading={loading}
@@ -479,7 +482,7 @@ function TodoBoardHeader({
           <ListTodo className="h-4 w-4" />
         </span>
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-2xl font-semibold leading-tight text-ink sm:text-3xl">要一起做的事情</h1>
+          <h2 className="font-display text-xl font-semibold leading-tight text-ink sm:text-2xl">要一起做的事情</h2>
           <p className="mt-1 font-sc text-sm text-ink-muted">
             {openCount} 件还没完成，{candidateCount} 件待确认
           </p>
@@ -824,7 +827,7 @@ function TodoToolbar({
           <div className="flex flex-wrap items-center gap-2">
             <span className="grid h-10 w-10 place-items-center rounded-2xl bg-peach/20 text-rose-deep">{meta.icon}</span>
             <div className="min-w-0">
-              <h1 className="font-display text-2xl font-semibold leading-tight text-ink sm:text-3xl">{meta.title}</h1>
+              <h2 className="font-display text-xl font-semibold leading-tight text-ink sm:text-2xl">{meta.title}</h2>
               <p className="mt-1 font-sc text-sm text-ink-muted">{meta.subtitle}，{count} 项</p>
             </div>
           </div>
