@@ -1,6 +1,6 @@
 "use client";
 
-// CycleCalendarDashboard records period facts, refreshes predicted phases after edits, keeps next-period windows consistent, and explains cycle terms.
+// CycleCalendarDashboard records period facts, refreshes predicted phases after edits, keeps next-period windows consistent, and links cycle terms to mainland-friendly encyclopedia search.
 
 import Link from "next/link";
 import {
@@ -26,6 +26,7 @@ import {
   CircleDot,
   ClipboardList,
   Droplet,
+  ExternalLink,
   Filter,
   HeartPulse,
   List,
@@ -217,6 +218,51 @@ function nextPeriodHint(stats: CycleDashboardOut["stats"]): string {
   return hasStartWindow(stats) ? `${confidence} · 开始日可能在 ${formatStartWindow(stats)}` : confidence;
 }
 
+const termSearchKeywords = {
+  bbt: "基础体温",
+  cervicalMucus: "宫颈黏液",
+  fertile: "易孕期",
+  ovulation: "排卵日",
+  follicular: "卵泡期",
+  luteal: "黄体期",
+} as const;
+
+const phaseTermKeys: Partial<Record<CyclePhase, keyof typeof termSearchKeywords>> = {
+  follicular: "follicular",
+  fertile: "fertile",
+  ovulation: "ovulation",
+  luteal: "luteal",
+};
+
+function encyclopediaUrl(keyword: string): string {
+  return `https://baike.baidu.com/search/word?word=${encodeURIComponent(keyword)}`;
+}
+
+function TermLink({
+  term,
+  children,
+  className,
+}: {
+  term: keyof typeof termSearchKeywords;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const keyword = termSearchKeywords[term];
+  return (
+    <a
+      href={encyclopediaUrl(keyword)}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cn("term-link", className)}
+      aria-label={`打开百度百科搜索：${keyword}`}
+      title={`百度百科：${keyword}`}
+    >
+      <span>{children}</span>
+      <ExternalLink className="h-3 w-3" aria-hidden="true" />
+    </a>
+  );
+}
+
 export function CycleCalendarDashboard() {
   const pairId = useAppStore((s) => s.me?.pair_id);
   const [viewDate, setViewDate] = useState(() => new Date());
@@ -392,7 +438,6 @@ export function CycleCalendarDashboard() {
 
           {dashboard && <CycleTimeline stats={dashboard.stats} />}
           <PhaseLegend />
-          <CycleKnowledgeCard />
           {dashboard && <StatsCards dashboard={dashboard} />}
 
           <Card className="p-5">
@@ -779,41 +824,20 @@ export function PhaseLegend() {
       <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {(Object.keys(phaseMeta) as CyclePhase[])
           .filter((phase) => phase !== "unknown")
-          .map((phase) => (
-            <div key={phase} className="flex items-start gap-3 rounded-2xl bg-peach/12 p-3">
-              <span className={cn("mt-1 h-4 w-4 rounded-md", phaseMeta[phase].band)} />
-              <div>
-                <p className="font-sc text-sm font-medium text-ink">{phaseMeta[phase].name}</p>
-                <p className="font-sc text-xs leading-relaxed text-ink-muted">{phaseMeta[phase].desc}</p>
+          .map((phase) => {
+            const termKey = phaseTermKeys[phase];
+            return (
+              <div key={phase} className="flex items-start gap-3 rounded-2xl bg-peach/12 p-3">
+                <span className={cn("mt-1 h-4 w-4 rounded-md", phaseMeta[phase].band)} />
+                <div>
+                  <p className="font-sc text-sm font-medium text-ink">
+                    {termKey ? <TermLink term={termKey}>{phaseMeta[phase].name}</TermLink> : phaseMeta[phase].name}
+                  </p>
+                  <p className="font-sc text-xs leading-relaxed text-ink-muted">{phaseMeta[phase].desc}</p>
+                </div>
               </div>
-            </div>
-          ))}
-      </CardContent>
-    </Card>
-  );
-}
-
-export function CycleKnowledgeCard() {
-  const terms = [
-    ["基础体温 BBT", "醒来后、起床前测到的体温，更适合看连续趋势。"],
-    ["宫颈黏液", "记录分泌物的质地，比如干燥、湿润、乳霜状或蛋清状。"],
-    ["易孕期 / 排卵日", "按已有周期估算出的参考窗口，帮助回顾身体信号。"],
-    ["卵泡期 / 黄体期", "分别指经期后的前半段、排卵后的后半段，用来理解周期位置。"],
-    ["可信度", "由记录数量和周期波动估算；较低时，开始日可能前后浮动。"],
-  ];
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>周期小词条</CardTitle>
-        <CardDescription>这些词只帮助理解记录和预测，不替代医生判断。</CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3 sm:grid-cols-2">
-        {terms.map(([title, desc]) => (
-          <div key={title} className="rounded-2xl border border-line/70 bg-surface-raised/70 p-3">
-            <p className="font-sc text-sm font-medium text-ink">{title}</p>
-            <p className="mt-1 font-sc text-xs leading-relaxed text-ink-muted">{desc}</p>
-          </div>
-        ))}
+            );
+          })}
       </CardContent>
     </Card>
   );
@@ -885,18 +909,18 @@ export function DayDetailPanel({
 }
 
 function InfoGrid({ log }: { log: DailyLog }) {
-  const items = [
+  const items: Array<[React.ReactNode, string]> = [
     ["流量", log.flow ? flowLabels[log.flow] : "无"],
     ["症状", log.symptoms.length ? log.symptoms.join("、") : "未记录"],
     ["心情", log.mood ? moodLabels[log.mood] : "未记录"],
-    ["BBT", log.bbt ? `${log.bbt.toFixed(2)} °C` : "未记录"],
-    ["宫颈黏液", log.cervical_mucus ? mucusLabels[log.cervical_mucus] : "未记录"],
+    [<TermLink key="bbt" term="bbt">BBT</TermLink>, log.bbt ? `${log.bbt.toFixed(2)} °C` : "未记录"],
+    [<TermLink key="cervicalMucus" term="cervicalMucus">宫颈黏液</TermLink>, log.cervical_mucus ? mucusLabels[log.cervical_mucus] : "未记录"],
     ["备注", log.note?.trim() || "无"],
   ];
   return (
     <dl className="grid gap-3">
-      {items.map(([label, value]) => (
-        <div key={label} className="rounded-2xl bg-peach/12 p-3">
+      {items.map(([label, value], index) => (
+        <div key={index} className="rounded-2xl bg-peach/12 p-3">
           <dt className="font-sc text-xs text-ink-muted">{label}</dt>
           <dd className="mt-1 font-sc text-sm leading-relaxed text-ink">{value}</dd>
         </div>
@@ -1113,21 +1137,22 @@ export function CycleTimeline({ stats }: { stats: CycleDashboardOut["stats"] }) 
 
 export function StatsCards({ dashboard }: { dashboard: CycleDashboardOut }) {
   const stats = dashboard.stats;
-  const items = [
-    ["平均周期长度", `${stats.average_cycle_length} 天`],
-    ["平均经期长度", `${stats.average_period_length} 天`],
-    ["最近一次经期开始", format(parseISO(stats.last_period_start), "M 月 d 日")],
-    ["下次经期预测", formatPeriodWindow(stats, true)],
-    ["开始日参考范围", hasStartWindow(stats) ? formatStartWindow(stats, true) : format(parseISO(stats.next_period_start), "M/d")],
-    ["预测可信度", confidenceLabel(stats.confidence)],
-    ["本月已记录天数", `${dashboard.logs.filter((log) => log.source === "recorded").length} 天`],
+  const items: Array<{ label: string; value: string; hint?: string }> = [
+    { label: "平均周期长度", value: `${stats.average_cycle_length} 天` },
+    { label: "平均经期长度", value: `${stats.average_period_length} 天` },
+    { label: "最近一次经期开始", value: format(parseISO(stats.last_period_start), "M 月 d 日") },
+    { label: "下次经期预测", value: formatPeriodWindow(stats, true) },
+    { label: "开始日参考范围", value: hasStartWindow(stats) ? formatStartWindow(stats, true) : format(parseISO(stats.next_period_start), "M/d") },
+    { label: "预测可信度", value: confidenceLabel(stats.confidence), hint: "由记录数量和周期波动估算，较低时开始日可能前后浮动。" },
+    { label: "本月已记录天数", value: `${dashboard.logs.filter((log) => log.source === "recorded").length} 天` },
   ];
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {items.map(([label, value]) => (
-        <Card key={label} className="p-4">
-          <p className="font-sc text-xs text-ink-muted">{label}</p>
-          <p className="mt-2 font-display text-xl font-semibold text-ink">{value}</p>
+      {items.map((item) => (
+        <Card key={item.label} className="p-4">
+          <p className="font-sc text-xs text-ink-muted">{item.label}</p>
+          <p className="mt-2 font-display text-xl font-semibold text-ink">{item.value}</p>
+          {item.hint ? <p className="mt-1 font-sc text-xs leading-relaxed text-ink-muted">{item.hint}</p> : null}
         </Card>
       ))}
     </div>

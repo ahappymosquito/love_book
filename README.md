@@ -879,7 +879,7 @@ python -m pytest tests -q
 - `PUT /cycles/logs/{date}`、`PUT /cycles/logs/{date}/dashboard?start=YYYY-MM-DD&end=YYYY-MM-DD`、`DELETE /cycles/logs/{date}`、`DELETE /cycles/logs`、`POST /cycles/example-data` 用于保存、保存并返回重算 dashboard、删除、清空和生成演示数据；写接口在返回前完成提交。正式前端界面只展示记录、查看、编辑和提醒设置，不再展示演示/清空/导入入口。
 - 预测逻辑只基于当前已保存记录做参考展示：经期开始日由连续经期日分段识别，周期长度过滤 21-45 天异常间隔，经期长度过滤 2-10 天异常段，最近 6 个有效周期参与计算且最近 3 个权重更高；数据不足时使用 28 天周期、5 天经期默认值。今天及之后的未记录日期会生成完整预测；今天之前的未记录日期在已有经期锚点时只展示非经期阶段，不回填经期。已记录非经期日的阶段同样由系统推算，但 `is_period=false` 的事实优先，不会被阶段推算改成经期。前端保存周期记录后会使用重算后的 dashboard 实时刷新下个周期预测和日历填充。
 - 周期页面“下次经期”展示必须使用 `next_period_start` 到 `next_period_end`，并与日历预测经期色块保持一致；`prediction_start` 到 `prediction_end` 只表示开始日可能浮动范围，不能当作整段经期展示。
-- 周期页面提供轻量知识栏，解释基础体温 BBT、宫颈黏液、易孕期、排卵日、卵泡期、黄体期和可信度等术语，文案保持记录参考口径。
+- 周期术语不再使用独立知识卡；基础体温 BBT、宫颈黏液、易孕期、排卵日、卵泡期、黄体期等关键词在不干扰按钮和日期格点击的位置提供百科外链，默认使用大陆网络更稳定的百度百科搜索；可信度属于系统算法说明，只在页面内用短文案解释。
 - 周期提醒提前天数保存在当前浏览器 localStorage：`love-book:cycle-reminder-days:{pairId}`，默认 3 天、页面限制 1-7 天；当天“暂时不写”状态保存为 `love-book:cycle-reminder-dismissed:{pairId}:{yyyy-MM-dd}`。
 - 页面文案保持“记录和预测仅供参考”，不提供医疗诊断或避孕建议。
 

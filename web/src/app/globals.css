@@ -1,4 +1,4 @@
-/* Global theme tokens, soft scrapbook surfaces, full-screen puppy login staging, reusable controls, liquid-glass navigation and habit surfaces, create-window sizing, and smooth focus styles. */
+/* Global theme tokens, soft scrapbook surfaces, full-screen puppy login staging, reusable controls, encyclopedia term links, liquid-glass navigation and habit surfaces, create-window sizing, and smooth focus styles. */
 
 @tailwind base;
 @tailwind components;
@@ -613,6 +613,66 @@
   }
   .input-field::placeholder {
     color: rgb(var(--ink-muted) / 0.86);
+  }
+
+  .term-link {
+    position: relative;
+    display: inline-flex;
+    min-height: 1.55rem;
+    align-items: center;
+    gap: 0.2rem;
+    border-radius: 999px;
+    color: rgb(var(--rose-deep));
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-decoration-color: rgb(var(--rose) / 0.36);
+    text-underline-offset: 0.18em;
+    transition: background-color 180ms ease, color 180ms ease, text-decoration-color 180ms ease, transform 180ms ease;
+  }
+
+  .term-link::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0.18rem;
+    bottom: 0.08rem;
+    height: 1px;
+    border-radius: 999px;
+    background: rgb(var(--rose) / 0.72);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 180ms ease;
+  }
+
+  .term-link:hover,
+  .term-link:focus-visible {
+    background-color: rgb(var(--peach) / 0.18);
+    color: rgb(var(--rose-deep));
+    text-decoration-color: transparent;
+  }
+
+  .term-link:hover::after,
+  .term-link:focus-visible::after {
+    transform: scaleX(1);
+  }
+
+  .term-link:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px rgb(var(--focus) / 0.24);
+  }
+
+  .term-link:active {
+    transform: translateY(1px);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .term-link,
+    .term-link::after {
+      transition-duration: 0.01ms;
+    }
+
+    .term-link:active {
+      transform: none;
+    }
   }
 
   .focus-ring:focus-visible {
