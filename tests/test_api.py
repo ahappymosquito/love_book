@@ -1309,7 +1309,7 @@ def test_cycle_log_delete_removes_single_day(client: TestClient, pair_tokens: di
     assert dashboard["logs"][0]["source"] == "empty"
 
 
-def test_cycle_dashboard_keeps_unrecorded_past_and_today_empty(
+def test_cycle_dashboard_keeps_unrecorded_past_empty_and_today_predicted(
     client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 5, 22))
@@ -1323,7 +1323,7 @@ def test_cycle_dashboard_keeps_unrecorded_past_and_today_empty(
     assert [(log["date"], log["source"], log["phase"], log["is_period"]) for log in logs] == [
         ("2026-05-20", "empty", "unknown", False),
         ("2026-05-21", "empty", "unknown", False),
-        ("2026-05-22", "empty", "unknown", False),
+        ("2026-05-22", "predicted", "luteal", False),
     ]
 
 
@@ -1346,7 +1346,9 @@ def test_cycle_dashboard_predicts_past_non_period_and_future_unrecorded_days(
     assert logs["2026-05-21"]["source"] == "predicted"
     assert logs["2026-05-21"]["is_period"] is False
     assert logs["2026-05-21"]["phase"] == "follicular"
-    assert logs["2026-05-22"]["source"] == "empty"
+    assert logs["2026-05-22"]["source"] == "predicted"
+    assert logs["2026-05-22"]["is_period"] is True
+    assert logs["2026-05-22"]["phase"] == "menstrual"
     assert logs["2026-05-23"]["source"] == "predicted"
 
 

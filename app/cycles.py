@@ -290,7 +290,7 @@ def _dashboard_log(
 ) -> CycleDailyLogOut:
     if day in range_logs:
         return _recorded_dashboard_log(range_logs[day], starts, stats)
-    if day > today:
+    if day >= today:
         return _predicted_log(day, stats)
     if day < today and starts:
         return _past_non_period_log(day, starts, stats)
