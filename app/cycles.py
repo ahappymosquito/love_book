@@ -1,4 +1,4 @@
-"""Cycle record persistence helpers, dashboard aggregation, and weighted reference-only prediction logic."""
+"""Cycle record persistence helpers, dashboard aggregation, and future-only weighted prediction logic."""
 
 from datetime import date, timedelta
 
@@ -198,6 +198,24 @@ def _predicted_log(day: date, stats: CycleStats) -> CycleDailyLogOut:
     )
 
 
+def _empty_log(day: date) -> CycleDailyLogOut:
+    return CycleDailyLogOut(
+        date=day,
+        phase=CyclePhase.unknown,
+        is_period=False,
+        is_predicted=False,
+        flow=None,
+        symptoms=[],
+        mood=None,
+        bbt=None,
+        cervical_mucus=None,
+        note=None,
+        updated_by_id=None,
+        updated_at=None,
+        source="empty",
+    )
+
+
 def _log_out(log: CycleDailyLog) -> CycleDailyLogOut:
     return CycleDailyLogOut(
         date=log.date,
@@ -216,6 +234,14 @@ def _log_out(log: CycleDailyLog) -> CycleDailyLogOut:
     )
 
 
+def _dashboard_log(day: date, today: date, range_logs: dict[date, CycleDailyLog], stats: CycleStats) -> CycleDailyLogOut:
+    if day in range_logs:
+        return _log_out(range_logs[day])
+    if day > today:
+        return _predicted_log(day, stats)
+    return _empty_log(day)
+
+
 def dashboard(db: Session, pair: Pair, start: date, end: date, today: date | None = None) -> CycleDashboardOut:
     today = today or local_today()
     all_logs = db.execute(
@@ -223,7 +249,7 @@ def dashboard(db: Session, pair: Pair, start: date, end: date, today: date | Non
     ).scalars().all()
     range_logs = {log.date: log for log in all_logs if start <= log.date <= end}
     stats = _stats(all_logs, today)
-    logs = [_log_out(range_logs[day]) if day in range_logs else _predicted_log(day, stats) for day in _date_range(start, end)]
+    logs = [_dashboard_log(day, today, range_logs, stats) for day in _date_range(start, end)]
     return CycleDashboardOut(logs=logs, stats=stats, is_empty=len(all_logs) == 0)
 
 

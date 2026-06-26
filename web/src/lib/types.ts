@@ -1,4 +1,4 @@
-// Shared TypeScript contracts for API payloads, editable profile/location state, events, quote libraries, habits, food/play/stay/wish todo boards, candidate queues, rich AMap restaurant evidence, todo weather hints, admin saved-model AMap-grounded AI tests, cycles, and reminders.
+// Shared TypeScript contracts for API payloads, editable profile/location state, events, quote libraries, habits, food/play/stay/wish todo boards, candidate queues, rich AMap restaurant evidence, todo weather hints, admin saved-model AMap-grounded AI tests, cycle empty/predicted days, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
 export type TodoCategory = "food" | "play" | "stay" | "wish";
@@ -201,7 +201,7 @@ export interface DailyLog {
   note: string | null;
   updated_by_id: number | null;
   updated_at: string | null;
-  source: "recorded" | "predicted";
+  source: "recorded" | "predicted" | "empty";
 }
 
 export interface DailyLogInput {

@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests, rich AMap restaurant evidence, habit check-ins, todo candidate queues, events, media, quotes, cycles, and todo APIs."""
+"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests, rich AMap restaurant evidence, habit check-ins, todo candidate queues, events, media, quotes, cycle records with empty/predicted days, and todo APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -300,7 +300,7 @@ class CycleDailyLogOut(CycleDailyLogBase):
     date: date
     updated_by_id: int | None = None
     updated_at: datetime | None = None
-    source: Literal["recorded", "predicted"] = "recorded"
+    source: Literal["recorded", "predicted", "empty"] = "recorded"
 
     model_config = {"from_attributes": True}
 

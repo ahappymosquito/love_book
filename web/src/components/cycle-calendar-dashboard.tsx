@@ -1,6 +1,6 @@
 "use client";
 
-// CycleCalendarDashboard records daily cycle status, refreshes live predictions after edits, and configures home reminders.
+// CycleCalendarDashboard records daily cycle status, leaves unrecorded past days empty, refreshes future predictions after edits, and configures home reminders.
 
 import Link from "next/link";
 import {
@@ -809,7 +809,7 @@ export function DayDetailPanel({
     note: null,
     updated_by_id: null,
     updated_at: null,
-    source: "predicted",
+    source: "empty",
   } satisfies DailyLog;
   if (editing) {
     return <QuickLogForm log={displayLog} onCancel={onCancel} onSave={onSave} onDelete={onDelete} />;

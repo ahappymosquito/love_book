@@ -1272,7 +1272,7 @@ def test_cycle_logs_are_isolated_between_pairs(client: TestClient, pair_tokens: 
 
     assert response.status_code == 200
     assert response.json()["is_empty"] is True
-    assert response.json()["logs"][0]["source"] == "predicted"
+    assert response.json()["logs"][0]["source"] == "empty"
 
 
 def test_cycle_example_data_stats_and_clear(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1305,7 +1305,46 @@ def test_cycle_log_delete_removes_single_day(client: TestClient, pair_tokens: di
 
     assert client.delete("/cycles/logs/2026-05-20", headers=auth(token)).status_code == 204
     dashboard = client.get("/cycles/dashboard?start=2026-05-20&end=2026-05-20", headers=auth(token)).json()
-    assert dashboard["logs"][0]["source"] == "predicted"
+    assert dashboard["logs"][0]["source"] == "empty"
+
+
+def test_cycle_dashboard_keeps_unrecorded_past_and_today_empty(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 5, 22))
+    response = client.get(
+        "/cycles/dashboard?start=2026-05-20&end=2026-05-22",
+        headers=auth(str(pair_tokens["user_a_token"])),
+    )
+
+    assert response.status_code == 200
+    logs = response.json()["logs"]
+    assert [(log["date"], log["source"], log["phase"], log["is_period"]) for log in logs] == [
+        ("2026-05-20", "empty", "unknown", False),
+        ("2026-05-21", "empty", "unknown", False),
+        ("2026-05-22", "empty", "unknown", False),
+    ]
+
+
+def test_cycle_dashboard_predicts_only_future_unrecorded_days(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 5, 22))
+    token = str(pair_tokens["user_a_token"])
+    client.put(
+        "/cycles/logs/2026-05-20",
+        headers=auth(token),
+        json={"phase": "menstrual", "is_period": True, "flow": "medium"},
+    )
+
+    response = client.get("/cycles/dashboard?start=2026-05-20&end=2026-05-23", headers=auth(token))
+
+    assert response.status_code == 200
+    logs = {log["date"]: log for log in response.json()["logs"]}
+    assert logs["2026-05-20"]["source"] == "recorded"
+    assert logs["2026-05-21"]["source"] == "empty"
+    assert logs["2026-05-22"]["source"] == "empty"
+    assert logs["2026-05-23"]["source"] == "predicted"
 
 
 def test_cycle_dashboard_write_returns_recomputed_prediction(
