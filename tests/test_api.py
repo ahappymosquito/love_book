@@ -1327,7 +1327,7 @@ def test_cycle_dashboard_keeps_unrecorded_past_and_today_empty(
     ]
 
 
-def test_cycle_dashboard_predicts_only_future_unrecorded_days(
+def test_cycle_dashboard_predicts_past_non_period_and_future_unrecorded_days(
     client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 5, 22))
@@ -1343,7 +1343,9 @@ def test_cycle_dashboard_predicts_only_future_unrecorded_days(
     assert response.status_code == 200
     logs = {log["date"]: log for log in response.json()["logs"]}
     assert logs["2026-05-20"]["source"] == "recorded"
-    assert logs["2026-05-21"]["source"] == "empty"
+    assert logs["2026-05-21"]["source"] == "predicted"
+    assert logs["2026-05-21"]["is_period"] is False
+    assert logs["2026-05-21"]["phase"] == "follicular"
     assert logs["2026-05-22"]["source"] == "empty"
     assert logs["2026-05-23"]["source"] == "predicted"
 

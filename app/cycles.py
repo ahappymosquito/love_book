@@ -1,4 +1,4 @@
-"""Cycle record persistence helpers, fact-only log storage, and future-only weighted prediction logic."""
+"""Cycle record persistence helpers, fact-only log storage, and weighted phase display logic."""
 
 from datetime import date, timedelta
 
@@ -237,6 +237,24 @@ def _empty_log(day: date) -> CycleDailyLogOut:
     )
 
 
+def _past_non_period_log(day: date, starts: list[date], stats: CycleStats) -> CycleDailyLogOut:
+    return CycleDailyLogOut(
+        date=day,
+        phase=_non_period_phase(day, starts, stats),
+        is_period=False,
+        is_predicted=True,
+        flow=None,
+        symptoms=[],
+        mood=None,
+        bbt=None,
+        cervical_mucus=None,
+        note=None,
+        updated_by_id=None,
+        updated_at=None,
+        source="predicted",
+    )
+
+
 def _log_out(log: CycleDailyLog) -> CycleDailyLogOut:
     phase = CyclePhase.menstrual if log.is_period else log.phase
     return CycleDailyLogOut(
@@ -274,6 +292,8 @@ def _dashboard_log(
         return _recorded_dashboard_log(range_logs[day], starts, stats)
     if day > today:
         return _predicted_log(day, stats)
+    if day < today and starts:
+        return _past_non_period_log(day, starts, stats)
     return _empty_log(day)
 
 
