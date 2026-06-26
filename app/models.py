@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair timelines, user location preferences, comment reactions, food/play/stay/wish todo boards, personal habit check-ins, candidate queues, rich AMap restaurant evidence, media keys, quotes, AI settings with saved model lists, and login logs."""
+"""SQLAlchemy models for pair timelines, user location preferences, comment reactions, food/play/stay/wish todo boards, personal habit check-ins, candidate queues, rich AMap restaurant evidence, media keys, quotes, AI settings with an enable switch and saved model lists, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -369,6 +369,7 @@ class AISetting(Base):
     __tablename__ = "ai_settings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    llm_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
     protocol: Mapped[AIProtocol] = mapped_column(Enum(AIProtocol), default=AIProtocol.openai, nullable=False)
     selected_model: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     openai_base_url: Mapped[str] = mapped_column(String(500), nullable=False, default="", server_default="")

@@ -1,4 +1,4 @@
-"""Admin routes for pair setup, tokens, contacts, login logs, and AI config with saved models and customizable AMap-grounded tests."""
+"""Admin routes for pair setup, tokens, contacts, login logs, and AI config with a validated enable switch, saved models, and customizable AMap-grounded tests."""
 
 import secrets
 from datetime import timezone
@@ -8,7 +8,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai_config import get_ai_setting, list_models, preview_secret, saved_models_for_protocol, test_category_completion, update_ai_setting, update_saved_models
+from app.ai_config import ensure_llm_ready, get_ai_setting, list_models, preview_secret, saved_models_for_protocol, set_llm_enabled, test_category_completion, update_ai_setting, update_saved_models
 from app.api.dependencies import require_admin_key
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -191,6 +191,7 @@ def get_admin_ai_config(db: Session = Depends(get_db)) -> AdminAIConfigOut:
     api_key = row.api_key or settings.llm_api_key
     amap_api_key = row.amap_api_key or settings.amap_maps_api_key
     return AdminAIConfigOut(
+        llm_enabled=bool(row.llm_enabled),
         protocol=row.protocol,
         selected_model=row.selected_model or settings.llm_model,
         env_model=settings.llm_model,
@@ -211,6 +212,7 @@ def get_admin_ai_config(db: Session = Depends(get_db)) -> AdminAIConfigOut:
 def patch_admin_ai_config(payload: AdminAIConfigUpdate, db: Session = Depends(get_db)) -> AdminAIConfigOut:
     update_ai_setting(
         db,
+        llm_enabled=False,
         protocol=payload.protocol,
         selected_model=payload.selected_model,
         openai_base_url=payload.openai_base_url,
@@ -218,6 +220,14 @@ def patch_admin_ai_config(payload: AdminAIConfigUpdate, db: Session = Depends(ge
         api_key=payload.api_key,
         amap_api_key=payload.amap_api_key,
     )
+    if payload.llm_enabled:
+        try:
+            ensure_llm_ready(db)
+        except (RuntimeError, httpx.HTTPError) as exc:
+            set_llm_enabled(db, False)
+            db.commit()
+            raise HTTPException(status_code=502, detail=f"LLM validation failed, AI classification has been turned off: {exc}") from exc
+        set_llm_enabled(db, True)
     db.commit()
     return get_admin_ai_config(db)
 

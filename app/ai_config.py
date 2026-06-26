@@ -1,4 +1,4 @@
-"""Admin AI configuration helpers for editable endpoints, saved model lists, AMap-grounded food/play/stay tests, and LLM diagnostics for todo categories including wishes."""
+"""Admin AI configuration helpers for the global LLM enable switch, editable endpoints, saved model lists, AMap-grounded food/play/stay tests, and LLM diagnostics for todo categories including wishes."""
 
 from __future__ import annotations
 
@@ -49,6 +49,7 @@ def get_ai_setting(db: Session) -> AISetting:
     if row is None:
         row = AISetting(
             id=1,
+            llm_enabled=False,
             protocol=normalize_protocol(settings.llm_protocol),
             selected_model=settings.llm_model,
             openai_base_url=settings.llm_openai_base_url,
@@ -70,9 +71,12 @@ def update_ai_setting(
     anthropic_base_url: str,
     api_key: str,
     amap_api_key: str,
+    llm_enabled: bool | None = None,
     user: User | None = None,
 ) -> AISetting:
     row = get_ai_setting(db)
+    if llm_enabled is not None:
+        row.llm_enabled = llm_enabled
     row.protocol = protocol
     row.selected_model = selected_model.strip()
     row.openai_base_url = openai_base_url.strip().rstrip("/")
@@ -83,6 +87,18 @@ def update_ai_setting(
     db.add(row)
     db.flush()
     return row
+
+
+def set_llm_enabled(db: Session, enabled: bool) -> AISetting:
+    row = get_ai_setting(db)
+    row.llm_enabled = enabled
+    db.add(row)
+    db.flush()
+    return row
+
+
+def is_llm_enabled(db: Session) -> bool:
+    return bool(get_ai_setting(db).llm_enabled)
 
 
 def saved_models_for_protocol(row: AISetting, protocol: AIProtocol) -> list[str]:
@@ -156,6 +172,23 @@ def list_models(db: Session, protocol: AIProtocol) -> list[str]:
         elif isinstance(item, str):
             ids.append(item)
     return ids
+
+
+def ensure_llm_ready(db: Session) -> None:
+    row = get_ai_setting(db)
+    api_key = effective_api_key(db)
+    model = effective_model(db)
+    base_url = protocol_base_url(db, row.protocol)
+    if not api_key:
+        raise RuntimeError("LLM API key is not configured")
+    if not model:
+        raise RuntimeError("LLM model is not selected")
+    if not base_url:
+        raise RuntimeError("LLM base URL is not configured")
+    models = list_models(db, row.protocol)
+    if not models:
+        raise RuntimeError("LLM model list is empty")
+    complete_todo_category(db, "movie night")
 
 
 def _category_prompt(title: str, note: str | None = None) -> str:

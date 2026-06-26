@@ -15,7 +15,7 @@ import app.cycles as cycles
 import app.habits as habits
 import app.services as services
 from app.core.config import get_settings
-from app.models import CycleDailyLog, CyclePhase, DefaultQuote, DeviceToken, HabitReminderRun, HabitTask, Image as DBImage, TodoImage, Voice
+from app.models import AISetting, CycleDailyLog, CyclePhase, DefaultQuote, DeviceToken, HabitReminderRun, HabitTask, Image as DBImage, TodoImage, Voice
 from app.storage import media_path
 from tests.conftest import auth
 
@@ -1483,8 +1483,100 @@ def test_todo_dashboard_requires_login_and_seeds_default_play_items(client: Test
     response = client.get("/todos/dashboard?month=2026-05", headers=auth(str(pair_tokens["user_a_token"])))
 
     assert response.status_code == 200
+    assert response.json()["llm_enabled"] is False
     titles = [item["title"] for item in response.json()["items"] if item["category"] == "play"]
     assert titles == ["拼乐高", "看电影", "台球", "唱歌"]
+
+
+def test_admin_ai_enable_validates_before_turning_on(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.api.routes.admin.ensure_llm_ready", lambda db: None)
+    payload = {
+        "llm_enabled": True,
+        "protocol": "openai",
+        "selected_model": "gpt-test",
+        "openai_base_url": "https://llm.example/v1",
+        "anthropic_base_url": "https://anthropic.example",
+        "api_key": "test-key",
+        "amap_api_key": "",
+    }
+
+    response = client.patch("/admin/ai-config", headers={"X-Admin-Key": "test-admin-key"}, json=payload)
+
+    assert response.status_code == 200
+    assert response.json()["llm_enabled"] is True
+
+
+def test_admin_ai_enable_failure_turns_off(client: TestClient, monkeypatch: pytest.MonkeyPatch, db_session: Session) -> None:
+    def fail_ready(db: Session) -> None:
+        raise RuntimeError("bad key")
+
+    monkeypatch.setattr("app.api.routes.admin.ensure_llm_ready", fail_ready)
+    payload = {
+        "llm_enabled": True,
+        "protocol": "openai",
+        "selected_model": "gpt-test",
+        "openai_base_url": "https://llm.example/v1",
+        "anthropic_base_url": "https://anthropic.example",
+        "api_key": "bad-key",
+        "amap_api_key": "",
+    }
+
+    response = client.patch("/admin/ai-config", headers={"X-Admin-Key": "test-admin-key"}, json=payload)
+
+    assert response.status_code == 502
+    assert db_session.get(AISetting, 1).llm_enabled is False
+
+
+def test_todo_candidate_ai_off_uses_manual_category_without_llm(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("app.api.routes.todos.complete_todo_category", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("LLM should not run")))
+    monkeypatch.setattr(
+        "app.amap_mcp.search_restaurants",
+        lambda keyword, city=None, amap_key=None: [{"amap_poi_id": "FOOD1", "name": "Manual Cafe", "address": "A"}],
+    )
+
+    created = client.post(
+        "/todos/candidates",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"raw_title": "Manual Cafe", "category": "food"},
+    )
+
+    assert created.status_code == 201
+    assert created.json()["category"] == "food"
+
+
+def test_todo_candidate_ai_failure_turns_off_and_falls_back_to_manual_category(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    db_session.add(
+        AISetting(
+            id=1,
+            llm_enabled=True,
+            protocol="openai",
+            selected_model="gpt-test",
+            openai_base_url="https://llm.example/v1",
+            anthropic_base_url="https://anthropic.example",
+            api_key="bad-key",
+            amap_api_key="",
+        )
+    )
+    db_session.commit()
+    monkeypatch.setattr("app.api.routes.todos.complete_todo_category", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("LLM down")))
+    monkeypatch.setattr(
+        "app.amap_mcp.search_restaurants",
+        lambda keyword, city=None, amap_key=None: [{"amap_poi_id": "PLAY1", "name": "Manual Play", "address": "B"}],
+    )
+
+    created = client.post(
+        "/todos/candidates",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={"raw_title": "Manual Play", "category": "play"},
+    )
+
+    assert created.status_code == 201
+    assert created.json()["category"] == "play"
+    assert db_session.get(AISetting, 1).llm_enabled is False
 
 
 def test_todo_items_are_pair_isolated(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
@@ -1771,7 +1863,7 @@ def test_todo_candidate_food_ready_confirms_to_rich_restaurant(client: TestClien
     created = client.post(
         "/todos/candidates",
         headers=auth(str(pair_tokens["user_a_token"])),
-        json={"raw_title": "陈记川菜馆（汇银中心店）"},
+        json={"raw_title": "陈记川菜馆（汇银中心店）", "category": "food"},
     )
     assert created.status_code == 201
     assert created.json()["status"] == "ready"
@@ -1800,7 +1892,7 @@ def test_todo_candidate_multiple_amap_choices_can_confirm_selected(client: TestC
     )
     monkeypatch.setattr("app.amap_mcp.restaurant_detail", lambda poi_id, amap_key=None: {"amap_poi_id": poi_id, "name": "浩波台球俱乐部(汇银中心店)", "raw": {"id": poi_id}})
 
-    created = client.post("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])), json={"raw_title": "浩波台球俱乐部"})
+    created = client.post("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])), json={"raw_title": "浩波台球俱乐部", "category": "play"})
     body = created.json()
     assert body["status"] == "needs_choice"
     confirmed = client.post(
@@ -1841,7 +1933,7 @@ def test_todo_candidate_single_play_poi_confirms_and_removes_candidate(client: T
         },
     )
 
-    created = client.post("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])), json={"raw_title": "Haobo Billiards Club"})
+    created = client.post("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])), json={"raw_title": "Haobo Billiards Club", "category": "play"})
     body = created.json()
     confirmed = client.post(f"/todos/candidates/{body['id']}/confirm", headers=auth(str(pair_tokens["user_a_token"])), json={})
     remaining = client.get("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])))
@@ -1866,7 +1958,7 @@ def test_todo_candidate_confirm_can_override_category(client: TestClient, pair_t
         lambda poi_id, amap_key=None: {"amap_poi_id": poi_id, "name": "Haiyou Hotel", "raw": {"id": poi_id}},
     )
 
-    created = client.post("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])), json={"raw_title": "Haiyou Hotel"})
+    created = client.post("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])), json={"raw_title": "Haiyou Hotel", "category": "stay"})
     confirmed = client.post(
         f"/todos/candidates/{created.json()['id']}/confirm",
         headers=auth(str(pair_tokens["user_a_token"])),
@@ -1886,7 +1978,7 @@ def test_todo_candidate_confirm_detail_crash_returns_502_and_keeps_candidate(cli
     )
     monkeypatch.setattr("app.amap_mcp.restaurant_detail", lambda poi_id, amap_key=None: (_ for _ in ()).throw(RuntimeError("detail crashed")))
 
-    created = client.post("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])), json={"raw_title": "Crash Billiards"})
+    created = client.post("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])), json={"raw_title": "Crash Billiards", "category": "play"})
     failed = client.post(f"/todos/candidates/{created.json()['id']}/confirm", headers=auth(str(pair_tokens["user_a_token"])), json={})
     remaining = client.get("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])))
 
@@ -1906,7 +1998,7 @@ def test_todo_candidate_wish_skips_amap_and_confirms_plain_item(client: TestClie
 
     monkeypatch.setattr("app.amap_mcp.search_restaurants", fake_search)
 
-    created = client.post("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])), json={"raw_title": "想要一束花"})
+    created = client.post("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])), json={"raw_title": "想要一束花", "category": "wish"})
     assert created.json()["category"] == "wish"
     assert created.json()["status"] == "ready"
     confirmed = client.post(f"/todos/candidates/{created.json()['id']}/confirm", headers=auth(str(pair_tokens["user_a_token"])), json={})

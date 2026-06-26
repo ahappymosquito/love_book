@@ -1,4 +1,4 @@
-"""Todo board routes for pair-shared tasks, location-aware AMap candidate search, retryable category-overridable candidate confirmation, no-email single-date schedules, weather hints, two-person comment completion, shared LLM category refresh, rich AMap restaurant evidence, images, and image deletion."""
+"""Todo board routes for pair-shared tasks, location-aware AMap candidate search, retryable category-overridable candidate confirmation, no-email single-date schedules, weather hints, two-person comment completion, optional LLM category refresh with manual fallback, rich AMap restaurant evidence, images, and image deletion."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app import amap_mcp
-from app.ai_config import complete_todo_category, effective_amap_key
+from app.ai_config import complete_todo_category, effective_amap_key, is_llm_enabled, set_llm_enabled
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -133,20 +133,18 @@ def _search_location_aware_pois(
     return sorted(_dedupe_pois(candidates), key=_poi_sort_key)[:limit]
 
 
-def _infer_candidate_category(db: Session, title: str) -> TodoCategory:
+def _infer_candidate_category(db: Session, title: str, manual_category: TodoCategory | None) -> TodoCategory:
+    if not is_llm_enabled(db):
+        if manual_category is None:
+            raise HTTPException(status_code=422, detail="Todo category is required when AI classification is off")
+        return manual_category
     try:
         return TodoCategory(complete_todo_category(db, title))
     except Exception:
-        lowered = title.lower()
-        if any(word in title for word in ("吃", "菜", "餐", "饭", "火锅", "咖啡", "奶茶")):
-            return TodoCategory.food
-        if any(word in title for word in ("酒店", "宾馆", "民宿", "住宿", "住一晚")):
-            return TodoCategory.stay
-        if any(word in title for word in ("希望", "想要", "礼物", "许愿", "愿望")):
-            return TodoCategory.wish
-        if any(word in lowered for word in ("wish", "gift")):
-            return TodoCategory.wish
-        return TodoCategory.play
+        set_llm_enabled(db, False)
+        if manual_category is None:
+            raise
+        return manual_category
 
 
 def _create_item_from_candidate(
@@ -373,6 +371,7 @@ def dashboard(
         month=month,
         items=_items_out(db, items),
         schedules=[TodoScheduleOut.model_validate(schedule) for schedule in schedules],
+        llm_enabled=is_llm_enabled(db),
     )
 
 
@@ -541,7 +540,14 @@ def create_candidate(
     db: Session = Depends(get_db),
 ) -> TodoCandidateOut:
     pair = get_pair_for_user(db, current_user.id)
-    category = _infer_candidate_category(db, payload.raw_title)
+    try:
+        category = _infer_candidate_category(db, payload.raw_title, payload.category)
+    except RuntimeError as exc:
+        db.commit()
+        raise HTTPException(status_code=502, detail=f"LLM classification failed and AI classification has been turned off: {exc}") from exc
+    except httpx.HTTPError as exc:
+        db.commit()
+        raise HTTPException(status_code=502, detail=f"LLM classification failed and AI classification has been turned off: {exc}") from exc
     status_value = TodoCandidateStatus.ready
     amap_candidates: list[dict] = []
     selected_candidate: dict | None = None

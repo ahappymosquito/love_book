@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests, habits, todo candidate queues, scheduling, weather hints, events, quotes, live cycle dashboards, reactions, and media including todo image deletion.
+// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests with an enable switch, habits, todo candidate queues with manual category fallback, scheduling, weather hints, events, quotes, live cycle dashboards, reactions, and media including todo image deletion.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -208,6 +208,7 @@ export const api = {
   getAdminAIConfig: () =>
     apiRequest<AdminAIConfigOut>("/admin/ai-config", { withAdmin: true, withAuth: false }),
   updateAdminAIConfig: (payload: {
+    llm_enabled: boolean;
     protocol: AIProtocol;
     selected_model: string;
     openai_base_url: string;
@@ -334,7 +335,7 @@ export const api = {
   classifyTodoItem: (id: number) => apiRequest<TodoItemOut>(`/todos/items/${id}/classify`, { method: "POST" }),
   classifyOpenTodoItems: () => apiRequest<TodoClassifyOpenOut>("/todos/items/classify-open", { method: "POST" }),
   listTodoCandidates: () => apiRequest<TodoCandidateOut[]>("/todos/candidates"),
-  createTodoCandidate: (payload: { raw_title: string }) =>
+  createTodoCandidate: (payload: { raw_title: string; category?: TodoCategory | null }) =>
     apiRequest<TodoCandidateOut>("/todos/candidates", { method: "POST", json: payload }),
   confirmTodoCandidate: (
     candidateId: number,

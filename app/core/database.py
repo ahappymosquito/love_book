@@ -1,4 +1,4 @@
-"""Database setup, sessions, default quote seeding, and lightweight migrations for media, user locations, todo category enums, AI model lists, and avatars."""
+"""Database setup, sessions, default quote seeding, and lightweight migrations for media, user locations, todo category enums, AI enable state, model lists, and avatars."""
 
 """Database engine, session factory, and lightweight migrations for evolving auth, media, AI, and rich AMap restaurant schemas."""
 
@@ -184,6 +184,11 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         "images",
         "storage_backend",
         {"default": "VARCHAR(50) NOT NULL DEFAULT 'local'"},
+    ),
+    (
+        "ai_settings",
+        "llm_enabled",
+        {"default": "BOOLEAN NOT NULL DEFAULT 0", "mysql": "BOOLEAN NOT NULL DEFAULT FALSE", "mariadb": "BOOLEAN NOT NULL DEFAULT FALSE"},
     ),
     (
         "ai_settings",

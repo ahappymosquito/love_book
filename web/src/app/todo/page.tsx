@@ -1,6 +1,6 @@
 "use client";
 
-// Pair-shared todo workspace with the unified AppHeader for collecting date ideas, confirming place candidates, scheduling plans, and checking in together.
+// Pair-shared todo workspace with the unified AppHeader for collecting date ideas, manually choosing categories when AI is off, confirming place candidates, scheduling plans, and checking in together.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -219,7 +219,7 @@ function TodoInner() {
       setDashboard(nextDashboard);
       setCandidates(nextCandidates);
     } catch {
-      setDashboard({ month, items: [], schedules: [] });
+      setDashboard({ month, items: [], schedules: [], llm_enabled: false });
       setCandidates([]);
       toast.error("Todo 看板加载失败");
     } finally {
@@ -239,6 +239,7 @@ function TodoInner() {
   }, [load]);
 
   const items = useMemo(() => dashboard?.items ?? [], [dashboard]);
+  const llmEnabled = dashboard?.llm_enabled ?? false;
   const schedules = useMemo(() => {
     const byId = new Map<number, TodoScheduleOut>();
     for (const item of items) {
@@ -295,7 +296,7 @@ function TodoInner() {
     };
     setLocalCandidates((current) => [localCandidate, ...current]);
     try {
-      const created = await api.createTodoCandidate({ raw_title: title });
+      const created = await api.createTodoCandidate({ raw_title: title, category });
       setLocalCandidates((current) => current.filter((candidate) => candidate.client_id !== clientId));
       setCandidates((current) => [created, ...current.filter((candidate) => candidate.id !== created.id)]);
       toast.success("已放入待确认队列");
@@ -360,7 +361,7 @@ function TodoInner() {
 
           <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] sm:px-5 sm:pb-5">
             <div className="space-y-3 pt-3">
-              <QuickAddBar onCreated={addTodo} />
+              <QuickAddBar onCreated={addTodo} llmEnabled={llmEnabled} />
               {TODO_SECTIONS.map((section) => (
                 <TodoCategorySection
                   key={section.category}
@@ -375,6 +376,7 @@ function TodoInner() {
               ))}
               <CandidateQueue
                 candidates={queuedCandidates}
+                llmEnabled={llmEnabled}
                 onConfirm={confirmCandidate}
                 onDiscard={discardCandidate}
               />
@@ -532,10 +534,12 @@ function TodoCategorySection({
 
 function CandidateQueue({
   candidates,
+  llmEnabled,
   onConfirm,
   onDiscard,
 }: {
   candidates: CandidateQueueItem[];
+  llmEnabled: boolean;
   onConfirm: (candidate: TodoCandidateOut, selectedCandidate?: TodoRestaurantCandidate | null, category?: TodoCategory) => void | Promise<void>;
   onDiscard: (candidate: CandidateQueueItem) => void | Promise<void>;
 }) {
@@ -551,7 +555,7 @@ function CandidateQueue({
       </div>
       <div className="grid gap-2">
         {candidates.map((candidate) => (
-          <CandidateCard key={candidateKey(candidate)} candidate={candidate} onConfirm={onConfirm} onDiscard={onDiscard} />
+          <CandidateCard key={candidateKey(candidate)} candidate={candidate} llmEnabled={llmEnabled} onConfirm={onConfirm} onDiscard={onDiscard} />
         ))}
       </div>
     </section>
@@ -560,10 +564,12 @@ function CandidateQueue({
 
 function CandidateCard({
   candidate,
+  llmEnabled,
   onConfirm,
   onDiscard,
 }: {
   candidate: CandidateQueueItem;
+  llmEnabled: boolean;
   onConfirm: (candidate: TodoCandidateOut, selectedCandidate?: TodoRestaurantCandidate | null, category?: TodoCategory) => void | Promise<void>;
   onDiscard: (candidate: CandidateQueueItem) => void | Promise<void>;
 }) {
@@ -626,11 +632,18 @@ function CandidateCard({
 
       {expanded && (
         <div className="mt-3 space-y-3 border-t border-line/52 pt-3">
-          {candidate.status === "parsing" && <p className="rounded-xl bg-peach/12 p-3 font-sc text-xs text-ink-muted">正在调用 LLM 和高德 MCP 解析，完成后这里会显示可确认的详情。</p>}
+          {candidate.status === "parsing" && (
+            <p className="rounded-xl bg-peach/12 p-3 font-sc text-xs text-ink-muted">
+              {llmEnabled ? "正在智能分类并搜索地点，完成后这里会显示可确认的详情。" : "正在按你选中的板块搜索地点，完成后这里会显示可确认的详情。"}
+            </p>
+          )}
           {(candidate.parse_error || actionError) && <p className="rounded-xl bg-red-50 p-2 font-sc text-xs text-red-700">{actionError ?? candidate.parse_error}</p>}
 
           <div className="rounded-xl border border-line/58 bg-surface-raised/70 p-3">
-            <p className="font-sc text-xs text-ink-muted">LLM 判断：{TODO_CATEGORY_LABELS[candidate.category]}。你也可以改到其它板块。</p>
+            <p className="font-sc text-xs text-ink-muted">
+              {llmEnabled ? `AI 分类：${TODO_CATEGORY_LABELS[candidate.category]}。` : `手动分类：${TODO_CATEGORY_LABELS[candidate.category]}。`}
+              你也可以改到其它板块。
+            </p>
             <div className="mt-2 grid grid-cols-4 gap-1 rounded-xl bg-ink/5 p-1">
               {TODO_CATEGORY_OPTIONS.map((category) => (
                 <button
@@ -997,19 +1010,20 @@ function StatusPill({ status }: { status: string }) {
   return <span className="rounded-full bg-peach/18 px-2 py-0.5 font-sc text-[11px] text-ink-muted">解析中</span>;
 }
 
-function QuickAddBar({ onCreated }: { onCreated: (title: string, category: TodoCategory) => void | Promise<void> }) {
+function QuickAddBar({ onCreated, llmEnabled }: { onCreated: (title: string, category: TodoCategory) => void | Promise<void>; llmEnabled: boolean }) {
   const [title, setTitle] = useState("");
+  const [category, setCategory] = useState<TodoCategory>("play");
 
-  function createAs(category: TodoCategory) {
+  function createAs(nextCategory: TodoCategory) {
     const next = title.trim();
     if (!next) return;
     setTitle("");
-    void onCreated(next, category);
+    void onCreated(next, nextCategory);
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    createAs("play");
+    createAs(category);
   }
 
   return (
@@ -1026,6 +1040,23 @@ function QuickAddBar({ onCreated }: { onCreated: (title: string, category: TodoC
           />
         </div>
         <div className="flex w-full flex-none gap-2 sm:w-auto">
+          <div className="grid flex-1 grid-cols-4 gap-1 rounded-xl bg-ink/5 p-1 sm:w-64 sm:flex-none">
+            {TODO_CATEGORY_OPTIONS.map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setCategory(item)}
+                className={cn(
+                  "min-h-9 rounded-lg font-sc text-xs transition focus-ring",
+                  category === item ? "bg-surface text-rose-deep shadow-sm" : "text-ink-muted hover:bg-surface/62",
+                )}
+              >
+                {TODO_CATEGORY_LABELS[item]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex w-full flex-none gap-2 sm:w-auto">
           <button type="submit" disabled={!title.trim()} className="min-h-11 flex-1 rounded-xl bg-rose px-4 font-sc text-sm text-white disabled:opacity-45 focus-ring sm:flex-none">
             新增
           </button>
@@ -1034,7 +1065,9 @@ function QuickAddBar({ onCreated }: { onCreated: (title: string, category: TodoC
           </button>
         </div>
       </div>
-      <p className="mt-2 px-1 font-sc text-xs leading-relaxed text-ink-muted">吃喝、玩乐和住宿会先放进待确认；许愿会直接收进愿望里。</p>
+      <p className="mt-2 px-1 font-sc text-xs leading-relaxed text-ink-muted">
+        {llmEnabled ? "新增后会先智能分类，当前选择会作为失败时的回退分类；许愿会直接收进愿望里。" : "AI 已关闭，新增会使用你手动选中的分类；许愿会直接收进愿望里。"}
+      </p>
     </form>
   );
 }

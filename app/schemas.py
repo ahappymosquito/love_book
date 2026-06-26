@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests, rich AMap restaurant evidence, habit check-ins, todo candidate queues, events, media, quotes, cycle records with empty/predicted days, and todo APIs."""
+"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests with an enable switch, rich AMap restaurant evidence, habit check-ins, manual todo candidate queues, events, media, quotes, cycle records with empty/predicted days, and todo APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -466,6 +466,7 @@ class TodoDashboardOut(APIModel):
     month: str
     items: list[TodoItemOut]
     schedules: list[TodoScheduleOut]
+    llm_enabled: bool = False
 
 
 class TodoClassifyOpenOut(APIModel):
@@ -549,6 +550,7 @@ class TodoRestaurantCreate(APIModel):
 
 class TodoCandidateCreate(APIModel):
     raw_title: str = Field(min_length=1, max_length=200)
+    category: TodoCategory | None = None
 
     @field_validator("raw_title")
     @classmethod
@@ -634,6 +636,7 @@ class TodoItemDetail(TodoItemOut):
 
 
 class AdminAIConfigOut(APIModel):
+    llm_enabled: bool
     protocol: AIProtocol
     selected_model: str
     env_model: str
@@ -650,6 +653,7 @@ class AdminAIConfigOut(APIModel):
 
 
 class AdminAIConfigUpdate(APIModel):
+    llm_enabled: bool = False
     protocol: AIProtocol
     selected_model: str = Field(default="", max_length=200)
     openai_base_url: str = Field(min_length=1, max_length=500)

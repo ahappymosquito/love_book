@@ -1,4 +1,4 @@
-// Shared TypeScript contracts for API payloads, editable profile/location state, events, quote libraries, habits, food/play/stay/wish todo boards, candidate queues, rich AMap restaurant evidence, todo weather hints, admin saved-model AMap-grounded AI tests, cycle empty/predicted days, and reminders.
+// Shared TypeScript contracts for API payloads, editable profile/location state, events, quote libraries, habits, food/play/stay/wish todo boards, candidate queues with manual category fallback, rich AMap restaurant evidence, todo weather hints, admin saved-model AMap-grounded AI tests with an enable switch, cycle empty/predicted days, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
 export type TodoCategory = "food" | "play" | "stay" | "wish";
@@ -340,6 +340,7 @@ export interface TodoDashboardOut {
   month: string;
   items: TodoItemOut[];
   schedules: TodoScheduleOut[];
+  llm_enabled: boolean;
 }
 
 export interface TodoClassifyOpenOut {
@@ -426,6 +427,7 @@ export interface TodoWeatherOut {
 }
 
 export interface AdminAIConfigOut {
+  llm_enabled: boolean;
   protocol: AIProtocol;
   selected_model: string;
   env_model: string;

@@ -1,6 +1,6 @@
 "use client";
 
-// Admin console with scrapbook panels for pairs, tokens, contacts, AMap-grounded AI test status, avatars, and clipboard-safe links.
+// Admin console with scrapbook panels for pairs, tokens, contacts, validated AI enable state, AMap-grounded AI test status, avatars, and clipboard-safe links.
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -491,6 +491,7 @@ const ADMIN_TEST_SAMPLES: Array<{ key: string; label: string; keyword: string; c
 
 function AIConfigPanel() {
   const [config, setConfig] = useState<AdminAIConfigOut | null>(null);
+  const [llmEnabled, setLlmEnabled] = useState(false);
   const [protocol, setProtocol] = useState<AIProtocol>("openai");
   const [openaiBaseUrl, setOpenaiBaseUrl] = useState("");
   const [anthropicBaseUrl, setAnthropicBaseUrl] = useState("");
@@ -513,6 +514,7 @@ function AIConfigPanel() {
     try {
       const next = await api.getAdminAIConfig();
       setConfig(next);
+      setLlmEnabled(next.llm_enabled);
       setProtocol(next.protocol);
       setOpenaiBaseUrl(next.openai_base_url);
       setAnthropicBaseUrl(next.anthropic_base_url);
@@ -544,8 +546,9 @@ function AIConfigPanel() {
   const testCity = activeSample.key === "custom" ? customCity.trim() : activeSample.city;
   const testExpected = activeSample.key === "custom" ? null : activeSample.expected;
 
-  function configPayload(model = selectedModel) {
+  function configPayload(model = selectedModel, enabled = llmEnabled) {
     return {
+      llm_enabled: enabled,
       protocol,
       selected_model: model.trim(),
       openai_base_url: openaiBaseUrl.trim(),
@@ -559,7 +562,7 @@ function AIConfigPanel() {
     setLoading(true);
     setModelMessage("");
     try {
-      await api.updateAdminAIConfig(configPayload());
+      await api.updateAdminAIConfig(configPayload(selectedModel, false));
       const result = await api.listAdminAIModels(protocol);
       setModels(result.models);
       setModelMessage(`已获取 ${result.models.length} 个模型`);
@@ -575,15 +578,19 @@ function AIConfigPanel() {
     }
   }
 
-  async function saveConfig(model = selectedModel, showToast = true) {
+  async function saveConfig(model = selectedModel, showToast = true, enabled = llmEnabled) {
     setSaving(true);
     try {
-      const next = await api.updateAdminAIConfig(configPayload(model));
+      const next = await api.updateAdminAIConfig(configPayload(model, enabled));
       setConfig(next);
+      setLlmEnabled(next.llm_enabled);
       setTestResult(null);
       setTestError("");
       if (showToast) toast.success("模型配置已保存");
       return next;
+    } catch (err) {
+      if (enabled) setLlmEnabled(false);
+      throw err;
     } finally {
       setSaving(false);
     }
@@ -652,6 +659,7 @@ function AIConfigPanel() {
         <div className="mb-4 grid gap-2 rounded-2xl bg-peach/12 p-4 text-xs font-sc text-ink-soft hairline sm:grid-cols-2">
           <span>当前协议：{config.protocol === "openai" ? "OpenAI" : "Anthropic"}</span>
           <span>当前模型：{config.selected_model || "未选择"}</span>
+          <span>AI 分类：{config.llm_enabled ? "已开启" : "已关闭"}</span>
           <span>LLM Key: {config.has_api_key ? config.api_key_preview : "未配置"}</span>
           <span>高德 Key: {config.has_amap_key ? config.amap_key_preview : "未配置"}</span>
         </div>
@@ -757,6 +765,26 @@ function AIConfigPanel() {
       </div>
 
       <div className="space-y-4">
+        <div className="rounded-2xl border border-line/70 bg-surface-raised/72 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-sc text-sm font-medium text-ink">启用 AI 分类</p>
+              <p className="mt-1 font-sc text-xs text-ink-muted">
+                {llmEnabled ? "Todo 新增会先使用模型分类，失败时自动关闭并回到手动分类。" : "Todo 新增会使用用户手动选择的分类。"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void saveConfig(selectedModel, true, !llmEnabled)}
+              disabled={saving}
+              aria-pressed={llmEnabled}
+              className={cn("relative h-8 w-14 rounded-full transition focus-ring", llmEnabled ? "bg-rose" : "bg-ink/15")}
+            >
+              <span className={cn("absolute top-1 h-6 w-6 rounded-full bg-white shadow-sm transition", llmEnabled ? "left-7" : "left-1")} />
+            </button>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-2">
           {(["openai", "anthropic"] as AIProtocol[]).map((item) => (
             <button
