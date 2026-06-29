@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home screen for reading shared memories, checking relationship reminders, and using the unified authenticated AppHeader.
+// Timeline home screen for reading shared memories with a quiet relationship quote panel that keeps bottom-nav features out of the top section.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -225,18 +225,10 @@ function TimelineInner() {
           userName={me.user.display_name}
           counterpartName={me.counterpart.display_name}
           relationshipDays={relationshipDays}
-          totalEvents={events?.length ?? 0}
-          monthCount={eventGroups.length}
-          onCreate={openCreateWindow}
+          data={anniversary ?? immediateAnniversary(me.love_started_on)}
+          quoteRefreshing={quoteRefreshing}
+          onRefreshQuote={refreshAnniversary}
         />
-
-        {anniversary && (
-          <AnniversaryCard
-            data={anniversary}
-            quoteRefreshing={quoteRefreshing}
-            onRefreshQuote={refreshAnniversary}
-          />
-        )}
 
         {events === null ? (
           <ListSkeleton />
@@ -272,68 +264,13 @@ function HomeHero({
   userName,
   counterpartName,
   relationshipDays,
-  totalEvents,
-  monthCount,
-  onCreate,
-}: {
-  userName: string;
-  counterpartName: string;
-  relationshipDays: number;
-  totalEvents: number;
-  monthCount: number;
-  onCreate: () => void;
-}) {
-  return (
-    <section className="timeline-hero-panel mb-5 rounded-[2rem] px-5 py-5 sm:mb-6 sm:px-6 sm:py-6">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0 flex-1">
-          <p className="font-sc text-xs font-semibold text-rose-deep">今天也要收藏一点甜</p>
-          <h1 className="mt-2 max-w-2xl font-display text-[1.9rem] font-bold leading-tight text-ink sm:text-[2.4rem]">
-            让每一次心动、想念和见面，都能在这里留下好看的位置。
-          </h1>
-          <p className="mt-3 max-w-2xl font-sc text-sm leading-relaxed text-ink-soft">
-            先看一眼今天的提醒，再把新的小事写进时间线。重要的日子和日常片刻，都会慢慢排成只属于你们的故事。
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <span className="pill inline-flex items-center gap-1.5 bg-rose/12 text-rose-deep">
-              <BookHeart className="h-3.5 w-3.5" />
-              {userName} 和 {counterpartName}
-            </span>
-            <span className="pill inline-flex items-center gap-1.5 bg-peach/22 text-ink-soft">
-              在一起第 {relationshipDays} 天
-            </span>
-            <span className="pill inline-flex items-center gap-1.5 bg-surface-raised/78 text-ink-soft">
-              已记下 {totalEvents} 段小事，收进 {monthCount || 1} 个时间盒子
-            </span>
-          </div>
-        </div>
-
-        <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col">
-          <button
-            type="button"
-            onClick={onCreate}
-            className="btn-primary inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-5 font-sc text-sm font-medium focus-ring"
-          >
-            <Plus className="h-4 w-4" />
-            记一笔
-          </button>
-          <Link
-            href="/cycle"
-            className="btn-ghost inline-flex min-h-12 items-center justify-center rounded-full px-5 font-sc text-sm focus-ring"
-          >
-            看看今天的提醒
-          </Link>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function AnniversaryCard({
   data,
   quoteRefreshing,
   onRefreshQuote,
 }: {
+  userName: string;
+  counterpartName: string;
+  relationshipDays: number;
   data: AnniversaryOut;
   quoteRefreshing: boolean;
   onRefreshQuote: () => void;
@@ -341,21 +278,27 @@ function AnniversaryCard({
   const reminderItems = [...data.anniversary_items, ...data.love_festival_items, ...data.holiday_items];
 
   return (
-    <motion.section
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="glass-card mb-5 rounded-[1.85rem] p-5 sm:mb-6 sm:p-6"
-    >
+    <section className="timeline-hero-panel mb-5 rounded-[2rem] px-5 py-5 sm:mb-6 sm:px-6 sm:py-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
-          <p className="font-sc text-xs font-semibold text-rose-deep">今日话语</p>
-          <p className="mt-2 font-display text-[1.35rem] font-semibold leading-snug text-ink sm:text-[1.55rem]">
+          <p className="font-sc text-xs font-semibold text-rose-deep">今天的话</p>
+          <p className="mt-2 max-w-3xl font-display text-[1.45rem] font-semibold leading-snug text-ink sm:text-[1.75rem]">
             {data.message}
           </p>
-          <p className="mt-2 font-sc text-xs text-ink-muted">
-            {data.message_source === "local" ? "来自本地小狗语录兜底" : "来自共享语录与纪念日提醒"}
-          </p>
+          <div className="mt-4 flex flex-wrap gap-2.5">
+            <span className="pill inline-flex items-center gap-1.5 bg-rose/12 text-rose-deep">
+              <BookHeart className="h-3.5 w-3.5" />
+              {userName} 和 {counterpartName}
+            </span>
+            <span className="pill inline-flex items-center gap-1.5 bg-peach/22 text-ink-soft">
+              在一起第 {relationshipDays} 天
+            </span>
+            {reminderItems.map((item, index) => (
+              <ReminderPill key={`${item.type}-${item.label}-${index}`} item={item} />
+            ))}
+          </div>
         </div>
+
         <button
           type="button"
           onClick={onRefreshQuote}
@@ -366,15 +309,7 @@ function AnniversaryCard({
           <RefreshCw className={`h-4 w-4 ${quoteRefreshing ? "animate-spin" : ""}`} />
         </button>
       </div>
-
-      {reminderItems.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {reminderItems.map((item, index) => (
-            <ReminderPill key={`${item.type}-${item.label}-${index}`} item={item} />
-          ))}
-        </div>
-      )}
-    </motion.section>
+    </section>
   );
 }
 
