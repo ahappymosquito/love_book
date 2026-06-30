@@ -1,6 +1,6 @@
 "use client";
 
-// Habit page lets both partners review daily progress under the unified AppHeader, add personal habits, and mark completion for the selected date.
+// Habit page lets both partners review daily progress under the unified AppHeader with mobile-safe calendar controls, color popovers, personal habits, and date check-ins.
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
@@ -244,10 +244,10 @@ function HabitsInner() {
   }
 
   return (
-    <div className="min-h-dvh w-full">
+    <div className="viewport-guard min-h-dvh w-full">
       <AppHeader title="习惯" />
 
-      <main className="mx-auto max-w-7xl px-4 pt-5 sm:px-6 scroll-pad-bottom">
+      <main className="mx-auto w-full max-w-7xl min-w-0 px-4 pt-5 sm:px-6 scroll-pad-bottom">
         <section className="min-w-0 space-y-5">
           <Card className="liquid-habit-panel overflow-hidden">
             <CardHeader className="gap-4 sm:flex sm:flex-row sm:items-center sm:justify-between">
@@ -392,7 +392,7 @@ function CalendarToolbar({
   onToday: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-3 sm:items-end">
+    <div className="flex w-full min-w-0 flex-col gap-3 sm:items-end">
       <div className="liquid-chip grid grid-cols-2 rounded-full p-1">
         {(["week", "month"] as CalendarMode[]).map((item) => (
           <button
@@ -408,11 +408,11 @@ function CalendarToolbar({
           </button>
         ))}
       </div>
-      <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+      <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 sm:w-auto">
         <Button variant="outline" size="icon" onClick={onPrev} aria-label={mode === "week" ? "上一周" : "上个月"}>
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        <div className="min-w-32 flex-1 text-center font-sc text-sm font-medium text-ink sm:min-w-44 sm:flex-none">
+        <div className="min-w-0 flex-1 text-center font-sc text-sm font-medium text-ink sm:min-w-44 sm:flex-none">
           {calendarLabel(viewDate, mode)}
         </div>
         <Button variant="outline" size="icon" onClick={onNext} aria-label={mode === "week" ? "下一周" : "下个月"}>
@@ -710,7 +710,7 @@ function ColorPicker({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
-            className="liquid-color-popover absolute left-0 top-12 z-20 w-[244px] p-3"
+            className="liquid-color-popover absolute left-0 top-12 z-20 w-[min(244px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] p-3"
           >
             <div className="grid grid-cols-4 gap-2">
               {COLOR_OPTIONS.map((option) => (

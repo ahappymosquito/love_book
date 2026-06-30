@@ -1,6 +1,6 @@
 "use client";
 
-// Authenticated five-slot bottom navigation with a shared liquid-glass selection lens, habit destination, settings via avatar, and compact rose create action.
+// Authenticated five-slot bottom navigation with a shared liquid-glass selection lens, mobile-safe viewport width, habit destination, settings via avatar, and compact rose create action.
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -39,10 +39,10 @@ export function BottomNav() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.55rem)] pt-2"
+      className="fixed inset-x-0 bottom-0 z-40 box-border max-w-full px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.55rem)] pt-2"
       aria-label="底部导航"
     >
-      <div className="liquid-nav-shell mx-auto grid h-[72px] max-w-[520px] grid-cols-5 items-center px-2 sm:max-w-5xl sm:px-4">
+      <div className="liquid-nav-shell mx-auto grid h-[72px] w-full max-w-[520px] grid-cols-5 items-center px-2 sm:max-w-5xl sm:px-4">
         <NavItem href="/timeline" label="首页" active={createWindowPhase === "closed" && active === "timeline"} reducedMotion={reducedMotion} icon={<BookHeart className="h-5 w-5" />} />
         <NavItem href="/cycle" label="周期" active={createWindowPhase === "closed" && active === "cycle"} reducedMotion={reducedMotion} icon={<Moon className="h-5 w-5" />} />
         <CreateNavAction

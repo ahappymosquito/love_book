@@ -1,6 +1,6 @@
 "use client";
 
-// Event detail screen with warm scrapbook reading layout, avatar-aware authors, stable-hover reactions, media stream, submission state, and bottom-nav-covering composer.
+// Event detail screen with mobile viewport guards, warm scrapbook reading layout, avatar-aware authors, stable-hover reactions, media stream, submission state, and bottom-nav-covering composer.
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -292,7 +292,7 @@ function EventDetailInner() {
   const locked = !submission.unlocked && event.visibility_mode === "mutual_submit";
 
   return (
-    <div className="relative z-[60] min-h-dvh w-full bg-[rgb(var(--cream)/1)] pb-[calc(env(safe-area-inset-bottom,0px)+5.5rem)]">
+    <div className="viewport-guard relative z-[60] min-h-dvh w-full bg-[rgb(var(--cream)/1)] pb-[calc(env(safe-area-inset-bottom,0px)+5.5rem)]">
       <TimelineHeader
         back={{ href: "/timeline" }}
         title="一笔小事"
@@ -309,7 +309,7 @@ function EventDetailInner() {
         }
       />
 
-      <div ref={containerRef} className="mx-auto max-w-3xl px-4 pt-4 sm:px-6 pb-8">
+      <div ref={containerRef} className="mx-auto w-full max-w-3xl min-w-0 px-4 pt-4 sm:px-6 pb-8">
         {/* Hero */}
         <motion.section
           initial={{ opacity: 0, y: 12 }}

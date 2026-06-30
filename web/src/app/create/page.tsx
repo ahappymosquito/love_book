@@ -1,6 +1,6 @@
 "use client";
 
-// Direct-link event creation page reusing the same form as the global bottom-sheet create window.
+// Direct-link event creation page reusing the same form as the global bottom-sheet create window inside a mobile-safe viewport.
 
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -20,9 +20,9 @@ function CreateInner() {
   const router = useRouter();
 
   return (
-    <div className="min-h-dvh w-full">
+    <div className="viewport-guard min-h-dvh w-full">
       <TimelineHeader back={{ href: "/timeline" }} title="记一笔" />
-      <div className="mx-auto max-w-2xl px-4 pb-[calc(env(safe-area-inset-bottom,0px)+9rem)] pt-6 sm:px-6">
+      <div className="mx-auto w-full max-w-2xl min-w-0 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+9rem)] pt-6 sm:px-6">
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}

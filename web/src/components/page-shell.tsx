@@ -1,5 +1,7 @@
 "use client";
 
+// Motion page shell that keeps animated screens inside the mobile viewport width.
+
 import { motion } from "framer-motion";
 
 const variants = {
@@ -16,7 +18,7 @@ export function PageShell({ children }: { children: React.ReactNode }) {
       initial="initial"
       animate="animate"
       exit="exit"
-      className="min-h-dvh w-full"
+      className="viewport-guard min-h-dvh w-full"
     >
       {children}
     </motion.main>

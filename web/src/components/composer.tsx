@@ -1,6 +1,6 @@
 "use client";
 
-// Chat composer for timeline detail text, compressed system image picking, protected press-and-hold voice recording, and bottom-sheet-style placement that covers the global nav.
+// Chat composer for timeline detail text, compressed system image picking, protected press-and-hold voice recording, and mobile-safe bottom-sheet-style placement that covers the global nav.
 
 import { Image as ImageIcon, Mic, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -245,10 +245,10 @@ export function Composer({
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[70] pointer-events-none">
-      <div className="pointer-events-auto bg-gradient-to-t from-cream/98 via-cream/85 to-cream/0 dark:from-cream-deep/98 dark:via-cream-deep/85 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-3">
-        <div className="max-w-3xl mx-auto px-3">
-          <div className="glass-card rounded-3xl px-3 py-2.5 sm:py-3 flex items-end gap-2">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[70] max-w-full">
+      <div className="pointer-events-auto max-w-full bg-gradient-to-t from-cream/98 via-cream/85 to-cream/0 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-3 dark:from-cream-deep/98 dark:via-cream-deep/85">
+        <div className="mx-auto w-full max-w-3xl min-w-0 px-3">
+          <div className="glass-card flex min-w-0 items-end gap-2 rounded-3xl px-3 py-2.5 sm:py-3">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -278,7 +278,7 @@ export function Composer({
                 <textarea
                   rows={1}
                   className={cn(
-                    "flex-1 resize-none bg-transparent border-none outline-none px-2 py-2.5 max-h-32 min-h-[44px] font-sc text-[15px] text-ink placeholder:text-ink-muted/70",
+                    "min-w-0 flex-1 resize-none bg-transparent border-none outline-none px-2 py-2.5 max-h-32 min-h-[44px] font-sc text-[15px] text-ink placeholder:text-ink-muted/70",
                     "scrollbar-thin",
                   )}
                   placeholder="说点什么..."

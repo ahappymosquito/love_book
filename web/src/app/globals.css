@@ -1,10 +1,16 @@
-/* Global theme tokens, soft scrapbook surfaces, full-screen puppy login staging, reusable controls, encyclopedia term links, liquid-glass navigation and habit surfaces, create-window sizing, and smooth focus styles. */
+/* Global theme tokens, mobile viewport guards, soft scrapbook surfaces, full-screen puppy login staging, reusable controls, encyclopedia term links, liquid-glass navigation and habit surfaces, create-window sizing, and smooth focus styles. */
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
   :root {
     --ink: 61 43 45;
     --ink-soft: 100 75 73;
@@ -53,7 +59,11 @@
 
   html,
   body {
+    width: 100%;
+    max-width: 100%;
     min-height: 100%;
+    overflow-x: hidden;
+    overscroll-behavior-x: none;
     background: rgb(var(--cream));
     color: rgb(var(--ink));
     font-family: var(--font-inter), var(--font-noto-sc), system-ui, sans-serif;
@@ -65,12 +75,40 @@
     background: var(--bg-grad);
     background-size: cover;
     min-height: 100dvh;
+    position: relative;
   }
 
   html,
   body,
   body > div {
+    width: 100%;
+    max-width: 100%;
     min-height: 100%;
+    min-width: 0;
+  }
+
+  body > div {
+    overflow-x: hidden;
+  }
+
+  @supports (overflow: clip) {
+    html,
+    body,
+    body > div {
+      overflow-x: clip;
+    }
+  }
+
+  img,
+  video {
+    max-width: 100%;
+    height: auto;
+  }
+
+  svg,
+  canvas,
+  iframe {
+    max-width: 100%;
   }
 
   body::before {
@@ -96,6 +134,13 @@
   [role="button"] {
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    max-width: 100%;
   }
 
   input,
@@ -682,5 +727,26 @@
 
   .scroll-pad-bottom {
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 11rem);
+  }
+
+  .viewport-guard {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .local-x-scroll {
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  @supports (overflow: clip) {
+    .viewport-guard {
+      overflow-x: clip;
+    }
   }
 }

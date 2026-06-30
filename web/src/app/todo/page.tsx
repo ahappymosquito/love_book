@@ -1,6 +1,6 @@
 "use client";
 
-// Pair-shared todo workspace with the unified AppHeader for collecting date ideas, separating normal food/play/stay quick-add classification from direct wish creation, confirming place candidates, scheduling plans, and checking in together.
+// Pair-shared todo workspace with the unified AppHeader, mobile viewport guards, quick-add classification, candidate confirmation, scheduling, and shared check-ins.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -349,10 +349,10 @@ function TodoInner() {
   }
 
   return (
-    <div className="min-h-dvh bg-[rgb(var(--cream)/0.68)] pb-[calc(env(safe-area-inset-bottom,0px)+9rem)] text-ink">
+    <div className="viewport-guard min-h-dvh bg-[rgb(var(--cream)/0.68)] pb-[calc(env(safe-area-inset-bottom,0px)+9rem)] text-ink">
       <AppHeader title="Todo" subtitle="想吃、想玩和想许的愿望都收进来" />
 
-      <div className="mx-auto flex min-h-[calc(100dvh-64px)] max-w-7xl gap-0 px-3 py-3 sm:px-5 lg:px-6">
+      <div className="mx-auto flex min-h-[calc(100dvh-64px)] w-full max-w-7xl min-w-0 gap-0 px-3 py-3 sm:px-5 lg:px-6">
         <main className="min-w-0 flex flex-1 flex-col overflow-hidden rounded-[1.4rem] bg-surface/82 shadow-[0_12px_34px_-28px_rgb(var(--rose)/0.42)] hairline">
           <TodoBoardHeader
             loading={loading}
@@ -764,7 +764,7 @@ function TodoSidebar({
       </AnimatePresence>
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[282px] flex-col border-r border-line/62 bg-surface/96 px-4 py-4 shadow-[18px_0_44px_-34px_rgb(var(--ink)/0.46)] transition-transform duration-200 ease-out lg:sticky lg:top-0 lg:z-auto lg:min-h-dvh lg:translate-x-0 lg:bg-surface/68 lg:shadow-none",
+          "fixed inset-y-0 left-0 z-50 flex w-[min(282px,86vw)] max-w-full flex-col border-r border-line/62 bg-surface/96 px-4 py-4 shadow-[18px_0_44px_-34px_rgb(var(--ink)/0.46)] transition-transform duration-200 ease-out lg:sticky lg:top-0 lg:z-auto lg:min-h-dvh lg:w-[282px] lg:translate-x-0 lg:bg-surface/68 lg:shadow-none",
           open ? "translate-x-0" : "-translate-x-full",
         )}
       >
@@ -982,16 +982,16 @@ function TaskRow({
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-sc text-xs text-ink-muted">
             {restaurant?.address && (
-              <span className="inline-flex min-w-0 items-center gap-1">
+              <span className="inline-flex min-w-0 max-w-full items-center gap-1">
                 <MapPin className="h-3.5 w-3.5 flex-none" />
-                <span className="truncate">{restaurant.address}</span>
+                <span className="min-w-0 truncate">{restaurant.address}</span>
               </span>
             )}
             {restaurant?.per_capita != null && <span>人均 {restaurant.per_capita}</span>}
             {restaurant?.rating != null && <span>评分 {restaurant.rating}</span>}
             {restaurant?.opening_hours && <span>{restaurant.opening_hours}</span>}
-            {restaurant?.poi_type && <span className="truncate">{restaurant.poi_type}</span>}
-            {item.note && <span className="truncate">{item.note}</span>}
+            {restaurant?.poi_type && <span className="min-w-0 max-w-full truncate">{restaurant.poi_type}</span>}
+            {item.note && <span className="min-w-0 max-w-full truncate">{item.note}</span>}
             {primarySchedule && (
               <span className="inline-flex items-center gap-1">
                 <Clock3 className="h-3.5 w-3.5" />
@@ -1030,7 +1030,7 @@ function QuickAddBar({ onCreated, llmEnabled }: { onCreated: (title: string, cat
   return (
     <form onSubmit={submit} className="rounded-2xl border border-line/62 bg-surface-raised/82 p-3 shadow-[0_10px_24px_-22px_rgb(var(--ink)/0.42)] sm:p-4">
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-line/70 bg-surface-raised/90 px-3 py-2 focus-within:border-rose/60 focus-within:shadow-[0_0_0_4px_rgb(var(--focus)/0.14)]">
-        <div className="flex min-h-11 min-w-[14rem] flex-1 items-center gap-2">
+        <div className="flex min-h-11 min-w-0 flex-1 basis-full items-center gap-2 sm:basis-[14rem]">
           <Plus className="h-4 w-4 flex-none text-rose-deep" />
           <input
             value={title}
@@ -1460,7 +1460,7 @@ function TodoDetailPanel({
       />
       <motion.aside
         {...panelMotion}
-        className="fixed inset-x-0 bottom-0 z-[80] flex max-h-[100dvh] flex-col overflow-hidden rounded-t-[1.35rem] border border-line/70 bg-surface text-ink shadow-[0_-24px_52px_-36px_rgb(var(--ink)/0.55)] lg:sticky lg:inset-auto lg:top-0 lg:z-auto lg:h-dvh lg:w-[390px] lg:flex-none lg:max-h-none lg:rounded-none lg:border-y-0 lg:border-r-0 lg:shadow-[-18px_0_42px_-34px_rgb(var(--ink)/0.5)]"
+        className="fixed inset-x-0 bottom-0 z-[80] box-border flex w-full max-w-full flex-col overflow-hidden rounded-t-[1.35rem] border border-line/70 bg-surface text-ink shadow-[0_-24px_52px_-36px_rgb(var(--ink)/0.55)] max-h-[min(100dvh,100%)] lg:sticky lg:inset-auto lg:top-0 lg:z-auto lg:h-dvh lg:w-[390px] lg:flex-none lg:max-h-none lg:rounded-none lg:border-y-0 lg:border-r-0 lg:shadow-[-18px_0_42px_-34px_rgb(var(--ink)/0.5)]"
         role="dialog"
         aria-modal="true"
       >

@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home screen for reading shared memories with a quiet relationship quote panel that keeps bottom-nav features out of the top section.
+// Timeline home screen for reading shared memories inside a mobile-safe viewport with a quiet relationship quote panel that keeps bottom-nav features out of the top section.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -217,10 +217,10 @@ function TimelineInner() {
   const relationshipDays = anniversary?.days_together ?? daysTogether(me.love_started_on, todayDateOnly());
 
   return (
-    <div className="min-h-dvh w-full">
+    <div className="viewport-guard min-h-dvh w-full">
       <AppHeader mode="compact" />
 
-      <main className="mx-auto w-full max-w-5xl px-4 pb-[calc(env(safe-area-inset-bottom,0px)+7.6rem)] pt-5 sm:px-6 sm:pt-6">
+      <main className="mx-auto w-full max-w-5xl min-w-0 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+7.6rem)] pt-5 sm:px-6 sm:pt-6">
         <HomeHero
           userName={me.user.display_name}
           counterpartName={me.counterpart.display_name}
@@ -431,7 +431,7 @@ function CycleCheckInPrompt({
   const title = daysLeft === 0 ? "预计今天来月经" : `预计还有 ${daysLeft} 天来月经`;
 
   return (
-    <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom,0px)+5.45rem)] z-40 mx-auto w-full max-w-3xl px-4 sm:bottom-6 sm:px-6">
+    <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom,0px)+5.45rem)] z-40 mx-auto box-border w-full max-w-3xl px-4 sm:bottom-6 sm:px-6">
       <motion.section
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}

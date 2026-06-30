@@ -1,6 +1,6 @@
 "use client";
 
-// CycleCalendarDashboard records period facts below the unified AppHeader, refreshes predicted phases after edits, keeps next-period windows consistent, and links cycle terms to mainland-friendly encyclopedia search.
+// CycleCalendarDashboard records period facts below the unified AppHeader, keeps mobile horizontal scrolling local to controls, refreshes predictions after edits, and links cycle terms to mainland-friendly encyclopedia search.
 
 import {
   addDays,
@@ -340,7 +340,7 @@ export function CycleCalendarDashboard() {
   }
 
   return (
-    <div className="min-h-dvh w-full pb-[calc(env(safe-area-inset-bottom,0px)+9rem)]">
+    <div className="viewport-guard min-h-dvh w-full pb-[calc(env(safe-area-inset-bottom,0px)+9rem)]">
       <AppHeader
         title="周期日历"
         subtitle="记录和预测仅供参考"
@@ -352,7 +352,7 @@ export function CycleCalendarDashboard() {
         }
       />
 
-      <main className="mx-auto grid max-w-7xl gap-5 px-4 pt-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <main className="mx-auto grid w-full max-w-7xl min-w-0 gap-5 px-4 pt-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section className="min-w-0 space-y-5">
           {dashboard && (
             <HeaderSummaryCards
@@ -458,7 +458,7 @@ export function CycleCalendarDashboard() {
         </aside>
       </main>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line/60 bg-surface/90 p-3 backdrop-blur-xl md:hidden">
+      <div className="fixed inset-x-0 bottom-0 z-30 box-border max-w-full border-t border-line/60 bg-surface/90 p-3 backdrop-blur-xl md:hidden">
         <Button
           className="w-full"
           size="lg"
@@ -567,9 +567,9 @@ export function HeaderSummaryCards({
     { icon: ClipboardList, label: "今日状态", value: todayRecorded ? "今日已记录" : "今日尚未记录", hint: "10 秒快速记录" },
   ];
   return (
-    <div className="flex snap-x gap-3 overflow-x-auto pb-1 md:grid md:grid-cols-3 md:overflow-visible">
+    <div className="local-x-scroll flex snap-x gap-3 pb-1 md:grid md:grid-cols-3 md:overflow-visible">
       {cards.map((item) => (
-        <Card key={item.label} className="min-w-[240px] snap-start p-5">
+        <Card key={item.label} className="min-w-[min(240px,82vw)] snap-start p-5 md:min-w-0">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="font-sc text-xs text-ink-muted">{item.label}</p>
@@ -606,7 +606,7 @@ function ReminderSettingsCard({ value, onChange }: { value: number; onChange: (v
             </p>
           </div>
         </div>
-        <label className="flex min-w-[220px] items-center gap-3 rounded-2xl bg-peach/14 px-4 py-3">
+        <label className="flex min-w-0 items-center gap-3 rounded-2xl bg-peach/14 px-4 py-3 md:min-w-[220px]">
           <span className="font-sc text-sm text-ink-soft">提前</span>
           <input
             type="number"
@@ -631,7 +631,7 @@ export function FilterBar({ filters, onChange }: { filters: FilterState; onChang
         <Filter className="h-4 w-4 text-rose" />
         筛选
       </div>
-      <div className="flex flex-1 gap-2 overflow-x-auto">
+      <div className="local-x-scroll flex flex-1 gap-2">
         <select
           value={filters.symptom}
           onChange={(e) => onChange({ ...filters, symptom: e.target.value })}

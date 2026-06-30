@@ -1,6 +1,6 @@
 "use client";
 
-// Compact profile settings page with inline identity editing, cross-device location preferences, and equal-width shared/default quote rows.
+// Compact profile settings page with mobile viewport guards, inline identity editing, cross-device location preferences, and equal-width shared/default quote rows.
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
@@ -242,10 +242,10 @@ function MeInner() {
   }
 
   return (
-    <div className="min-h-dvh w-full">
+    <div className="viewport-guard min-h-dvh w-full">
       <TimelineHeader title="设置" />
 
-      <main className="mx-auto max-w-4xl px-4 pt-5 sm:px-6 scroll-pad-bottom">
+      <main className="mx-auto w-full max-w-4xl min-w-0 px-4 pt-5 sm:px-6 scroll-pad-bottom">
         <motion.section
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}

@@ -1,6 +1,6 @@
 "use client";
 
-// Unified authenticated app header for the main user surfaces, with avatar navigation, optional back/action slots, safe-area spacing, and logout.
+// Unified authenticated app header for the main user surfaces, with mobile-safe width, avatar navigation, optional back/action slots, safe-area spacing, and logout.
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -38,10 +38,10 @@ export function AppHeader({
   const defaultSubtitle = subtitle ?? `和 ${me.counterpart.display_name} 一起收集日常`;
 
   return (
-    <header className="sticky top-0 z-30 frosted-bar pt-[env(safe-area-inset-top,0px)]">
+    <header className="sticky top-0 z-30 max-w-full frosted-bar pt-[env(safe-area-inset-top,0px)]">
       <div
         className={cn(
-          "mx-auto flex items-center gap-3 px-4 sm:px-6",
+          "mx-auto flex w-full min-w-0 items-center gap-3 px-4 sm:px-6",
           maxWidth === "5xl" ? "max-w-5xl" : "max-w-7xl",
           compact ? "h-[60px] sm:h-[64px]" : "h-16",
         )}

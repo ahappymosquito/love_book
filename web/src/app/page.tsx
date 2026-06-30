@@ -1,6 +1,6 @@
 "use client";
 
-// Full-screen puppy login stage with an offset foreground token panel, token auto-login, and a minimal sweetheart welcome path.
+// Full-screen puppy login stage with mobile viewport guards, an offset foreground token panel, token auto-login, and a minimal sweetheart welcome path.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -122,14 +122,14 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-dvh overflow-hidden">
+    <div className="viewport-guard relative min-h-dvh overflow-hidden">
       <div className="absolute inset-0">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgb(255_255_255_/_0.86),transparent_28%),radial-gradient(circle_at_18%_18%,rgb(255_234_238_/_0.38),transparent_24%),linear-gradient(180deg,rgb(255_250_245_/_0.12)_0%,rgb(255_249_243_/_0.08)_38%,rgb(255_249_243_/_0.72)_100%)] dark:bg-[radial-gradient(circle_at_50%_0%,rgb(255_255_255_/_0.16),transparent_24%),radial-gradient(circle_at_18%_18%,rgb(224_132_153_/_0.16),transparent_22%),linear-gradient(180deg,rgb(20_16_19_/_0.18)_0%,rgb(35_27_30_/_0.22)_42%,rgb(27_21_24_/_0.78)_100%)]" />
         <PuppyScene variant="hero" interactive reducedMotionFallback="soft" className="absolute inset-0" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[34svh] bg-[linear-gradient(180deg,transparent_0%,rgb(255_249_243_/_0.14)_26%,rgb(255_249_243_/_0.78)_100%)] dark:bg-[linear-gradient(180deg,transparent_0%,rgb(35_27_30_/_0.18)_30%,rgb(27_21_24_/_0.82)_100%)]" />
       </div>
 
-      <div className="relative z-10 flex min-h-dvh flex-col px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pt-[calc(env(safe-area-inset-top,0px)+1rem)] sm:px-6 lg:px-8">
+      <div className="relative z-10 flex min-h-dvh w-full max-w-full flex-col px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pt-[calc(env(safe-area-inset-top,0px)+1rem)] sm:px-6 lg:px-8">
         <div className="flex items-start justify-between">
           <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-surface-raised/82 px-3.5 py-2 text-sm font-semibold text-ink shadow-[0_12px_26px_-22px_rgb(var(--rose)/0.4)] backdrop-blur-sm">
             <Heart className="h-4 w-4 text-rose" fill="currentColor" />
