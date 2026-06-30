@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home screen for reading shared memories inside a mobile-safe viewport with a quiet relationship quote panel that keeps bottom-nav features out of the top section.
+// Timeline home screen for reading shared memories inside a mobile-safe viewport with a tappable relationship quote panel that keeps bottom-nav features out of the top section.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -14,7 +14,6 @@ import {
   Droplet,
   Gift,
   Plus,
-  RefreshCw,
   Sparkles,
 } from "lucide-react";
 import { AuthGate } from "@/components/auth-gate";
@@ -279,12 +278,18 @@ function HomeHero({
 
   return (
     <section className="timeline-hero-panel mb-5 rounded-[2rem] px-5 py-5 sm:mb-6 sm:px-6 sm:py-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0">
         <div className="min-w-0 flex-1">
           <p className="font-sc text-xs font-semibold text-rose-deep">今天的话</p>
-          <p className="mt-2 max-w-3xl font-display text-[1.45rem] font-semibold leading-snug text-ink sm:text-[1.75rem]">
+          <button
+            type="button"
+            onClick={onRefreshQuote}
+            disabled={quoteRefreshing}
+            className="mt-2 block max-w-3xl rounded-2xl text-left font-display text-[1.45rem] font-semibold leading-snug text-ink transition hover:text-rose-deep focus-ring disabled:cursor-wait disabled:opacity-70 sm:text-[1.75rem]"
+            aria-label="刷新今日话语"
+          >
             {data.message}
-          </p>
+          </button>
           <div className="mt-4 flex flex-wrap gap-2.5">
             <span className="pill inline-flex items-center gap-1.5 bg-rose/12 text-rose-deep">
               <BookHeart className="h-3.5 w-3.5" />
@@ -299,15 +304,6 @@ function HomeHero({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onRefreshQuote}
-          disabled={quoteRefreshing}
-          className="btn-ghost inline-flex h-11 w-11 items-center justify-center self-start rounded-full p-0 text-rose-deep focus-ring disabled:opacity-50"
-          aria-label="刷新今日话语"
-        >
-          <RefreshCw className={`h-4 w-4 ${quoteRefreshing ? "animate-spin" : ""}`} />
-        </button>
       </div>
     </section>
   );
