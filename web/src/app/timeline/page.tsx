@@ -8,13 +8,10 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   BookHeart,
-  CalendarHeart,
   ChevronDown,
   ChevronRight,
   Droplet,
-  Gift,
   Plus,
-  Sparkles,
 } from "lucide-react";
 import { AuthGate } from "@/components/auth-gate";
 import { Avatar } from "@/components/avatar";
@@ -29,7 +26,7 @@ import {
 } from "@/lib/cycle-reminder";
 import { formatAbsolute, formatRelative } from "@/lib/format";
 import { useAppStore } from "@/lib/store";
-import type { AnniversaryOut, CycleDashboardOut, EventSummary, ReminderItem } from "@/lib/types";
+import type { AnniversaryOut, CycleDashboardOut, EventSummary } from "@/lib/types";
 
 const PuppyScene = dynamic(
   () => import("@/components/puppy-scene").then((module) => module.PuppyScene),
@@ -274,55 +271,29 @@ function HomeHero({
   quoteRefreshing: boolean;
   onRefreshQuote: () => void;
 }) {
-  const reminderItems = [...data.anniversary_items, ...data.love_festival_items, ...data.holiday_items];
-
   return (
-    <section className="timeline-hero-panel mb-5 rounded-[2rem] px-5 py-5 sm:mb-6 sm:px-6 sm:py-6">
-      <div className="min-w-0">
-        <div className="min-w-0 flex-1">
-          <p className="font-sc text-xs font-semibold text-rose-deep">今天的话</p>
-          <button
-            type="button"
-            onClick={onRefreshQuote}
-            disabled={quoteRefreshing}
-            className="mt-2 block max-w-3xl rounded-2xl text-left font-display text-[1.45rem] font-semibold leading-snug text-ink transition hover:text-rose-deep focus-ring disabled:cursor-wait disabled:opacity-70 sm:text-[1.75rem]"
-            aria-label="刷新今日话语"
-          >
-            {data.message}
-          </button>
-          <div className="mt-4 flex flex-wrap gap-2.5">
-            <span className="pill inline-flex items-center gap-1.5 bg-rose/12 text-rose-deep">
-              <BookHeart className="h-3.5 w-3.5" />
-              {userName} 和 {counterpartName}
-            </span>
-            <span className="pill inline-flex items-center gap-1.5 bg-peach/22 text-ink-soft">
-              在一起第 {relationshipDays} 天
-            </span>
-            {reminderItems.map((item, index) => (
-              <ReminderPill key={`${item.type}-${item.label}-${index}`} item={item} />
-            ))}
-          </div>
+    <section className="timeline-hero-panel mb-5 rounded-[2rem] px-5 py-6 sm:mb-6 sm:px-7 sm:py-7">
+      <div className="min-w-0 space-y-5">
+        <div className="flex flex-wrap gap-2.5">
+          <span className="pill inline-flex items-center gap-1.5 bg-rose/12 text-rose-deep">
+            <BookHeart className="h-3.5 w-3.5" />
+            {userName} 和 {counterpartName}
+          </span>
+          <span className="pill inline-flex items-center gap-1.5 bg-peach/22 text-ink-soft">
+            在一起第 {relationshipDays} 天
+          </span>
         </div>
-
+        <button
+          type="button"
+          onClick={onRefreshQuote}
+          disabled={quoteRefreshing}
+          className="block w-full max-w-3xl rounded-[1.35rem] py-1 text-left font-display text-[1.55rem] font-semibold leading-snug text-ink transition hover:text-rose-deep focus-ring disabled:cursor-wait disabled:opacity-70 sm:text-[1.9rem]"
+          aria-label="刷新今日话语"
+        >
+          {data.message}
+        </button>
       </div>
     </section>
-  );
-}
-
-function ReminderPill({ item }: { item: ReminderItem }) {
-  const Icon = item.type === "anniversary" ? Sparkles : item.type === "love_festival" ? Gift : CalendarHeart;
-  const tone =
-    item.type === "holiday"
-      ? "bg-surface-raised/80 text-ink-soft"
-      : item.type === "love_festival"
-        ? "bg-peach/24 text-rose-deep"
-        : "bg-rose/12 text-rose-deep";
-
-  return (
-    <span className={`pill inline-flex items-center gap-1.5 ${tone}`}>
-      <Icon className="h-3.5 w-3.5" />
-      {item.label}
-    </span>
   );
 }
 
