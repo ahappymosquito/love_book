@@ -1,6 +1,7 @@
-// Shared TypeScript contracts for API payloads, editable profile/location state, events, quote libraries, habits, food/play/stay/wish todo boards, candidate queues with manual category fallback, rich AMap restaurant evidence, todo weather hints, admin saved-model AMap-grounded AI tests with an enable switch, cycle empty/predicted days, and reminders.
+// Shared TypeScript contracts for API payloads, editable profile/location state, typed timeline events including offline meetings, quote libraries, habits, food/play/stay/wish todo boards, candidate queues with manual category fallback, rich AMap restaurant evidence, todo weather hints, admin saved-model AMap-grounded AI tests with an enable switch, cycle empty/predicted days, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
+export type EventKind = "memory" | "offline_meeting";
 export type TodoCategory = "food" | "play" | "stay" | "wish";
 export type TodoCandidateStatus = "parsing" | "needs_choice" | "ready" | "failed";
 export type TodoParseStatus = "pending" | "resolved" | "failed";
@@ -41,6 +42,7 @@ export interface EventSummary {
   title: string;
   description: string | null;
   occurred_at: string | null;
+  event_kind: EventKind;
   visibility_mode: VisibilityMode;
   created_at: string;
   submission_state: SubmissionState;

@@ -1,4 +1,4 @@
-"""API regression tests for auth, profiles, user locations, habit dashboards and reminders, media, todo boards, cycle fact storage with predicted phases, AMap-grounded AI tests, and fallback data."""
+"""API regression tests for auth, profiles, user locations, habit dashboards and reminders, media, typed timeline events, todo boards, cycle fact storage with predicted phases, AMap-grounded AI tests, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -42,6 +42,14 @@ def test_todo_category_enum_migration_sql_targets_mysql_only() -> None:
     assert database._todo_category_enum_migration_sql("mysql") == expected
     assert database._todo_category_enum_migration_sql("mariadb") == expected
     assert database._todo_category_enum_migration_sql("sqlite") == []
+
+
+def test_event_kind_lightweight_migration_column_is_registered() -> None:
+    assert (
+        "events",
+        "event_kind",
+        {"default": "VARCHAR(50) NOT NULL DEFAULT 'memory'"},
+    ) in database._LIGHTWEIGHT_COLUMNS
 
 
 def test_admin_pair_creation_requires_admin_key(client: TestClient) -> None:
@@ -775,6 +783,54 @@ def test_event_datetimes_are_returned_as_utc_instants(client: TestClient, pair_t
     data = response.json()
     assert data["occurred_at"] == "2026-04-29T10:00:00Z"
     assert data["created_at"].endswith("Z")
+
+
+def test_event_kind_defaults_create_list_detail_and_update_permissions(
+    client: TestClient, pair_tokens: dict[str, str | int]
+) -> None:
+    token_a = str(pair_tokens["user_a_token"])
+    token_b = str(pair_tokens["user_b_token"])
+
+    default_event = client.post(
+        "/events",
+        headers=auth(token_a),
+        json={"title": "Ordinary memory", "visibility_mode": "public"},
+    ).json()
+    meeting_event = client.post(
+        "/events",
+        headers=auth(token_a),
+        json={
+            "title": "Meet offline",
+            "event_kind": "offline_meeting",
+            "visibility_mode": "public",
+        },
+    ).json()
+
+    assert default_event["event_kind"] == "memory"
+    assert meeting_event["event_kind"] == "offline_meeting"
+
+    listed = client.get("/events", headers=auth(token_b)).json()
+    listed_by_id = {item["id"]: item for item in listed}
+    assert listed_by_id[default_event["id"]]["event_kind"] == "memory"
+    assert listed_by_id[meeting_event["id"]]["event_kind"] == "offline_meeting"
+
+    detail = client.get(f"/events/{meeting_event['id']}", headers=auth(token_b)).json()
+    assert detail["event_kind"] == "offline_meeting"
+
+    forbidden = client.patch(
+        f"/events/{meeting_event['id']}",
+        headers=auth(token_b),
+        json={"event_kind": "memory"},
+    )
+    assert forbidden.status_code == 403
+
+    updated = client.patch(
+        f"/events/{meeting_event['id']}",
+        headers=auth(token_a),
+        json={"event_kind": "memory"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["event_kind"] == "memory"
 
 
 def test_mutual_submit_unlocks_after_each_side_submits_any_content(

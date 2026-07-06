@@ -1,4 +1,4 @@
-"""Event route handlers for creating, listing, updating, deleting, and notifying timeline events.
+"""Event route handlers for creating, listing, updating, deleting, classifying, and notifying timeline events.
 
 Mutation endpoints commit before returning so the frontend can immediately reload the new or changed event.
 """
@@ -31,6 +31,7 @@ def create_event(
         title=payload.title,
         description=payload.description,
         occurred_at=payload.occurred_at,
+        event_kind=payload.event_kind,
         visibility_mode=payload.visibility_mode,
     )
     db.add(event)

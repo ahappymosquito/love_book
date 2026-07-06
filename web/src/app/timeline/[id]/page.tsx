@@ -1,6 +1,6 @@
 "use client";
 
-// Event detail screen with mobile viewport guards, warm scrapbook reading layout, avatar-aware authors, stable-hover reactions, media stream, submission state, and bottom-nav-covering composer.
+// Event detail screen with mobile viewport guards, offline-meeting marking, warm scrapbook reading layout, avatar-aware authors, stable-hover reactions, media stream, submission state, and bottom-nav-covering composer.
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -35,6 +35,7 @@ import type {
   CommentReactionSummary,
   CommentReactionType,
   EventDetail,
+  EventKind,
   ImageOut,
   UserOut,
   VoiceOut,
@@ -92,6 +93,7 @@ function EventDetailInner() {
   const [pending, setPending] = useState<Pending[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [updatingKind, setUpdatingKind] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -277,6 +279,23 @@ function EventDetailInner() {
     }
   }
 
+  async function handleToggleMeetingKind() {
+    if (!event || updatingKind) return;
+    const nextKind: EventKind = event.event_kind === "offline_meeting" ? "memory" : "offline_meeting";
+    const previous = event;
+    setUpdatingKind(true);
+    setEvent({ ...event, event_kind: nextKind });
+    try {
+      const updated = await api.updateEvent(event.id, { event_kind: nextKind });
+      setEvent(updated);
+      toast.success(nextKind === "offline_meeting" ? "已放进见面时间河流" : "已取消见面标记");
+    } catch {
+      setEvent(previous);
+    } finally {
+      setUpdatingKind(false);
+    }
+  }
+
   if (!event) {
     return (
       <>
@@ -288,6 +307,7 @@ function EventDetailInner() {
 
   const creator = lookupAuthor(event.creator_id);
   const isMine = event.creator_id === me.user.id;
+  const isMeeting = event.event_kind === "offline_meeting";
   const submission = event.submission_state;
   const locked = !submission.unlocked && event.visibility_mode === "mutual_submit";
 
@@ -298,13 +318,29 @@ function EventDetailInner() {
         title="一笔小事"
         rightSlot={
           isMine ? (
-            <button
-              onClick={() => setConfirmDelete(true)}
-              className="h-10 w-10 grid place-items-center rounded-full hover:bg-rose-deep/10 text-rose-deep focus-ring"
-              aria-label="删除事件"
-            >
-              <Trash2 className="h-5 w-5" />
-            </button>
+            <>
+              <button
+                onClick={handleToggleMeetingKind}
+                disabled={updatingKind}
+                className={cn(
+                  "grid h-10 w-10 place-items-center rounded-full transition focus-ring disabled:cursor-wait disabled:opacity-60",
+                  isMeeting
+                    ? "bg-rose/12 text-rose-deep hover:bg-rose/18"
+                    : "text-ink-soft hover:bg-peach/16 hover:text-rose-deep",
+                )}
+                aria-label={isMeeting ? "取消线下见面标记" : "标记为线下见面"}
+                title={isMeeting ? "取消线下见面标记" : "标记为线下见面"}
+              >
+                <CalendarHeart className="h-5 w-5" />
+              </button>
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="grid h-10 w-10 place-items-center rounded-full text-rose-deep hover:bg-rose-deep/10 focus-ring"
+                aria-label="删除事件"
+              >
+                <Trash2 className="h-5 w-5" />
+              </button>
+            </>
           ) : undefined
         }
       />
@@ -318,6 +354,12 @@ function EventDetailInner() {
           className="glass-card rounded-3xl p-5 sm:p-6"
         >
           <div className="flex items-center gap-2 flex-wrap">
+            {isMeeting && (
+              <span className="pill inline-flex items-center gap-1.5 bg-rose/10 text-rose-deep">
+                <CalendarHeart className="h-3 w-3" />
+                线下见面
+              </span>
+            )}
             <VisibilityBadge mode={event.visibility_mode} />
             {event.occurred_at && (
               <span className="pill inline-flex items-center gap-1.5 bg-peach/22 text-ink-soft">

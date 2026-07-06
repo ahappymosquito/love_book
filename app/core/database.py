@@ -1,4 +1,4 @@
-"""Database setup, sessions, default quote seeding, and lightweight migrations for media, user locations, todo category enums, AI enable state, model lists, and avatars."""
+"""Database setup, sessions, default quote seeding, and lightweight migrations for event kinds, media, user locations, todo category enums, AI enable state, model lists, and avatars."""
 
 """Database engine, session factory, and lightweight migrations for evolving auth, media, AI, and rich AMap restaurant schemas."""
 
@@ -121,6 +121,11 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         "pairs",
         "love_started_on",
         {"default": "DATE NULL"},
+    ),
+    (
+        "events",
+        "event_kind",
+        {"default": "VARCHAR(50) NOT NULL DEFAULT 'memory'"},
     ),
     # Legacy image BLOB columns stay readable while new uploads use storage keys.
     (

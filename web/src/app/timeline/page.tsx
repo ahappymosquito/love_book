@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home screen for reading shared memories inside a mobile-safe viewport with a tappable relationship quote panel that keeps bottom-nav features out of the top section.
+// Timeline home screen for reading shared memories and a manually marked offline-meeting time river inside a mobile-safe viewport with a tappable relationship quote panel that keeps bottom-nav features out of the top section.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   BookHeart,
+  CalendarHeart,
   ChevronDown,
   ChevronRight,
   Droplet,
@@ -27,6 +28,7 @@ import {
 import { formatAbsolute, formatRelative } from "@/lib/format";
 import { useAppStore } from "@/lib/store";
 import type { AnniversaryOut, CycleDashboardOut, EventSummary } from "@/lib/types";
+import { cn } from "@/lib/cn";
 
 const PuppyScene = dynamic(
   () => import("@/components/puppy-scene").then((module) => module.PuppyScene),
@@ -36,6 +38,8 @@ const PuppyScene = dynamic(
 const LOCAL_REMINDER_QUOTES = [
   "我说伤心了怎么办，小狗说忘忘忘忘忘。",
 ];
+
+type TimelineView = "all" | "meetings";
 
 function todayDateOnly(): string {
   const now = new Date();
@@ -118,6 +122,7 @@ function TimelineInner() {
   const [cycleDashboard, setCycleDashboard] = useState<CycleDashboardOut | null>(null);
   const [cyclePromptDismissed, setCyclePromptDismissed] = useState(false);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => new Set([todayDateOnly().slice(0, 7)]));
+  const [timelineView, setTimelineView] = useState<TimelineView>("all");
 
   useEffect(() => {
     void load();
@@ -148,6 +153,22 @@ function TimelineInner() {
       .sort(([left], [right]) => monthSortValue(right) - monthSortValue(left))
       .map(([key, monthEvents]) => ({ key, events: monthEvents }));
   }, [events]);
+
+  const meetingEvents = useMemo(
+    () => (events ?? []).filter((event) => event.event_kind === "offline_meeting"),
+    [events],
+  );
+
+  const meetingGroups = useMemo(() => {
+    const map = new Map<string, EventSummary[]>();
+    for (const event of meetingEvents) {
+      const key = monthKeyForEvent(event);
+      map.set(key, [...(map.get(key) ?? []), event]);
+    }
+    return [...map.entries()]
+      .sort(([left], [right]) => monthSortValue(right) - monthSortValue(left))
+      .map(([key, monthEvents]) => ({ key, events: monthEvents }));
+  }, [meetingEvents]);
 
   const cyclePrompt = useMemo(() => {
     if (!me || !cycleDashboard || cyclePromptDismissed) return null;
@@ -226,10 +247,25 @@ function TimelineInner() {
           onRefreshQuote={refreshAnniversary}
         />
 
+        {events !== null && events.length > 0 && (
+          <TimelineViewSwitch
+            view={timelineView}
+            totalCount={events.length}
+            meetingCount={meetingEvents.length}
+            onChange={setTimelineView}
+          />
+        )}
+
         {events === null ? (
           <ListSkeleton />
         ) : events.length === 0 ? (
           <EmptyState onCreate={openCreateWindow} />
+        ) : timelineView === "meetings" ? (
+          meetingEvents.length === 0 ? (
+            <MeetingEmptyState onCreate={openCreateWindow} />
+          ) : (
+            <MeetingTimeRiver groups={meetingGroups} meetingCount={meetingEvents.length} />
+          )
         ) : (
           <div className="space-y-4">
             {eventGroups.map((group) => (
@@ -297,6 +333,176 @@ function HomeHero({
   );
 }
 
+function TimelineViewSwitch({
+  view,
+  totalCount,
+  meetingCount,
+  onChange,
+}: {
+  view: TimelineView;
+  totalCount: number;
+  meetingCount: number;
+  onChange: (view: TimelineView) => void;
+}) {
+  const options: Array<{ key: TimelineView; label: string; count: number }> = [
+    { key: "all", label: "全部", count: totalCount },
+    { key: "meetings", label: "见面", count: meetingCount },
+  ];
+
+  return (
+    <div className="mb-4 flex items-center justify-between gap-3 rounded-[1.35rem] bg-surface-raised/68 p-1.5 hairline sm:mb-5">
+      {options.map((option) => (
+        <button
+          key={option.key}
+          type="button"
+          onClick={() => onChange(option.key)}
+          aria-pressed={view === option.key}
+          className={cn(
+            "relative min-h-11 flex-1 rounded-[1.05rem] px-3 font-sc text-sm font-medium transition focus-ring",
+            view === option.key ? "text-rose-deep" : "text-ink-muted hover:text-rose-deep",
+          )}
+        >
+          {view === option.key && (
+            <motion.span
+              layoutId="timeline-view-lens"
+              className="absolute inset-0 rounded-[1.05rem] bg-peach/24 shadow-soft"
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              aria-hidden="true"
+            />
+          )}
+          <span className="relative z-10 inline-flex items-center justify-center gap-1.5">
+            {option.label}
+            <span className="rounded-full bg-white/60 px-2 py-0.5 text-[11px] text-ink-soft">
+              {option.count}
+            </span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function MeetingTimeRiver({
+  groups,
+  meetingCount,
+}: {
+  groups: Array<{ key: string; events: EventSummary[] }>;
+  meetingCount: number;
+}) {
+  return (
+    <section className="meeting-river-shell overflow-hidden rounded-[1.85rem] px-5 py-5 sm:px-7 sm:py-6">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line/55 pb-4">
+        <div>
+          <p className="font-sc text-xs font-medium text-rose-deep">线下见面</p>
+          <h2 className="mt-1 font-display text-xl font-semibold leading-tight text-ink sm:text-2xl">
+            一起出现过 {meetingCount} 次
+          </h2>
+        </div>
+        <span className="pill inline-flex items-center gap-1.5 bg-rose/10 text-rose-deep">
+          <CalendarHeart className="h-3.5 w-3.5" />
+          时间河流
+        </span>
+      </div>
+
+      <div className="meeting-river mt-5 space-y-6">
+        {groups.map((group) => (
+          <div key={group.key} className="relative pl-8 sm:pl-10">
+            <div className="meeting-month-node" aria-hidden="true" />
+            <div className="mb-3 flex flex-wrap items-baseline gap-2">
+              <h3 className="font-display text-lg font-semibold text-ink">{monthLabel(group.key)}</h3>
+              <span className="font-sc text-xs text-ink-muted">{group.events.length} 次见面</span>
+            </div>
+            <div className="space-y-3">
+              {group.events.map((event, index) => (
+                <motion.div
+                  key={event.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(index * 0.035, 0.14), duration: 0.22 }}
+                >
+                  <MeetingRiverEvent event={event} />
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function MeetingRiverEvent({ event }: { event: EventSummary }) {
+  const me = useAppStore((state) => state.me)!;
+  const author = event.creator_id === me.user.id ? me.user : me.counterpart;
+  const eventTime = event.occurred_at ?? event.created_at;
+
+  return (
+    <Link href={`/timeline/${event.id}`} className="group block rounded-2xl focus-ring">
+      <article className="meeting-river-event px-4 py-4 sm:px-5">
+        <div className="flex items-start gap-3">
+          <Avatar user={author} size="md" />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2 font-sc text-xs text-ink-muted">
+              <span>{author.display_name}</span>
+              <span className="h-1 w-1 rounded-full bg-line" />
+              <span>{formatAbsolute(eventTime, false)}</span>
+            </div>
+            <h3 className="mt-1 line-clamp-2 font-display text-lg font-semibold leading-snug text-ink">
+              {event.title}
+            </h3>
+            {event.description && (
+              <p className="mt-2 line-clamp-2 font-sc text-sm leading-relaxed text-ink-soft">
+                {event.description}
+              </p>
+            )}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <MeetingBadge />
+              <VisibilityBadge mode={event.visibility_mode} />
+              <SubmissionBadge state={event.submission_state} mode={event.visibility_mode} />
+            </div>
+          </div>
+        </div>
+      </article>
+    </Link>
+  );
+}
+
+function MeetingEmptyState({ onCreate }: { onCreate: () => void }) {
+  return (
+    <section className="glass-card overflow-hidden rounded-[2rem] p-5 sm:p-6">
+      <div className="min-w-0">
+        <div className="inline-flex items-center gap-2 rounded-full bg-rose/10 px-3 py-1.5 font-sc text-xs font-medium text-rose-deep">
+          <CalendarHeart className="h-3.5 w-3.5" />
+          还没有单独标记见面
+        </div>
+        <h2 className="mt-4 max-w-2xl font-display text-[1.55rem] font-semibold leading-tight text-ink sm:text-[1.9rem]">
+          下次见面时，把那一天放进这条小河里。
+        </h2>
+        <p className="mt-3 max-w-xl font-sc text-sm leading-relaxed text-ink-soft">
+          新建记录时选择“线下见面”，它就会出现在这里。以前的小事也可以进入详情后补上标记。
+        </p>
+        <button
+          type="button"
+          onClick={onCreate}
+          className="btn-primary mt-5 inline-flex min-h-12 items-center gap-2 rounded-full px-5 font-sc text-sm font-medium focus-ring"
+        >
+          <Plus className="h-4 w-4" />
+          记一次见面
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function MeetingBadge() {
+  return (
+    <span className="pill inline-flex items-center gap-1 bg-rose/10 text-rose-deep">
+      <CalendarHeart className="h-3.5 w-3.5" />
+      线下见面
+    </span>
+  );
+}
+
 function MonthEventGroup({
   month,
   events,
@@ -346,10 +552,11 @@ function MonthEventGroup({
 function EventRow({ event }: { event: EventSummary }) {
   const me = useAppStore((state) => state.me)!;
   const author = event.creator_id === me.user.id ? me.user : me.counterpart;
+  const isMeeting = event.event_kind === "offline_meeting";
 
   return (
     <Link href={`/timeline/${event.id}`} className="group block rounded-2xl focus-ring">
-      <article className="timeline-event-row px-5 py-4 sm:px-6">
+      <article className={cn("timeline-event-row px-5 py-4 sm:px-6", isMeeting && "timeline-event-row-meeting")}>
         <div className="flex items-start gap-3">
           <Avatar user={author} size="md" />
           <div className="min-w-0 flex-1">
@@ -370,6 +577,7 @@ function EventRow({ event }: { event: EventSummary }) {
             )}
 
             <div className="mt-3 flex flex-wrap gap-2">
+              {isMeeting && <MeetingBadge />}
               <VisibilityBadge mode={event.visibility_mode} />
               <SubmissionBadge state={event.submission_state} mode={event.visibility_mode} />
               {event.occurred_at && (

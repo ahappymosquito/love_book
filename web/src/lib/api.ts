@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests with an enable switch, habits, todo candidate queues with manual category fallback, scheduling, weather hints, events, quotes, live cycle dashboards, reactions, and media including todo image deletion.
+// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests with an enable switch, habits, todo candidate queues with manual category fallback, scheduling, weather hints, typed timeline events including offline meetings, quotes, live cycle dashboards, reactions, and media including todo image deletion.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -18,6 +18,7 @@ import type {
   DailyLogInput,
   DefaultQuoteOut,
   EventDetail,
+  EventKind,
   EventSummary,
   HabitDashboardOut,
   HabitTaskOut,
@@ -376,10 +377,25 @@ export const api = {
     title: string;
     description?: string | null;
     occurred_at?: string | null;
+    event_kind?: EventKind;
     visibility_mode: VisibilityMode;
   }) =>
     apiRequest<EventDetail>("/events", {
       method: "POST",
+      json: payload,
+    }),
+  updateEvent: (
+    id: number,
+    payload: {
+      title?: string;
+      description?: string | null;
+      occurred_at?: string | null;
+      event_kind?: EventKind;
+      visibility_mode?: VisibilityMode;
+    },
+  ) =>
+    apiRequest<EventDetail>(`/events/${id}`, {
+      method: "PATCH",
       json: payload,
     }),
   deleteEvent: (id: number) =>

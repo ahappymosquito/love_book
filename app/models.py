@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair timelines, user location preferences, comment reactions, food/play/stay/wish todo boards, personal habit check-ins, candidate queues, rich AMap restaurant evidence, media keys, quotes, AI settings with an enable switch and saved model lists, and login logs."""
+"""SQLAlchemy models for pair timelines with offline-meeting event kinds, user location preferences, comment reactions, food/play/stay/wish todo boards, personal habit check-ins, candidate queues, rich AMap restaurant evidence, media keys, quotes, AI settings with an enable switch and saved model lists, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -19,6 +19,11 @@ def utc_now() -> datetime:
 class VisibilityMode(StrEnum):
     public = "public"
     mutual_submit = "mutual_submit"
+
+
+class EventKind(StrEnum):
+    memory = "memory"
+    offline_meeting = "offline_meeting"
 
 
 class CyclePhase(StrEnum):
@@ -136,6 +141,9 @@ class Event(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    event_kind: Mapped[EventKind] = mapped_column(
+        Enum(EventKind), default=EventKind.memory, nullable=False, server_default=EventKind.memory.value, index=True
+    )
     visibility_mode: Mapped[VisibilityMode] = mapped_column(
         Enum(VisibilityMode), default=VisibilityMode.public, nullable=False
     )

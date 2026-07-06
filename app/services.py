@@ -1,4 +1,4 @@
-"""Shared business logic for pair access, comment reactions, content visibility, media metadata, database quotes, and home reminders."""
+"""Shared business logic for pair access, typed event summaries, comment reactions, content visibility, media metadata, database quotes, and home reminders."""
 
 import random
 from datetime import date, timedelta, timezone
@@ -326,6 +326,7 @@ def event_summary(db: Session, event: Event, user: User, pair: Pair) -> EventSum
         title=event.title,
         description=event.description,
         occurred_at=event.occurred_at,
+        event_kind=event.event_kind,
         visibility_mode=event.visibility_mode,
         created_at=event.created_at,
         submission_state=submission_state(db, event, user, pair),

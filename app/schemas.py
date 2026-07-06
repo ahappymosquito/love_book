@@ -1,11 +1,11 @@
-"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests with an enable switch, rich AMap restaurant evidence, habit check-ins, manual todo candidate queues, events, media, quotes, cycle records with empty/predicted days, and todo APIs."""
+"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests with an enable switch, rich AMap restaurant evidence, habit check-ins, manual todo candidate queues, typed timeline events including offline meetings, media, quotes, cycle records with empty/predicted days, and todo APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
-from app.models import AIProtocol, CervicalMucus, CycleFlow, CycleMood, CyclePhase, TodoCandidateStatus, TodoCategory, TodoParseStatus, VisibilityMode
+from app.models import AIProtocol, CervicalMucus, CycleFlow, CycleMood, CyclePhase, EventKind, TodoCandidateStatus, TodoCategory, TodoParseStatus, VisibilityMode
 
 
 class APIModel(BaseModel):
@@ -154,6 +154,7 @@ class EventCreate(APIModel):
     title: str = Field(min_length=1, max_length=200)
     description: str | None = None
     occurred_at: datetime | None = None
+    event_kind: EventKind = EventKind.memory
     visibility_mode: VisibilityMode = VisibilityMode.public
 
 
@@ -161,6 +162,7 @@ class EventUpdate(APIModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = None
     occurred_at: datetime | None = None
+    event_kind: EventKind | None = None
     visibility_mode: VisibilityMode | None = None
 
 
@@ -177,6 +179,7 @@ class EventSummary(APIModel):
     title: str
     description: str | None
     occurred_at: datetime | None
+    event_kind: EventKind
     visibility_mode: VisibilityMode
     created_at: datetime
     submission_state: SubmissionState
