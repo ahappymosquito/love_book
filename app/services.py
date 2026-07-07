@@ -1,4 +1,4 @@
-"""Shared business logic for pair access, typed event summaries, comment reactions, content visibility, media metadata, database quotes, and home reminders."""
+"""Shared business logic for pair access, named meeting session checks, typed event summaries, comment reactions, content visibility, media metadata, database quotes, and home reminders."""
 
 import random
 from datetime import date, timedelta, timezone
@@ -9,7 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, exists, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Comment, CommentReaction, DefaultQuote, DeviceToken, Event, Image, Pair, Quote, User, VisibilityMode, Voice, utc_now
+from app.models import Comment, CommentReaction, DefaultQuote, DeviceToken, Event, Image, MeetingSession, Pair, Quote, User, VisibilityMode, Voice, utc_now
 from app.schemas import (
     AnniversaryOut,
     CommentOut,
@@ -18,6 +18,7 @@ from app.schemas import (
     EventDetail,
     EventSummary,
     ImageOut,
+    MeetingSessionLite,
     ReminderItem,
     SubmissionState,
     VoiceOut,
@@ -219,6 +220,13 @@ def ensure_pair_event(db: Session, event_id: int, pair: Pair) -> Event:
     return event
 
 
+def ensure_pair_meeting_session(db: Session, session_id: int, pair: Pair) -> MeetingSession:
+    meeting_session = db.get(MeetingSession, session_id)
+    if meeting_session is None or meeting_session.pair_id != pair.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting session not found")
+    return meeting_session
+
+
 def comment_reaction_summaries(
     db: Session,
     comments: list[Comment],
@@ -323,6 +331,8 @@ def event_summary(db: Session, event: Event, user: User, pair: Pair) -> EventSum
         id=event.id,
         pair_id=event.pair_id,
         creator_id=event.creator_id,
+        meeting_session_id=event.meeting_session_id,
+        meeting_session=MeetingSessionLite.model_validate(event.meeting_session) if event.meeting_session else None,
         title=event.title,
         description=event.description,
         occurred_at=event.occurred_at,

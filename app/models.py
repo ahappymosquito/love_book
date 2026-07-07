@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair timelines with offline-meeting event kinds, user location preferences, comment reactions, food/play/stay/wish todo boards, personal habit check-ins, candidate queues, rich AMap restaurant evidence, media keys, quotes, AI settings with an enable switch and saved model lists, and login logs."""
+"""SQLAlchemy models for pair timelines with named meeting sessions, user location preferences, comment reactions, food/play/stay/wish todo boards, personal habit check-ins, candidate queues, rich AMap restaurant evidence, media keys, quotes, AI settings with an enable switch and saved model lists, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -138,6 +138,7 @@ class Event(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     pair_id: Mapped[int] = mapped_column(ForeignKey("pairs.id"), nullable=False, index=True)
     creator_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    meeting_session_id: Mapped[int | None] = mapped_column(ForeignKey("meeting_sessions.id"), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -151,9 +152,27 @@ class Event(Base):
 
     pair: Mapped[Pair] = relationship()
     creator: Mapped[User] = relationship()
+    meeting_session: Mapped["MeetingSession | None"] = relationship(back_populates="events")
     comments: Mapped[list["Comment"]] = relationship(cascade="all, delete-orphan")
     voices: Mapped[list["Voice"]] = relationship(cascade="all, delete-orphan")
     images: Mapped[list["Image"]] = relationship(cascade="all, delete-orphan")
+
+
+class MeetingSession(Base):
+    __tablename__ = "meeting_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pair_id: Mapped[int] = mapped_column(ForeignKey("pairs.id"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    started_on: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    ended_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+    pair: Mapped[Pair] = relationship()
+    created_by: Mapped[User] = relationship()
+    events: Mapped[list[Event]] = relationship(back_populates="meeting_session")
 
 
 class Quote(Base):

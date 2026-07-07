@@ -1,4 +1,4 @@
-"""Event route handlers for creating, listing, updating, deleting, classifying, and notifying timeline events.
+"""Event route handlers for creating, listing, updating, deleting, meeting-session classification, and notifying timeline events.
 
 Mutation endpoints commit before returning so the frontend can immediately reload the new or changed event.
 """
@@ -10,9 +10,9 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.database import get_db
 from app.emailer import notify_event_created
-from app.models import Event, User
+from app.models import Event, EventKind, User
 from app.schemas import EventCreate, EventDetail, EventSummary, EventUpdate
-from app.services import active_token_for_user, counterpart, ensure_pair_event, event_detail, event_summary
+from app.services import active_token_for_user, counterpart, ensure_pair_event, ensure_pair_meeting_session, event_detail, event_summary
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -25,9 +25,18 @@ def create_event(
     db: Session = Depends(get_db),
 ) -> EventDetail:
     pair = get_pair_for_user(db, current_user.id)
+    meeting_session_id = payload.meeting_session_id
+    if payload.event_kind != EventKind.offline_meeting and meeting_session_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only offline meeting events can be assigned to a meeting session",
+        )
+    if meeting_session_id is not None:
+        ensure_pair_meeting_session(db, meeting_session_id, pair)
     event = Event(
         pair_id=pair.id,
         creator_id=current_user.id,
+        meeting_session_id=meeting_session_id,
         title=payload.title,
         description=payload.description,
         occurred_at=payload.occurred_at,
@@ -83,10 +92,27 @@ def update_event(
 ) -> EventDetail:
     pair = get_pair_for_user(db, current_user.id)
     event = ensure_pair_event(db, event_id, pair)
-    if event.creator_id != current_user.id:
+    updates = payload.model_dump(exclude_unset=True)
+    meeting_update_only = set(updates) <= {"meeting_session_id"}
+    if event.creator_id != current_user.id and not meeting_update_only:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the creator can update this event")
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    next_kind = updates.get("event_kind", event.event_kind)
+    next_meeting_session_id = updates.get("meeting_session_id", event.meeting_session_id)
+    if next_kind != EventKind.offline_meeting:
+        if updates.get("meeting_session_id") is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only offline meeting events can be assigned to a meeting session",
+            )
+        updates["meeting_session_id"] = None
+    elif next_meeting_session_id is not None:
+        ensure_pair_meeting_session(db, next_meeting_session_id, pair)
+
+    if event.creator_id != current_user.id and event.event_kind != EventKind.offline_meeting:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only offline meeting events can be organized")
+
+    for field, value in updates.items():
         setattr(event, field, value)
     db.commit()
     db.refresh(event)

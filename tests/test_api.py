@@ -50,6 +50,11 @@ def test_event_kind_lightweight_migration_column_is_registered() -> None:
         "event_kind",
         {"default": "VARCHAR(50) NOT NULL DEFAULT 'memory'"},
     ) in database._LIGHTWEIGHT_COLUMNS
+    assert (
+        "events",
+        "meeting_session_id",
+        {"default": "INTEGER NULL", "mysql": "INT NULL", "mariadb": "INT NULL"},
+    ) in database._LIGHTWEIGHT_COLUMNS
 
 
 def test_admin_pair_creation_requires_admin_key(client: TestClient) -> None:
@@ -831,6 +836,182 @@ def test_event_kind_defaults_create_list_detail_and_update_permissions(
     )
     assert updated.status_code == 200
     assert updated.json()["event_kind"] == "memory"
+    assert updated.json()["meeting_session_id"] is None
+
+
+def test_named_meeting_session_groups_multiple_offline_events(
+    client: TestClient, pair_tokens: dict[str, str | int]
+) -> None:
+    token_a = str(pair_tokens["user_a_token"])
+    token_b = str(pair_tokens["user_b_token"])
+    session = client.post(
+        "/meeting-sessions",
+        headers=auth(token_a),
+        json={"title": "端午杭州三天", "started_on": "2026-06-19", "ended_on": "2026-06-21"},
+    ).json()
+
+    first = client.post(
+        "/events",
+        headers=auth(token_a),
+        json={
+            "title": "一起吃晚饭",
+            "event_kind": "offline_meeting",
+            "meeting_session_id": session["id"],
+            "visibility_mode": "public",
+        },
+    )
+    second = client.post(
+        "/events",
+        headers=auth(token_b),
+        json={
+            "title": "逛湖边",
+            "event_kind": "offline_meeting",
+            "meeting_session_id": session["id"],
+            "visibility_mode": "public",
+        },
+    )
+    listed = client.get("/meeting-sessions", headers=auth(token_b)).json()
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["meeting_session"]["title"] == "端午杭州三天"
+    assert second.json()["meeting_session_id"] == session["id"]
+    assert len(listed) == 1
+    assert listed[0]["event_count"] == 2
+
+
+def test_same_day_can_have_two_named_meeting_sessions(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+    token = str(pair_tokens["user_a_token"])
+    morning = client.post(
+        "/meeting-sessions",
+        headers=auth(token),
+        json={"title": "上午短见面", "started_on": "2026-06-20"},
+    ).json()
+    evening = client.post(
+        "/meeting-sessions",
+        headers=auth(token),
+        json={"title": "晚上约会", "started_on": "2026-06-20"},
+    ).json()
+
+    client.post(
+        "/events",
+        headers=auth(token),
+        json={
+            "title": "上午咖啡",
+            "event_kind": "offline_meeting",
+            "meeting_session_id": morning["id"],
+            "visibility_mode": "public",
+        },
+    )
+    client.post(
+        "/events",
+        headers=auth(token),
+        json={
+            "title": "晚上电影",
+            "event_kind": "offline_meeting",
+            "meeting_session_id": evening["id"],
+            "visibility_mode": "public",
+        },
+    )
+
+    listed = client.get("/meeting-sessions", headers=auth(token)).json()
+    assert len(listed) == 2
+    assert {item["title"]: item["event_count"] for item in listed} == {"上午短见面": 1, "晚上约会": 1}
+
+
+def test_meeting_session_date_range_does_not_split_holiday_events(
+    client: TestClient, pair_tokens: dict[str, str | int]
+) -> None:
+    token = str(pair_tokens["user_a_token"])
+    session = client.post(
+        "/meeting-sessions",
+        headers=auth(token),
+        json={"title": "三天小假期", "started_on": "2026-10-01", "ended_on": "2026-10-03"},
+    ).json()
+    for day in ("2026-10-01T12:00:00Z", "2026-10-02T12:00:00Z", "2026-10-03T12:00:00Z"):
+        response = client.post(
+            "/events",
+            headers=auth(token),
+            json={
+                "title": f"假期里的 {day}",
+                "occurred_at": day,
+                "event_kind": "offline_meeting",
+                "meeting_session_id": session["id"],
+                "visibility_mode": "public",
+            },
+        )
+        assert response.status_code == 201
+
+    listed = client.get("/meeting-sessions", headers=auth(token)).json()
+    assert len(listed) == 1
+    assert listed[0]["event_count"] == 3
+
+
+def test_meeting_sessions_are_pair_private_and_memory_events_cannot_attach(
+    client: TestClient, pair_tokens: dict[str, str | int]
+) -> None:
+    token = str(pair_tokens["user_a_token"])
+    session = client.post("/meeting-sessions", headers=auth(token), json={"title": "只属于第一对"}).json()
+    other_pair = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={"user_a_display_name": "C", "user_b_display_name": "D"},
+    ).json()
+
+    hidden = client.get("/meeting-sessions", headers=auth(other_pair["user_a_token"]))
+    cross_pair_attach = client.post(
+        "/events",
+        headers=auth(other_pair["user_a_token"]),
+        json={
+            "title": "不该挂进去",
+            "event_kind": "offline_meeting",
+            "meeting_session_id": session["id"],
+            "visibility_mode": "public",
+        },
+    )
+    memory_attach = client.post(
+        "/events",
+        headers=auth(token),
+        json={
+            "title": "普通小事",
+            "event_kind": "memory",
+            "meeting_session_id": session["id"],
+            "visibility_mode": "public",
+        },
+    )
+
+    assert hidden.status_code == 200
+    assert hidden.json() == []
+    assert cross_pair_attach.status_code == 404
+    assert memory_attach.status_code == 400
+
+
+def test_counterpart_can_assign_existing_offline_event_to_meeting_session(
+    client: TestClient, pair_tokens: dict[str, str | int]
+) -> None:
+    token_a = str(pair_tokens["user_a_token"])
+    token_b = str(pair_tokens["user_b_token"])
+    event = client.post(
+        "/events",
+        headers=auth(token_a),
+        json={"title": "待整理的见面", "event_kind": "offline_meeting", "visibility_mode": "public"},
+    ).json()
+    session = client.post("/meeting-sessions", headers=auth(token_b), json={"title": "周末见面"}).json()
+
+    assigned = client.patch(
+        f"/events/{event['id']}",
+        headers=auth(token_b),
+        json={"meeting_session_id": session["id"]},
+    )
+    forbidden = client.patch(
+        f"/events/{event['id']}",
+        headers=auth(token_b),
+        json={"title": "不能替对方改标题"},
+    )
+
+    assert assigned.status_code == 200
+    assert assigned.json()["meeting_session_id"] == session["id"]
+    assert forbidden.status_code == 403
 
 
 def test_mutual_submit_unlocks_after_each_side_submits_any_content(

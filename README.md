@@ -13,6 +13,7 @@
 - 普通接口使用 `Authorization: Bearer <token>` 鉴权。
 - 每个 token 直接代表一个用户身份，用户身份和 pair 关系在 token 生成时确定。
 - 两位用户都可以创建事件、提交评论、上传语音、上传图片，并对可见留言添加点赞 / 倒赞 reaction。
+- 线下见面使用手动命名的 `meeting_sessions` 作为真实见面次数统计单位；一次周末或节假日见面可以归入同一个场次，场次内再保存双方提交的多条 `offline_meeting` 事件。
 - 事件、内容和留言 reaction 写接口会在响应返回前完成数据库提交，前端创建、评论或点 reaction 后可以立即刷新详情。
 - 只有 pair 内的两位用户能访问该 pair 的事件和内容。
 - 支持两种事件可见模式：
@@ -39,6 +40,7 @@ app/
       auth.py             当前用户接口
       quotes.py           情侣共享本地语录库接口
       events.py           事件接口
+      meeting_sessions.py 手动命名的线下见面场次接口
       contents.py         评论、留言 reaction、语音、图片和内容接口
 tests/
   test_api.py             核心接口测试

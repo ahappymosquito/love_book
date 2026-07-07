@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests with an enable switch, rich AMap restaurant evidence, habit check-ins, manual todo candidate queues, typed timeline events including offline meetings, media, quotes, cycle records with empty/predicted days, and todo APIs."""
+"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests with an enable switch, rich AMap restaurant evidence, habit check-ins, manual todo candidate queues, named meeting sessions, typed timeline events, media, quotes, cycle records with empty/predicted days, and todo APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -155,6 +155,7 @@ class EventCreate(APIModel):
     description: str | None = None
     occurred_at: datetime | None = None
     event_kind: EventKind = EventKind.memory
+    meeting_session_id: int | None = None
     visibility_mode: VisibilityMode = VisibilityMode.public
 
 
@@ -163,6 +164,7 @@ class EventUpdate(APIModel):
     description: str | None = None
     occurred_at: datetime | None = None
     event_kind: EventKind | None = None
+    meeting_session_id: int | None = None
     visibility_mode: VisibilityMode | None = None
 
 
@@ -172,10 +174,61 @@ class SubmissionState(APIModel):
     unlocked: bool
 
 
+class MeetingSessionCreate(APIModel):
+    title: str = Field(min_length=1, max_length=200)
+    started_on: date | None = None
+    ended_on: date | None = None
+
+    @field_validator("title")
+    @classmethod
+    def strip_title(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Meeting title cannot be empty")
+        return value
+
+
+class MeetingSessionUpdate(APIModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    started_on: date | None = None
+    ended_on: date | None = None
+
+    @field_validator("title")
+    @classmethod
+    def strip_optional_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("Meeting title cannot be empty")
+        return value
+
+
+class MeetingSessionLite(APIModel):
+    id: int
+    title: str
+    started_on: date | None = None
+    ended_on: date | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class MeetingSessionOut(MeetingSessionLite):
+    pair_id: int
+    created_by_id: int
+    created_at: datetime
+    updated_at: datetime
+    event_count: int = 0
+
+    model_config = {"from_attributes": True}
+
+
 class EventSummary(APIModel):
     id: int
     pair_id: int
     creator_id: int
+    meeting_session_id: int | None = None
+    meeting_session: MeetingSessionLite | None = None
     title: str
     description: str | None
     occurred_at: datetime | None

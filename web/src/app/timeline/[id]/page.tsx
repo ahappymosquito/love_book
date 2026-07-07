@@ -1,6 +1,6 @@
 "use client";
 
-// Event detail screen with mobile viewport guards, offline-meeting marking, warm scrapbook reading layout, avatar-aware authors, stable-hover reactions, media stream, submission state, and bottom-nav-covering composer.
+// Event detail screen with mobile viewport guards, offline-meeting marking and session organization, warm scrapbook reading layout, avatar-aware authors, stable-hover reactions, media stream, submission state, and bottom-nav-covering composer.
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -37,6 +37,7 @@ import type {
   EventDetail,
   EventKind,
   ImageOut,
+  MeetingSessionOut,
   UserOut,
   VoiceOut,
 } from "@/lib/types";
@@ -90,6 +91,7 @@ function EventDetailInner() {
   const me = useAppStore((s) => s.me)!;
 
   const [event, setEvent] = useState<EventDetail | null>(null);
+  const [meetingSessions, setMeetingSessions] = useState<MeetingSessionOut[]>([]);
   const [pending, setPending] = useState<Pending[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -99,8 +101,12 @@ function EventDetailInner() {
 
   const load = useCallback(async () => {
     try {
-      const data = await api.getEvent(eventId);
+      const [data, sessions] = await Promise.all([
+        api.getEvent(eventId),
+        api.listMeetingSessions().catch(() => []),
+      ]);
       setEvent(data);
+      setMeetingSessions(sessions);
     } catch {
       router.replace("/timeline");
     }
@@ -296,6 +302,27 @@ function EventDetailInner() {
     }
   }
 
+  async function handleAssignMeetingSession(meetingSessionId: number | null) {
+    if (!event) return;
+    const previous = event;
+    setEvent({ ...event, meeting_session_id: meetingSessionId });
+    try {
+      const updated = await api.updateEvent(event.id, { meeting_session_id: meetingSessionId });
+      setEvent(updated);
+      setMeetingSessions(await api.listMeetingSessions().catch(() => meetingSessions));
+      toast.success(meetingSessionId ? "已整理到这次见面" : "已移出见面场次");
+    } catch {
+      setEvent(previous);
+    }
+  }
+
+  async function handleCreateMeetingSession(payload: { title: string; started_on?: string | null; ended_on?: string | null }) {
+    if (!event) return;
+    const meetingSession = await api.createMeetingSession(payload);
+    setMeetingSessions((sessions) => [meetingSession, ...sessions]);
+    await handleAssignMeetingSession(meetingSession.id);
+  }
+
   if (!event) {
     return (
       <>
@@ -389,6 +416,15 @@ function EventDetailInner() {
             </div>
           </div>
         </motion.section>
+
+        {isMeeting && (
+          <MeetingSessionOrganizer
+            event={event}
+            sessions={meetingSessions}
+            onAssign={handleAssignMeetingSession}
+            onCreateAndAssign={handleCreateMeetingSession}
+          />
+        )}
 
         {/* Submission state */}
         <motion.section
@@ -794,6 +830,118 @@ function ReactionIconButton({
     >
       <Icon className={cn(large ? "h-6 w-6" : "h-4 w-4")} />
     </button>
+  );
+}
+
+function MeetingSessionOrganizer({
+  event,
+  sessions,
+  onAssign,
+  onCreateAndAssign,
+}: {
+  event: EventDetail;
+  sessions: MeetingSessionOut[];
+  onAssign: (meetingSessionId: number | null) => void | Promise<void>;
+  onCreateAndAssign: (payload: { title: string; started_on?: string | null; ended_on?: string | null }) => void | Promise<void>;
+}) {
+  const [newTitle, setNewTitle] = useState("");
+  const [startedOn, setStartedOn] = useState("");
+  const [endedOn, setEndedOn] = useState("");
+  const [working, setWorking] = useState(false);
+
+  async function assign(value: string) {
+    if (working) return;
+    setWorking(true);
+    try {
+      await onAssign(value ? Number(value) : null);
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function createAndAssign() {
+    if (!newTitle.trim() || working) return;
+    setWorking(true);
+    try {
+      await onCreateAndAssign({
+        title: newTitle.trim(),
+        started_on: startedOn || null,
+        ended_on: endedOn || null,
+      });
+      setNewTitle("");
+      setStartedOn("");
+      setEndedOn("");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <section className="mt-4 rounded-3xl bg-peach/12 p-4 hairline sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="font-sc text-xs font-medium text-rose-deep">见面场次</p>
+          <p className="mt-1 font-sc text-sm text-ink-soft">把这条小事放进一次命名的见面里。</p>
+        </div>
+        <span className="pill inline-flex items-center gap-1 bg-rose/10 text-rose-deep">
+          <CalendarHeart className="h-3.5 w-3.5" />
+          {event.meeting_session?.title ?? "未整理"}
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        <select
+          className="input-field font-sc"
+          value={event.meeting_session_id ?? ""}
+          disabled={working}
+          onChange={(selectEvent) => void assign(selectEvent.target.value)}
+        >
+          <option value="">未整理</option>
+          {sessions.map((session) => (
+            <option key={session.id} value={session.id}>
+              {session.title}
+            </option>
+          ))}
+        </select>
+
+        <div className="grid gap-3 rounded-2xl bg-surface-raised/72 p-3 hairline">
+          <input
+            className="input-field font-sc"
+            placeholder="新场次名称，例如：周末见面"
+            value={newTitle}
+            maxLength={200}
+            disabled={working}
+            onChange={(inputEvent) => setNewTitle(inputEvent.target.value)}
+          />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <input
+              type="date"
+              className="input-field font-sc"
+              value={startedOn}
+              disabled={working}
+              onChange={(inputEvent) => setStartedOn(inputEvent.target.value)}
+              aria-label="开始日期"
+            />
+            <input
+              type="date"
+              className="input-field font-sc"
+              value={endedOn}
+              disabled={working}
+              onChange={(inputEvent) => setEndedOn(inputEvent.target.value)}
+              aria-label="结束日期"
+            />
+          </div>
+          <button
+            type="button"
+            className="btn-ghost min-h-11 rounded-2xl px-4 font-sc text-sm focus-ring disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!newTitle.trim() || working}
+            onClick={() => void createAndAssign()}
+          >
+            新建并归入
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 

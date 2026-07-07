@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests with an enable switch, habits, todo candidate queues with manual category fallback, scheduling, weather hints, typed timeline events including offline meetings, quotes, live cycle dashboards, reactions, and media including todo image deletion.
+// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests with an enable switch, habits, todo candidate queues with manual category fallback, scheduling, weather hints, named meeting sessions, typed timeline events, quotes, live cycle dashboards, reactions, and media including todo image deletion.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -26,6 +26,7 @@ import type {
   ImageOut,
   LoginLogOut,
   LoginRecordCreate,
+  MeetingSessionOut,
   MeOut,
   PairCreated,
   PairOut,
@@ -371,6 +372,20 @@ export const api = {
   deleteTodoImage: (id: number) => apiRequest<void>(`/todo-images/${id}`, { method: "DELETE" }),
 
   // Events
+  listMeetingSessions: () => apiRequest<MeetingSessionOut[]>("/meeting-sessions"),
+  createMeetingSession: (payload: { title: string; started_on?: string | null; ended_on?: string | null }) =>
+    apiRequest<MeetingSessionOut>("/meeting-sessions", {
+      method: "POST",
+      json: payload,
+    }),
+  updateMeetingSession: (
+    id: number,
+    payload: { title?: string; started_on?: string | null; ended_on?: string | null },
+  ) =>
+    apiRequest<MeetingSessionOut>(`/meeting-sessions/${id}`, {
+      method: "PATCH",
+      json: payload,
+    }),
   listEvents: () => apiRequest<EventSummary[]>("/events"),
   getEvent: (id: number) => apiRequest<EventDetail>(`/events/${id}`),
   createEvent: (payload: {
@@ -378,6 +393,7 @@ export const api = {
     description?: string | null;
     occurred_at?: string | null;
     event_kind?: EventKind;
+    meeting_session_id?: number | null;
     visibility_mode: VisibilityMode;
   }) =>
     apiRequest<EventDetail>("/events", {
@@ -391,6 +407,7 @@ export const api = {
       description?: string | null;
       occurred_at?: string | null;
       event_kind?: EventKind;
+      meeting_session_id?: number | null;
       visibility_mode?: VisibilityMode;
     },
   ) =>

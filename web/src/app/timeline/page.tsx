@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home screen for reading shared memories and a manually marked offline-meeting time river inside a mobile-safe viewport with a tappable relationship quote panel that keeps bottom-nav features out of the top section.
+// Timeline home screen for reading shared memories and manually named offline-meeting sessions inside a mobile-safe viewport with a tappable relationship quote panel that keeps bottom-nav features out of the top section.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -27,7 +27,7 @@ import {
 } from "@/lib/cycle-reminder";
 import { formatAbsolute, formatRelative } from "@/lib/format";
 import { useAppStore } from "@/lib/store";
-import type { AnniversaryOut, CycleDashboardOut, EventSummary } from "@/lib/types";
+import type { AnniversaryOut, CycleDashboardOut, EventSummary, MeetingSessionOut } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
 const PuppyScene = dynamic(
@@ -90,6 +90,14 @@ function monthSortValue(key: string): number {
   return year * 12 + month;
 }
 
+function meetingSessionDateLabel(session: MeetingSessionOut): string {
+  if (session.started_on && session.ended_on && session.started_on !== session.ended_on) {
+    return `${formatAbsolute(`${session.started_on}T00:00:00`, false)} - ${formatAbsolute(`${session.ended_on}T00:00:00`, false)}`;
+  }
+  if (session.started_on) return formatAbsolute(`${session.started_on}T00:00:00`, false);
+  return "日期未定";
+}
+
 function daysUntil(date: string, today: string): number {
   const targetTime = new Date(`${date}T00:00:00`).getTime();
   const todayTime = new Date(`${today}T00:00:00`).getTime();
@@ -117,6 +125,7 @@ function TimelineInner() {
   const me = useAppStore((state) => state.me);
   const openCreateWindow = useAppStore((state) => state.openCreateWindow);
   const [events, setEvents] = useState<EventSummary[] | null>(null);
+  const [meetingSessions, setMeetingSessions] = useState<MeetingSessionOut[]>([]);
   const [anniversary, setAnniversary] = useState<AnniversaryOut | null>(null);
   const [quoteRefreshing, setQuoteRefreshing] = useState(false);
   const [cycleDashboard, setCycleDashboard] = useState<CycleDashboardOut | null>(null);
@@ -160,15 +169,41 @@ function TimelineInner() {
   );
 
   const meetingGroups = useMemo(() => {
-    const map = new Map<string, EventSummary[]>();
+    const eventMap = new Map<number, EventSummary[]>();
+    const orphanEvents: EventSummary[] = [];
     for (const event of meetingEvents) {
-      const key = monthKeyForEvent(event);
-      map.set(key, [...(map.get(key) ?? []), event]);
+      if (event.meeting_session_id) {
+        eventMap.set(event.meeting_session_id, [...(eventMap.get(event.meeting_session_id) ?? []), event]);
+      } else {
+        orphanEvents.push(event);
+      }
     }
-    return [...map.entries()]
-      .sort(([left], [right]) => monthSortValue(right) - monthSortValue(left))
-      .map(([key, monthEvents]) => ({ key, events: monthEvents }));
-  }, [meetingEvents]);
+    const groups = meetingSessions
+      .map((session) => ({ session, events: eventMap.get(session.id) ?? [] }))
+      .filter((group) => group.events.length > 0);
+    groups.sort((left, right) => {
+      const leftTime = new Date(left.session.started_on ?? left.events[0]?.occurred_at ?? left.session.created_at).getTime();
+      const rightTime = new Date(right.session.started_on ?? right.events[0]?.occurred_at ?? right.session.created_at).getTime();
+      return rightTime - leftTime;
+    });
+    if (orphanEvents.length > 0) {
+      groups.push({
+        session: {
+          id: 0,
+          pair_id: 0,
+          title: "未整理的见面",
+          started_on: null,
+          ended_on: null,
+          created_by_id: 0,
+          created_at: orphanEvents[0].created_at,
+          updated_at: orphanEvents[0].created_at,
+          event_count: orphanEvents.length,
+        },
+        events: orphanEvents,
+      });
+    }
+    return groups;
+  }, [meetingEvents, meetingSessions]);
 
   const cyclePrompt = useMemo(() => {
     if (!me || !cycleDashboard || cyclePromptDismissed) return null;
@@ -187,9 +222,15 @@ function TimelineInner() {
 
   async function load() {
     try {
-      setEvents(await api.listEvents());
+      const [loadedEvents, loadedMeetingSessions] = await Promise.all([
+        api.listEvents(),
+        api.listMeetingSessions().catch(() => []),
+      ]);
+      setEvents(loadedEvents);
+      setMeetingSessions(loadedMeetingSessions);
     } catch {
       setEvents([]);
+      setMeetingSessions([]);
     }
   }
 
@@ -251,7 +292,7 @@ function TimelineInner() {
           <TimelineViewSwitch
             view={timelineView}
             totalCount={events.length}
-            meetingCount={meetingEvents.length}
+            meetingCount={meetingGroups.length}
             onChange={setTimelineView}
           />
         )}
@@ -264,7 +305,7 @@ function TimelineInner() {
           meetingEvents.length === 0 ? (
             <MeetingEmptyState onCreate={openCreateWindow} />
           ) : (
-            <MeetingTimeRiver groups={meetingGroups} meetingCount={meetingEvents.length} />
+            <MeetingTimeRiver groups={meetingGroups} eventCount={meetingEvents.length} />
           )
         ) : (
           <div className="space-y-4">
@@ -384,10 +425,10 @@ function TimelineViewSwitch({
 
 function MeetingTimeRiver({
   groups,
-  meetingCount,
+  eventCount,
 }: {
-  groups: Array<{ key: string; events: EventSummary[] }>;
-  meetingCount: number;
+  groups: Array<{ session: MeetingSessionOut; events: EventSummary[] }>;
+  eventCount: number;
 }) {
   return (
     <section className="meeting-river-shell overflow-hidden rounded-[1.85rem] px-5 py-5 sm:px-7 sm:py-6">
@@ -395,22 +436,23 @@ function MeetingTimeRiver({
         <div>
           <p className="font-sc text-xs font-medium text-rose-deep">线下见面</p>
           <h2 className="mt-1 font-display text-xl font-semibold leading-tight text-ink sm:text-2xl">
-            一起出现过 {meetingCount} 次
+            {groups.length} 次见面，留下 {eventCount} 条小事
           </h2>
         </div>
         <span className="pill inline-flex items-center gap-1.5 bg-rose/10 text-rose-deep">
           <CalendarHeart className="h-3.5 w-3.5" />
-          时间河流
+          见面场次
         </span>
       </div>
 
       <div className="meeting-river mt-5 space-y-6">
         {groups.map((group) => (
-          <div key={group.key} className="relative pl-8 sm:pl-10">
+          <div key={group.session.id || "orphans"} className="relative pl-8 sm:pl-10">
             <div className="meeting-month-node" aria-hidden="true" />
             <div className="mb-3 flex flex-wrap items-baseline gap-2">
-              <h3 className="font-display text-lg font-semibold text-ink">{monthLabel(group.key)}</h3>
-              <span className="font-sc text-xs text-ink-muted">{group.events.length} 次见面</span>
+              <h3 className="font-display text-lg font-semibold text-ink">{group.session.title}</h3>
+              <span className="font-sc text-xs text-ink-muted">{meetingSessionDateLabel(group.session)}</span>
+              <span className="font-sc text-xs text-rose-deep">{group.events.length} 条小事</span>
             </div>
             <div className="space-y-3">
               {group.events.map((event, index) => (
@@ -578,6 +620,11 @@ function EventRow({ event }: { event: EventSummary }) {
 
             <div className="mt-3 flex flex-wrap gap-2">
               {isMeeting && <MeetingBadge />}
+              {isMeeting && event.meeting_session && (
+                <span className="pill inline-flex items-center gap-1 bg-peach/22 text-ink-soft">
+                  {event.meeting_session.title}
+                </span>
+              )}
               <VisibilityBadge mode={event.visibility_mode} />
               <SubmissionBadge state={event.submission_state} mode={event.visibility_mode} />
               {event.occurred_at && (

@@ -1,13 +1,13 @@
 "use client";
 
-// Reusable event creation form shared by the direct /create page and the global bottom-sheet create window, including the manual record kind that powers the offline-meeting timeline view.
+// Reusable event creation form shared by the direct /create page and the global bottom-sheet create window, including manually named meeting sessions for offline-meeting timeline clusters.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CalendarHeart, Eye, Loader2, Lock, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { fromLocalInputValue, toLocalInputValue } from "@/lib/format";
-import type { EventDetail, EventKind, VisibilityMode } from "@/lib/types";
+import type { EventDetail, EventKind, MeetingSessionOut, VisibilityMode } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
 export function CreateEventForm({
@@ -21,19 +21,51 @@ export function CreateEventForm({
   const [description, setDescription] = useState("");
   const [occurredAt, setOccurredAt] = useState<string>(toLocalInputValue(new Date()));
   const [eventKind, setEventKind] = useState<EventKind>("memory");
+  const [meetingSessions, setMeetingSessions] = useState<MeetingSessionOut[]>([]);
+  const [meetingSessionChoice, setMeetingSessionChoice] = useState("new");
+  const [newMeetingTitle, setNewMeetingTitle] = useState("");
+  const [newMeetingStart, setNewMeetingStart] = useState("");
+  const [newMeetingEnd, setNewMeetingEnd] = useState("");
   const [visibility, setVisibility] = useState<VisibilityMode>("public");
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (eventKind !== "offline_meeting") return;
+    void api
+      .listMeetingSessions()
+      .then(setMeetingSessions)
+      .catch(() => setMeetingSessions([]));
+  }, [eventKind]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim() || submitting) return;
     setSubmitting(true);
     try {
+      let meetingSessionId: number | null = null;
+      if (eventKind === "offline_meeting") {
+        if (meetingSessionChoice === "new") {
+          if (!newMeetingTitle.trim()) {
+            toast.error("先给这次见面起个名字");
+            setSubmitting(false);
+            return;
+          }
+          const meetingSession = await api.createMeetingSession({
+            title: newMeetingTitle.trim(),
+            started_on: newMeetingStart || null,
+            ended_on: newMeetingEnd || null,
+          });
+          meetingSessionId = meetingSession.id;
+        } else {
+          meetingSessionId = Number(meetingSessionChoice);
+        }
+      }
       const event = await api.createEvent({
         title: title.trim(),
         description: description.trim() || null,
         occurred_at: occurredAt ? fromLocalInputValue(occurredAt) : null,
         event_kind: eventKind,
+        meeting_session_id: meetingSessionId,
         visibility_mode: visibility,
       });
       toast.success("已记下这一笔");
@@ -52,6 +84,61 @@ export function CreateEventForm({
           标题先写清楚，细节可以慢慢补，像在手账上贴一页。
         </p>
       </div>
+
+      {eventKind === "offline_meeting" && (
+        <div className="space-y-3 rounded-2xl bg-peach/12 p-4 hairline">
+          <div className="space-y-2">
+            <Label>见面场次</Label>
+            <select
+              className="input-field font-sc"
+              value={meetingSessionChoice}
+              onChange={(event) => setMeetingSessionChoice(event.target.value)}
+            >
+              <option value="new">新的一次见面</option>
+              {meetingSessions.map((session) => (
+                <option key={session.id} value={session.id}>
+                  {session.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {meetingSessionChoice === "new" && (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>场次名称</Label>
+                <input
+                  className="input-field font-sc"
+                  placeholder="例如：端午杭州三天"
+                  value={newMeetingTitle}
+                  maxLength={200}
+                  onChange={(event) => setNewMeetingTitle(event.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>开始日期（可不填）</Label>
+                  <input
+                    type="date"
+                    className="input-field font-sc"
+                    value={newMeetingStart}
+                    onChange={(event) => setNewMeetingStart(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>结束日期（可不填）</Label>
+                  <input
+                    type="date"
+                    className="input-field font-sc"
+                    value={newMeetingEnd}
+                    onChange={(event) => setNewMeetingEnd(event.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label>标题</Label>
@@ -131,7 +218,7 @@ export function CreateEventForm({
       <div className="flex justify-end pt-2">
         <button
           type="submit"
-          disabled={!title.trim() || submitting}
+          disabled={!title.trim() || (eventKind === "offline_meeting" && meetingSessionChoice === "new" && !newMeetingTitle.trim()) || submitting}
           className="btn-primary inline-flex min-h-[48px] items-center gap-2 rounded-2xl px-6 py-3.5 font-sc text-[15px] font-medium focus-ring"
         >
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}

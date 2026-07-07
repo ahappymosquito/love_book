@@ -1,6 +1,6 @@
-"""Database setup, sessions, default quote seeding, and lightweight migrations for event kinds, media, user locations, todo category enums, AI enable state, model lists, and avatars."""
+"""Database setup, sessions, default quote seeding, and lightweight migrations for named meeting sessions, event kinds, media, user locations, todo category enums, AI enable state, model lists, and avatars."""
 
-"""Database engine, session factory, and lightweight migrations for evolving auth, media, AI, and rich AMap restaurant schemas."""
+"""Database engine, session factory, and lightweight migrations for evolving auth, meeting session, media, AI, and rich AMap restaurant schemas."""
 
 from collections.abc import Generator
 
@@ -126,6 +126,11 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         "events",
         "event_kind",
         {"default": "VARCHAR(50) NOT NULL DEFAULT 'memory'"},
+    ),
+    (
+        "events",
+        "meeting_session_id",
+        {"default": "INTEGER NULL", "mysql": "INT NULL", "mariadb": "INT NULL"},
     ),
     # Legacy image BLOB columns stay readable while new uploads use storage keys.
     (
@@ -283,6 +288,53 @@ def _ensure_todo_category_enum(target_engine: Engine) -> None:
             connection.execute(text(ddl_statement))
 
 
+def _ensure_legacy_meeting_sessions(target_engine: Engine) -> None:
+    inspector = inspect(target_engine)
+    existing_tables = set(inspector.get_table_names())
+    if not {"events", "meeting_sessions"}.issubset(existing_tables):
+        return
+    event_columns = {column["name"] for column in inspector.get_columns("events")}
+    if "meeting_session_id" not in event_columns:
+        return
+
+    insert_id_sql = "SELECT LAST_INSERT_ID()" if target_engine.dialect.name in {"mysql", "mariadb"} else "SELECT last_insert_rowid()"
+    with target_engine.begin() as connection:
+        legacy_events = connection.execute(
+            text(
+                """
+                SELECT id, pair_id, creator_id, title, occurred_at, created_at
+                FROM events
+                WHERE event_kind = 'offline_meeting' AND meeting_session_id IS NULL
+                ORDER BY created_at ASC, id ASC
+                """
+            )
+        ).mappings().all()
+        for event in legacy_events:
+            session_title = f"未整理：{event['title']}"
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO meeting_sessions
+                        (pair_id, title, started_on, ended_on, created_by_id, created_at, updated_at)
+                    VALUES
+                        (:pair_id, :title, NULL, NULL, :created_by_id, :created_at, :updated_at)
+                    """
+                ),
+                {
+                    "pair_id": event["pair_id"],
+                    "title": session_title[:200],
+                    "created_by_id": event["creator_id"],
+                    "created_at": event["created_at"],
+                    "updated_at": event["created_at"],
+                },
+            )
+            session_id = connection.execute(text(insert_id_sql)).scalar_one()
+            connection.execute(
+                text("UPDATE events SET meeting_session_id = :session_id WHERE id = :event_id"),
+                {"session_id": session_id, "event_id": event["id"]},
+            )
+
+
 def init_db() -> None:
     from app import models  # noqa: F401
     from app.services import ensure_default_quotes
@@ -290,6 +342,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _ensure_columns(engine)
     _ensure_todo_category_enum(engine)
+    _ensure_legacy_meeting_sessions(engine)
     with SessionLocal() as db:
         ensure_default_quotes(db)
         db.commit()
