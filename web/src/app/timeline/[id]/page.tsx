@@ -1,6 +1,6 @@
 "use client";
 
-// Event detail screen with mobile viewport guards, offline-meeting marking and session organization, warm scrapbook reading layout, avatar-aware authors, stable-hover reactions, media stream, submission state, and bottom-nav-covering composer.
+// Event detail screen with mobile viewport guards, explicit-save meeting session organization for either user's events, warm scrapbook reading layout, avatar-aware authors, stable-hover reactions, media stream, submission state, and bottom-nav-covering composer.
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle2,
   Circle,
+  Loader2,
   Trash2,
   CalendarHeart,
   Sparkles,
@@ -303,24 +304,39 @@ function EventDetailInner() {
   }
 
   async function handleAssignMeetingSession(meetingSessionId: number | null) {
-    if (!event) return;
+    if (!event) return null;
     const previous = event;
     setEvent({ ...event, meeting_session_id: meetingSessionId });
     try {
       const updated = await api.updateEvent(event.id, { meeting_session_id: meetingSessionId });
       setEvent(updated);
       setMeetingSessions(await api.listMeetingSessions().catch(() => meetingSessions));
-      toast.success(meetingSessionId ? "已整理到这次见面" : "已移出见面场次");
+      return updated;
     } catch {
       setEvent(previous);
+      return null;
     }
   }
 
-  async function handleCreateMeetingSession(payload: { title: string; started_on?: string | null; ended_on?: string | null }) {
-    if (!event) return;
+  async function handleCreateMeetingSession(payload: { title: string }) {
+    if (!event) return null;
     const meetingSession = await api.createMeetingSession(payload);
     setMeetingSessions((sessions) => [meetingSession, ...sessions]);
-    await handleAssignMeetingSession(meetingSession.id);
+    const updated = await handleAssignMeetingSession(meetingSession.id);
+    return updated;
+  }
+
+  async function handleRenameMeetingSession(meetingSessionId: number, title: string) {
+    const updatedSession = await api.updateMeetingSession(meetingSessionId, { title });
+    setMeetingSessions((sessions) =>
+      sessions.map((session) => (session.id === updatedSession.id ? updatedSession : session)),
+    );
+    setEvent((previous) =>
+      previous?.meeting_session_id === updatedSession.id
+        ? { ...previous, meeting_session: updatedSession }
+        : previous,
+    );
+    return updatedSession;
   }
 
   if (!event) {
@@ -417,14 +433,13 @@ function EventDetailInner() {
           </div>
         </motion.section>
 
-        {isMeeting && (
-          <MeetingSessionOrganizer
-            event={event}
-            sessions={meetingSessions}
-            onAssign={handleAssignMeetingSession}
-            onCreateAndAssign={handleCreateMeetingSession}
-          />
-        )}
+        <MeetingSessionOrganizer
+          event={event}
+          sessions={meetingSessions}
+          onAssign={handleAssignMeetingSession}
+          onCreateAndAssign={handleCreateMeetingSession}
+          onRenameSession={handleRenameMeetingSession}
+        />
 
         {/* Submission state */}
         <motion.section
@@ -838,41 +853,84 @@ function MeetingSessionOrganizer({
   sessions,
   onAssign,
   onCreateAndAssign,
+  onRenameSession,
 }: {
   event: EventDetail;
   sessions: MeetingSessionOut[];
-  onAssign: (meetingSessionId: number | null) => void | Promise<void>;
-  onCreateAndAssign: (payload: { title: string; started_on?: string | null; ended_on?: string | null }) => void | Promise<void>;
+  onAssign: (meetingSessionId: number | null) => EventDetail | null | void | Promise<EventDetail | null | void>;
+  onCreateAndAssign: (payload: { title: string }) => EventDetail | null | void | Promise<EventDetail | null | void>;
+  onRenameSession: (meetingSessionId: number, title: string) => MeetingSessionOut | void | Promise<MeetingSessionOut | void>;
 }) {
-  const [newTitle, setNewTitle] = useState("");
-  const [startedOn, setStartedOn] = useState("");
-  const [endedOn, setEndedOn] = useState("");
-  const [working, setWorking] = useState(false);
+  const savedSessionId = event.meeting_session_id ? String(event.meeting_session_id) : "";
+  const initialSession = sessions.find((session) => String(session.id) === savedSessionId);
+  const [selectedSessionId, setSelectedSessionId] = useState(savedSessionId);
+  const [assignmentStatus, setAssignmentStatus] = useState<"idle" | "dirty" | "saving" | "saved">("idle");
+  const [newTitle, setNewTitle] = useState(event.title);
+  const [newTitleTouched, setNewTitleTouched] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [editTitle, setEditTitle] = useState(initialSession?.title ?? "");
+  const [renameStatus, setRenameStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const selectedOptionSession = sessions.find((session) => String(session.id) === selectedSessionId);
 
-  async function assign(value: string) {
-    if (working) return;
-    setWorking(true);
-    try {
-      await onAssign(value ? Number(value) : null);
-    } finally {
-      setWorking(false);
+  useEffect(() => {
+    setSelectedSessionId(savedSessionId);
+    setAssignmentStatus((status) => (status === "saving" ? "saved" : "idle"));
+  }, [event.id, savedSessionId]);
+
+  useEffect(() => {
+    if (!newTitleTouched) setNewTitle(event.title);
+  }, [event.title, newTitleTouched]);
+
+  useEffect(() => {
+    setEditTitle(selectedOptionSession?.title ?? "");
+    setRenameStatus("idle");
+  }, [selectedOptionSession?.id, selectedOptionSession?.title]);
+
+  const assignmentChanged = selectedSessionId !== savedSessionId;
+  const canRename = Boolean(selectedOptionSession && editTitle.trim() && editTitle.trim() !== selectedOptionSession.title);
+
+  function changeSelectedSession(value: string) {
+    setSelectedSessionId(value);
+    setAssignmentStatus(value === savedSessionId ? "idle" : "dirty");
+  }
+
+  async function saveAssignment() {
+    if (!assignmentChanged || assignmentStatus === "saving") return;
+    setAssignmentStatus("saving");
+    const updated = await onAssign(selectedSessionId ? Number(selectedSessionId) : null);
+    if (updated) {
+      toast.success(selectedSessionId ? "已整理到这次见面" : "已移出见面场次");
+      setAssignmentStatus("saved");
+    } else {
+      setAssignmentStatus("dirty");
     }
   }
 
   async function createAndAssign() {
-    if (!newTitle.trim() || working) return;
-    setWorking(true);
+    if (!newTitle.trim() || creating) return;
+    setCreating(true);
     try {
-      await onCreateAndAssign({
-        title: newTitle.trim(),
-        started_on: startedOn || null,
-        ended_on: endedOn || null,
-      });
-      setNewTitle("");
-      setStartedOn("");
-      setEndedOn("");
+      const updated = await onCreateAndAssign({ title: newTitle.trim() });
+      if (updated) {
+        toast.success("已新建场次并整理进去");
+        setAssignmentStatus("saved");
+        setNewTitle(event.title);
+        setNewTitleTouched(false);
+      }
     } finally {
-      setWorking(false);
+      setCreating(false);
+    }
+  }
+
+  async function saveSessionTitle() {
+    if (!selectedOptionSession || !canRename || renameStatus === "saving") return;
+    setRenameStatus("saving");
+    try {
+      await onRenameSession(selectedOptionSession.id, editTitle.trim());
+      setRenameStatus("saved");
+      toast.success("场次名称已保存");
+    } catch {
+      setRenameStatus("idle");
     }
   }
 
@@ -881,7 +939,7 @@ function MeetingSessionOrganizer({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="font-sc text-xs font-medium text-rose-deep">见面场次</p>
-          <p className="mt-1 font-sc text-sm text-ink-soft">把这条小事放进一次命名的见面里。</p>
+          <p className="mt-1 font-sc text-sm text-ink-soft">双方都可以整理归属；内容和发生时间仍只按原权限编辑。</p>
         </div>
         <span className="pill inline-flex items-center gap-1 bg-rose/10 text-rose-deep">
           <CalendarHeart className="h-3.5 w-3.5" />
@@ -892,9 +950,9 @@ function MeetingSessionOrganizer({
       <div className="mt-4 grid gap-3">
         <select
           className="input-field font-sc"
-          value={event.meeting_session_id ?? ""}
-          disabled={working}
-          onChange={(selectEvent) => void assign(selectEvent.target.value)}
+          value={selectedSessionId}
+          disabled={assignmentStatus === "saving" || creating}
+          onChange={(selectEvent) => changeSelectedSession(selectEvent.target.value)}
         >
           <option value="">未整理</option>
           {sessions.map((session) => (
@@ -904,39 +962,80 @@ function MeetingSessionOrganizer({
           ))}
         </select>
 
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="btn-primary inline-flex min-h-11 items-center gap-2 rounded-2xl px-4 font-sc text-sm focus-ring disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!assignmentChanged || assignmentStatus === "saving" || creating}
+            onClick={() => void saveAssignment()}
+          >
+            {assignmentStatus === "saving" && <Loader2 className="h-4 w-4 animate-spin" />}
+            保存归属
+          </button>
+          {assignmentStatus === "dirty" && <span className="font-sc text-xs text-rose-deep">还没保存</span>}
+          {assignmentStatus === "saved" && (
+            <span className="inline-flex items-center gap-1 font-sc text-xs text-sage">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              已保存
+            </span>
+          )}
+        </div>
+
+        {selectedOptionSession && (
+          <div className="grid gap-2 rounded-2xl bg-surface-raised/72 p-3 hairline">
+            <label className="font-sc text-xs font-medium text-ink-muted">场次标题</label>
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+              <input
+                className="input-field font-sc"
+                value={editTitle}
+                maxLength={200}
+                disabled={renameStatus === "saving"}
+                onChange={(inputEvent) => {
+                  setEditTitle(inputEvent.target.value);
+                  setRenameStatus("idle");
+                }}
+              />
+              <button
+                type="button"
+                className="btn-ghost inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-4 font-sc text-sm focus-ring disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!canRename || renameStatus === "saving"}
+                onClick={() => void saveSessionTitle()}
+              >
+                {renameStatus === "saving" && <Loader2 className="h-4 w-4 animate-spin" />}
+                保存名称
+              </button>
+            </div>
+            {renameStatus === "saved" && (
+              <span className="inline-flex items-center gap-1 font-sc text-xs text-sage">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                名称已保存
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="grid gap-3 rounded-2xl bg-surface-raised/72 p-3 hairline">
           <input
             className="input-field font-sc"
             placeholder="新场次名称，例如：周末见面"
             value={newTitle}
             maxLength={200}
-            disabled={working}
-            onChange={(inputEvent) => setNewTitle(inputEvent.target.value)}
+            disabled={creating}
+            onChange={(inputEvent) => {
+              setNewTitleTouched(true);
+              setNewTitle(inputEvent.target.value);
+            }}
           />
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <input
-              type="date"
-              className="input-field font-sc"
-              value={startedOn}
-              disabled={working}
-              onChange={(inputEvent) => setStartedOn(inputEvent.target.value)}
-              aria-label="开始日期"
-            />
-            <input
-              type="date"
-              className="input-field font-sc"
-              value={endedOn}
-              disabled={working}
-              onChange={(inputEvent) => setEndedOn(inputEvent.target.value)}
-              aria-label="结束日期"
-            />
-          </div>
+          <p className="font-sc text-[11px] leading-relaxed text-ink-muted">
+            新场次默认用这条小事的标题，日期范围会由归入其中的事件自动计算。
+          </p>
           <button
             type="button"
-            className="btn-ghost min-h-11 rounded-2xl px-4 font-sc text-sm focus-ring disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={!newTitle.trim() || working}
+            className="btn-ghost inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-4 font-sc text-sm focus-ring disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!newTitle.trim() || creating}
             onClick={() => void createAndAssign()}
           >
+            {creating && <Loader2 className="h-4 w-4 animate-spin" />}
             新建并归入
           </button>
         </div>

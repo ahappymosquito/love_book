@@ -1,4 +1,4 @@
-"""Event route handlers for creating, listing, updating, deleting, meeting-session classification, and notifying timeline events.
+"""Event route handlers for creating, listing, updating, deleting, pair-level meeting-session classification, and notifying timeline events.
 
 Mutation endpoints commit before returning so the frontend can immediately reload the new or changed event.
 """
@@ -26,13 +26,9 @@ def create_event(
 ) -> EventDetail:
     pair = get_pair_for_user(db, current_user.id)
     meeting_session_id = payload.meeting_session_id
-    if payload.event_kind != EventKind.offline_meeting and meeting_session_id is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only offline meeting events can be assigned to a meeting session",
-        )
     if meeting_session_id is not None:
         ensure_pair_meeting_session(db, meeting_session_id, pair)
+    event_kind = EventKind.offline_meeting if meeting_session_id is not None else payload.event_kind
     event = Event(
         pair_id=pair.id,
         creator_id=current_user.id,
@@ -40,7 +36,7 @@ def create_event(
         title=payload.title,
         description=payload.description,
         occurred_at=payload.occurred_at,
-        event_kind=payload.event_kind,
+        event_kind=event_kind,
         visibility_mode=payload.visibility_mode,
     )
     db.add(event)
@@ -93,24 +89,25 @@ def update_event(
     pair = get_pair_for_user(db, current_user.id)
     event = ensure_pair_event(db, event_id, pair)
     updates = payload.model_dump(exclude_unset=True)
-    meeting_update_only = set(updates) <= {"meeting_session_id"}
-    if event.creator_id != current_user.id and not meeting_update_only:
+    classification_update_only = set(updates) <= {"meeting_session_id"}
+    if event.creator_id != current_user.id and not classification_update_only:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the creator can update this event")
 
-    next_kind = updates.get("event_kind", event.event_kind)
-    next_meeting_session_id = updates.get("meeting_session_id", event.meeting_session_id)
-    if next_kind != EventKind.offline_meeting:
-        if updates.get("meeting_session_id") is not None:
+    if updates.get("event_kind") != EventKind.offline_meeting and updates.get("meeting_session_id") is not None:
+        if "event_kind" in updates:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Only offline meeting events can be assigned to a meeting session",
+                detail="Assigned meeting events must use the offline meeting kind",
             )
-        updates["meeting_session_id"] = None
-    elif next_meeting_session_id is not None:
-        ensure_pair_meeting_session(db, next_meeting_session_id, pair)
 
-    if event.creator_id != current_user.id and event.event_kind != EventKind.offline_meeting:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only offline meeting events can be organized")
+    if "meeting_session_id" in updates:
+        if updates["meeting_session_id"] is not None:
+            ensure_pair_meeting_session(db, updates["meeting_session_id"], pair)
+            updates["event_kind"] = EventKind.offline_meeting
+    else:
+        next_kind = updates.get("event_kind", event.event_kind)
+        if next_kind != EventKind.offline_meeting:
+            updates["meeting_session_id"] = None
 
     for field, value in updates.items():
         setattr(event, field, value)

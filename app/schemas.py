@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests with an enable switch, rich AMap restaurant evidence, habit check-ins, manual todo candidate queues, named meeting sessions, typed timeline events, media, quotes, cycle records with empty/predicted days, and todo APIs."""
+"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests with an enable switch, rich AMap restaurant evidence, habit check-ins, manual todo candidate queues, named meeting sessions with event-derived ranges, typed timeline events, media, quotes, cycle records with empty/predicted days, and todo APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -176,8 +176,6 @@ class SubmissionState(APIModel):
 
 class MeetingSessionCreate(APIModel):
     title: str = Field(min_length=1, max_length=200)
-    started_on: date | None = None
-    ended_on: date | None = None
 
     @field_validator("title")
     @classmethod
@@ -190,8 +188,6 @@ class MeetingSessionCreate(APIModel):
 
 class MeetingSessionUpdate(APIModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
-    started_on: date | None = None
-    ended_on: date | None = None
 
     @field_validator("title")
     @classmethod
@@ -207,8 +203,8 @@ class MeetingSessionUpdate(APIModel):
 class MeetingSessionLite(APIModel):
     id: int
     title: str
-    started_on: date | None = None
-    ended_on: date | None = None
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

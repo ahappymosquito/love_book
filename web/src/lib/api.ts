@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests with an enable switch, habits, todo candidate queues with manual category fallback, scheduling, weather hints, named meeting sessions, typed timeline events, quotes, live cycle dashboards, reactions, and media including todo image deletion.
+// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests with an enable switch, habits, todo candidate queues with manual category fallback, scheduling, weather hints, named meeting sessions with event-derived ranges, typed timeline events, quotes, live cycle dashboards, reactions, and media including todo image deletion.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -373,14 +373,14 @@ export const api = {
 
   // Events
   listMeetingSessions: () => apiRequest<MeetingSessionOut[]>("/meeting-sessions"),
-  createMeetingSession: (payload: { title: string; started_on?: string | null; ended_on?: string | null }) =>
+  createMeetingSession: (payload: { title: string }) =>
     apiRequest<MeetingSessionOut>("/meeting-sessions", {
       method: "POST",
       json: payload,
     }),
   updateMeetingSession: (
     id: number,
-    payload: { title?: string; started_on?: string | null; ended_on?: string | null },
+    payload: { title?: string },
   ) =>
     apiRequest<MeetingSessionOut>(`/meeting-sessions/${id}`, {
       method: "PATCH",

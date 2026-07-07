@@ -12,6 +12,8 @@ Love Book is used by a fixed pair of partners who share private tokens and retur
 
 The product gives two people a private shared place to write events, exchange comments, upload voice and image memories, organize multiple offline-meeting notes into named meeting sessions, arrange food/play plans, track personal daily habits, track cycle records, and revisit milestones. Success means the interface feels trustworthy enough for long-term personal use while keeping common tasks quick and clear.
 
+Offline-meeting organization is intentionally manual by session name: a weekend, holiday, or special trip can contain many events from either partner, and the session is the real meeting-count unit. Both partners may organize either person's event into a session, which automatically treats that event as an offline meeting while preserving the original content permissions. Session date ranges are derived from the assigned event times, so the user names and saves the session rather than filling start/end dates.
+
 The habits surface is a logged-in daily check-in dashboard: the bottom navigation opens `/habits`, settings remain available from the top avatar, the liquid-glass calendar shows both partners' progress with a Monday-start week view by default and an optional month view, and the personal/counterpart checklists stay as vertical collapsible panels on all viewport sizes. Habit colors are chosen from one color button during creation or explicit editing, while completed rows turn sage green with a short completion animation.
 
 ## Brand Personality

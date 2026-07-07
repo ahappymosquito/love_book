@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home screen for reading shared memories and manually named offline-meeting sessions inside a mobile-safe viewport with a tappable relationship quote panel that keeps bottom-nav features out of the top section.
+// Timeline home screen for reading shared memories and manually named offline-meeting sessions with event-derived date ranges inside a mobile-safe viewport with a tappable relationship quote panel that keeps bottom-nav features out of the top section.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -91,10 +91,10 @@ function monthSortValue(key: string): number {
 }
 
 function meetingSessionDateLabel(session: MeetingSessionOut): string {
-  if (session.started_on && session.ended_on && session.started_on !== session.ended_on) {
-    return `${formatAbsolute(`${session.started_on}T00:00:00`, false)} - ${formatAbsolute(`${session.ended_on}T00:00:00`, false)}`;
+  if (session.started_at && session.ended_at && session.started_at.slice(0, 10) !== session.ended_at.slice(0, 10)) {
+    return `${formatAbsolute(session.started_at, false)} - ${formatAbsolute(session.ended_at, false)}`;
   }
-  if (session.started_on) return formatAbsolute(`${session.started_on}T00:00:00`, false);
+  if (session.started_at) return formatAbsolute(session.started_at, false);
   return "日期未定";
 }
 
@@ -182,8 +182,8 @@ function TimelineInner() {
       .map((session) => ({ session, events: eventMap.get(session.id) ?? [] }))
       .filter((group) => group.events.length > 0);
     groups.sort((left, right) => {
-      const leftTime = new Date(left.session.started_on ?? left.events[0]?.occurred_at ?? left.session.created_at).getTime();
-      const rightTime = new Date(right.session.started_on ?? right.events[0]?.occurred_at ?? right.session.created_at).getTime();
+      const leftTime = new Date(left.session.started_at ?? left.events[0]?.occurred_at ?? left.session.created_at).getTime();
+      const rightTime = new Date(right.session.started_at ?? right.events[0]?.occurred_at ?? right.session.created_at).getTime();
       return rightTime - leftTime;
     });
     if (orphanEvents.length > 0) {
@@ -192,8 +192,8 @@ function TimelineInner() {
           id: 0,
           pair_id: 0,
           title: "未整理的见面",
-          started_on: null,
-          ended_on: null,
+          started_at: null,
+          ended_at: null,
           created_by_id: 0,
           created_at: orphanEvents[0].created_at,
           updated_at: orphanEvents[0].created_at,

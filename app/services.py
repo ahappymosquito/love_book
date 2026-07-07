@@ -1,12 +1,12 @@
-"""Shared business logic for pair access, named meeting session checks, typed event summaries, comment reactions, content visibility, media metadata, database quotes, and home reminders."""
+"""Shared business logic for pair access, named meeting session checks with event-derived ranges, typed event summaries, comment reactions, content visibility, media metadata, database quotes, and home reminders."""
 
 import random
-from datetime import date, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
 from fastapi import HTTPException, status
-from sqlalchemy import Select, exists, or_, select
+from sqlalchemy import Select, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Comment, CommentReaction, DefaultQuote, DeviceToken, Event, Image, MeetingSession, Pair, Quote, User, VisibilityMode, Voice, utc_now
@@ -227,6 +227,24 @@ def ensure_pair_meeting_session(db: Session, session_id: int, pair: Pair) -> Mee
     return meeting_session
 
 
+def meeting_session_time_range(db: Session, meeting_session_id: int) -> tuple[datetime | None, datetime | None]:
+    event_time = func.coalesce(Event.occurred_at, Event.created_at)
+    started_at, ended_at = db.execute(
+        select(func.min(event_time), func.max(event_time)).where(Event.meeting_session_id == meeting_session_id)
+    ).one()
+    return started_at, ended_at
+
+
+def meeting_session_lite(db: Session, meeting_session: MeetingSession) -> MeetingSessionLite:
+    started_at, ended_at = meeting_session_time_range(db, meeting_session.id)
+    return MeetingSessionLite(
+        id=meeting_session.id,
+        title=meeting_session.title,
+        started_at=started_at,
+        ended_at=ended_at,
+    )
+
+
 def comment_reaction_summaries(
     db: Session,
     comments: list[Comment],
@@ -332,7 +350,7 @@ def event_summary(db: Session, event: Event, user: User, pair: Pair) -> EventSum
         pair_id=event.pair_id,
         creator_id=event.creator_id,
         meeting_session_id=event.meeting_session_id,
-        meeting_session=MeetingSessionLite.model_validate(event.meeting_session) if event.meeting_session else None,
+        meeting_session=meeting_session_lite(db, event.meeting_session) if event.meeting_session else None,
         title=event.title,
         description=event.description,
         occurred_at=event.occurred_at,

@@ -1,4 +1,4 @@
-// Shared TypeScript contracts for API payloads, editable profile/location state, named meeting sessions, typed timeline events, quote libraries, habits, food/play/stay/wish todo boards, candidate queues with manual category fallback, rich AMap restaurant evidence, todo weather hints, admin saved-model AMap-grounded AI tests with an enable switch, cycle empty/predicted days, and reminders.
+// Shared TypeScript contracts for API payloads, editable profile/location state, named meeting sessions with event-derived ranges, typed timeline events, quote libraries, habits, food/play/stay/wish todo boards, candidate queues with manual category fallback, rich AMap restaurant evidence, todo weather hints, admin saved-model AMap-grounded AI tests with an enable switch, cycle empty/predicted days, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
 export type EventKind = "memory" | "offline_meeting";
@@ -38,8 +38,8 @@ export interface SubmissionState {
 export interface MeetingSessionLite {
   id: number;
   title: string;
-  started_on: string | null;
-  ended_on: string | null;
+  started_at: string | null;
+  ended_at: string | null;
 }
 
 export interface MeetingSessionOut extends MeetingSessionLite {

@@ -1,6 +1,6 @@
 "use client";
 
-// Reusable event creation form shared by the direct /create page and the global bottom-sheet create window, including manually named meeting sessions for offline-meeting timeline clusters.
+// Reusable event creation form shared by the direct /create page and the global bottom-sheet create window, including title-defaulted meeting sessions whose date ranges are derived from assigned events.
 
 import { useEffect, useState } from "react";
 import { CalendarHeart, Eye, Loader2, Lock, Sparkles } from "lucide-react";
@@ -24,8 +24,7 @@ export function CreateEventForm({
   const [meetingSessions, setMeetingSessions] = useState<MeetingSessionOut[]>([]);
   const [meetingSessionChoice, setMeetingSessionChoice] = useState("new");
   const [newMeetingTitle, setNewMeetingTitle] = useState("");
-  const [newMeetingStart, setNewMeetingStart] = useState("");
-  const [newMeetingEnd, setNewMeetingEnd] = useState("");
+  const [meetingTitleTouched, setMeetingTitleTouched] = useState(false);
   const [visibility, setVisibility] = useState<VisibilityMode>("public");
   const [submitting, setSubmitting] = useState(false);
 
@@ -36,6 +35,11 @@ export function CreateEventForm({
       .then(setMeetingSessions)
       .catch(() => setMeetingSessions([]));
   }, [eventKind]);
+
+  useEffect(() => {
+    if (eventKind !== "offline_meeting" || meetingSessionChoice !== "new" || meetingTitleTouched) return;
+    setNewMeetingTitle(title);
+  }, [eventKind, meetingSessionChoice, meetingTitleTouched, title]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -52,8 +56,6 @@ export function CreateEventForm({
           }
           const meetingSession = await api.createMeetingSession({
             title: newMeetingTitle.trim(),
-            started_on: newMeetingStart || null,
-            ended_on: newMeetingEnd || null,
           });
           meetingSessionId = meetingSession.id;
         } else {
@@ -112,29 +114,15 @@ export function CreateEventForm({
                   placeholder="例如：端午杭州三天"
                   value={newMeetingTitle}
                   maxLength={200}
-                  onChange={(event) => setNewMeetingTitle(event.target.value)}
+                  onChange={(event) => {
+                    setMeetingTitleTouched(true);
+                    setNewMeetingTitle(event.target.value);
+                  }}
                 />
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>开始日期（可不填）</Label>
-                  <input
-                    type="date"
-                    className="input-field font-sc"
-                    value={newMeetingStart}
-                    onChange={(event) => setNewMeetingStart(event.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>结束日期（可不填）</Label>
-                  <input
-                    type="date"
-                    className="input-field font-sc"
-                    value={newMeetingEnd}
-                    onChange={(event) => setNewMeetingEnd(event.target.value)}
-                  />
-                </div>
-              </div>
+              <p className="font-sc text-[11px] leading-relaxed text-ink-muted">
+                开始和结束时间会根据归入这次见面的事件自动整理。
+              </p>
             </div>
           )}
         </div>
