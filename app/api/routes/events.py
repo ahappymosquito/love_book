@@ -1,4 +1,4 @@
-"""Event route handlers for creating, listing, updating, deleting, pair-level meeting-session classification, and notifying timeline events.
+"""Event route handlers for creating, listing, updating, deleting, automatic meeting creation and cleanup, and notifying timeline events.
 
 Mutation endpoints commit before returning so the frontend can immediately reload the new or changed event.
 """
@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.emailer import notify_event_created
 from app.models import Event, EventKind, User
 from app.schemas import EventCreate, EventDetail, EventSummary, EventUpdate
-from app.services import active_token_for_user, counterpart, ensure_pair_event, ensure_pair_meeting_session, event_detail, event_summary
+from app.services import active_token_for_user, counterpart, create_meeting_for_event, delete_meeting_if_empty, ensure_pair_event, ensure_pair_meeting_session, event_detail, event_summary
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -28,6 +28,8 @@ def create_event(
     meeting_session_id = payload.meeting_session_id
     if meeting_session_id is not None:
         ensure_pair_meeting_session(db, meeting_session_id, pair)
+    elif payload.event_kind == EventKind.offline_meeting:
+        meeting_session_id = create_meeting_for_event(db, pair, current_user, payload.title).id
     event_kind = EventKind.offline_meeting if meeting_session_id is not None else payload.event_kind
     event = Event(
         pair_id=pair.id,
@@ -88,6 +90,7 @@ def update_event(
 ) -> EventDetail:
     pair = get_pair_for_user(db, current_user.id)
     event = ensure_pair_event(db, event_id, pair)
+    previous_meeting_session_id = event.meeting_session_id
     updates = payload.model_dump(exclude_unset=True)
     classification_update_only = set(updates) <= {"meeting_session_id"}
     if event.creator_id != current_user.id and not classification_update_only:
@@ -106,11 +109,17 @@ def update_event(
             updates["event_kind"] = EventKind.offline_meeting
     else:
         next_kind = updates.get("event_kind", event.event_kind)
-        if next_kind != EventKind.offline_meeting:
+        if next_kind == EventKind.offline_meeting and event.meeting_session_id is None:
+            meeting_title = updates.get("title", event.title)
+            updates["meeting_session_id"] = create_meeting_for_event(db, pair, current_user, meeting_title).id
+        elif next_kind != EventKind.offline_meeting:
             updates["meeting_session_id"] = None
 
     for field, value in updates.items():
         setattr(event, field, value)
+    db.flush()
+    if previous_meeting_session_id != event.meeting_session_id:
+        delete_meeting_if_empty(db, previous_meeting_session_id)
     db.commit()
     db.refresh(event)
     return event_detail(db, event, current_user, pair)
@@ -126,6 +135,9 @@ def delete_event(
     event = ensure_pair_event(db, event_id, pair)
     if event.creator_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the creator can delete this event")
+    meeting_session_id = event.meeting_session_id
     db.delete(event)
+    db.flush()
+    delete_meeting_if_empty(db, meeting_session_id)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

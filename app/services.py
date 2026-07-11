@@ -1,4 +1,4 @@
-"""Shared business logic for pair access, named meeting session checks with event-derived ranges, typed event summaries, comment reactions, content visibility, media metadata, database quotes, and home reminders."""
+"""Shared business logic for pair access, automatically named meetings, empty-meeting cleanup, event-derived ranges, typed event summaries, comment reactions, content visibility, media metadata, database quotes, and home reminders."""
 
 import random
 from datetime import date, datetime, timedelta, timezone
@@ -225,6 +225,23 @@ def ensure_pair_meeting_session(db: Session, session_id: int, pair: Pair) -> Mee
     if meeting_session is None or meeting_session.pair_id != pair.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting session not found")
     return meeting_session
+
+
+def create_meeting_for_event(db: Session, pair: Pair, user: User, title: str) -> MeetingSession:
+    meeting = MeetingSession(pair_id=pair.id, title=title, created_by_id=user.id)
+    db.add(meeting)
+    db.flush()
+    return meeting
+
+
+def delete_meeting_if_empty(db: Session, meeting_session_id: int | None) -> None:
+    if meeting_session_id is None:
+        return
+    event_count = db.scalar(select(func.count(Event.id)).where(Event.meeting_session_id == meeting_session_id)) or 0
+    if event_count == 0:
+        meeting = db.get(MeetingSession, meeting_session_id)
+        if meeting is not None:
+            db.delete(meeting)
 
 
 def meeting_session_time_range(db: Session, meeting_session_id: int) -> tuple[datetime | None, datetime | None]:

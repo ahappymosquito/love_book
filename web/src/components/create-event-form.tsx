@@ -1,13 +1,13 @@
 "use client";
 
-// Shared grouped event form for the direct page and global Sheet, with solid content sections, a Liquid Glass action bar, and derived meeting-session dates.
+// Shared event form for the direct page and global Sheet, with automatic meeting creation, solid content sections, and a Liquid Glass action bar.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { CalendarHeart, Eye, Loader2, Lock, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { fromLocalInputValue, toLocalInputValue } from "@/lib/format";
-import type { EventDetail, EventKind, MeetingSessionOut, VisibilityMode } from "@/lib/types";
+import type { EventDetail, EventKind, VisibilityMode } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
 export function CreateEventForm({
@@ -21,53 +21,19 @@ export function CreateEventForm({
   const [description, setDescription] = useState("");
   const [occurredAt, setOccurredAt] = useState<string>(toLocalInputValue(new Date()));
   const [eventKind, setEventKind] = useState<EventKind>("memory");
-  const [meetingSessions, setMeetingSessions] = useState<MeetingSessionOut[]>([]);
-  const [meetingSessionChoice, setMeetingSessionChoice] = useState("new");
-  const [newMeetingTitle, setNewMeetingTitle] = useState("");
-  const [meetingTitleTouched, setMeetingTitleTouched] = useState(false);
   const [visibility, setVisibility] = useState<VisibilityMode>("public");
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (eventKind !== "offline_meeting") return;
-    void api
-      .listMeetingSessions()
-      .then(setMeetingSessions)
-      .catch(() => setMeetingSessions([]));
-  }, [eventKind]);
-
-  useEffect(() => {
-    if (eventKind !== "offline_meeting" || meetingSessionChoice !== "new" || meetingTitleTouched) return;
-    setNewMeetingTitle(title);
-  }, [eventKind, meetingSessionChoice, meetingTitleTouched, title]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim() || submitting) return;
     setSubmitting(true);
     try {
-      let meetingSessionId: number | null = null;
-      if (eventKind === "offline_meeting") {
-        if (meetingSessionChoice === "new") {
-          if (!newMeetingTitle.trim()) {
-            toast.error("先给这次见面起个名字");
-            setSubmitting(false);
-            return;
-          }
-          const meetingSession = await api.createMeetingSession({
-            title: newMeetingTitle.trim(),
-          });
-          meetingSessionId = meetingSession.id;
-        } else {
-          meetingSessionId = Number(meetingSessionChoice);
-        }
-      }
       const event = await api.createEvent({
         title: title.trim(),
         description: description.trim() || null,
         occurred_at: occurredAt ? fromLocalInputValue(occurredAt) : null,
         event_kind: eventKind,
-        meeting_session_id: meetingSessionId,
         visibility_mode: visibility,
       });
       toast.success("已记下这一笔");
@@ -86,47 +52,6 @@ export function CreateEventForm({
           标题先写清楚，细节可以慢慢补，像在手账上贴一页。
         </p>
       </div>
-
-      {eventKind === "offline_meeting" && (
-        <div className="form-section space-y-3 bg-peach/10">
-          <div className="space-y-2">
-            <Label>见面场次</Label>
-            <select
-              className="input-field font-sc"
-              value={meetingSessionChoice}
-              onChange={(event) => setMeetingSessionChoice(event.target.value)}
-            >
-              <option value="new">新的一次见面</option>
-              {meetingSessions.map((session) => (
-                <option key={session.id} value={session.id}>
-                  {session.title}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {meetingSessionChoice === "new" && (
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <Label>场次名称</Label>
-                <input
-                  className="input-field font-sc"
-                  placeholder="例如：端午杭州三天"
-                  value={newMeetingTitle}
-                  maxLength={200}
-                  onChange={(event) => {
-                    setMeetingTitleTouched(true);
-                    setNewMeetingTitle(event.target.value);
-                  }}
-                />
-              </div>
-              <p className="font-sc text-[11px] leading-relaxed text-ink-muted">
-                开始和结束时间会根据归入这次见面的事件自动整理。
-              </p>
-            </div>
-          )}
-        </div>
-      )}
 
       <div className="form-section space-y-2">
         <Label>标题</Label>
@@ -167,7 +92,7 @@ export function CreateEventForm({
             onClick={() => setEventKind("offline_meeting")}
             icon={<CalendarHeart className="h-4 w-4" />}
             title="线下见面"
-            desc="会进入见面时间河流，在首页被温柔高亮。"
+            desc="保存后会自动收进一次同名见面，之后也能继续添加记录。"
           />
         </div>
       </div>
@@ -206,7 +131,7 @@ export function CreateEventForm({
       <div className="glass-surface glass-prominent sticky bottom-0 z-10 flex justify-end rounded-[18px] p-2">
         <button
           type="submit"
-          disabled={!title.trim() || (eventKind === "offline_meeting" && meetingSessionChoice === "new" && !newMeetingTitle.trim()) || submitting}
+          disabled={!title.trim() || submitting}
           className="btn-primary inline-flex min-h-[48px] items-center gap-2 rounded-2xl px-6 py-3.5 font-sc text-[15px] font-medium focus-ring"
         >
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}

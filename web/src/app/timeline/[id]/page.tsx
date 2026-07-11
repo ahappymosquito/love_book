@@ -1,6 +1,6 @@
 "use client";
 
-// Event detail screen with mobile viewport guards, explicit-save meeting session organization for either user's events, warm scrapbook reading layout, avatar-aware authors, stable-hover reactions, media stream, submission state, and bottom-nav-covering composer.
+// Event detail screen with mobile viewport guards, creator-only inline event editing, automatic meeting marking, warm scrapbook reading layout, avatar-aware authors, stable-hover reactions, media stream, submission state, and bottom-nav-covering composer.
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -12,10 +12,13 @@ import {
   Loader2,
   Trash2,
   CalendarHeart,
+  Check,
+  Pencil,
   Sparkles,
   Lock,
   ThumbsDown,
   ThumbsUp,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AuthGate } from "@/components/auth-gate";
@@ -30,7 +33,7 @@ import { VisibilityBadge } from "@/components/visibility-badge";
 import { VoicePlayer } from "@/components/voice-player";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
-import { formatAbsolute, formatRelative } from "@/lib/format";
+import { formatAbsolute, formatRelative, fromLocalInputValue, toLocalInputValue } from "@/lib/format";
 import type {
   CommentOut,
   CommentReactionSummary,
@@ -38,8 +41,8 @@ import type {
   EventDetail,
   EventKind,
   ImageOut,
-  MeetingSessionOut,
   UserOut,
+  VisibilityMode,
   VoiceOut,
 } from "@/lib/types";
 import { cn } from "@/lib/cn";
@@ -92,22 +95,23 @@ function EventDetailInner() {
   const me = useAppStore((s) => s.me)!;
 
   const [event, setEvent] = useState<EventDetail | null>(null);
-  const [meetingSessions, setMeetingSessions] = useState<MeetingSessionOut[]>([]);
   const [pending, setPending] = useState<Pending[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [updatingKind, setUpdatingKind] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editOccurredAt, setEditOccurredAt] = useState("");
+  const [editVisibility, setEditVisibility] = useState<VisibilityMode>("public");
   const [lightbox, setLightbox] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     try {
-      const [data, sessions] = await Promise.all([
-        api.getEvent(eventId),
-        api.listMeetingSessions().catch(() => []),
-      ]);
+      const data = await api.getEvent(eventId);
       setEvent(data);
-      setMeetingSessions(sessions);
     } catch {
       router.replace("/timeline");
     }
@@ -303,40 +307,31 @@ function EventDetailInner() {
     }
   }
 
-  async function handleAssignMeetingSession(meetingSessionId: number | null) {
-    if (!event) return null;
-    const previous = event;
-    setEvent({ ...event, meeting_session_id: meetingSessionId });
+  function beginEditing() {
+    if (!event) return;
+    setEditTitle(event.title);
+    setEditDescription(event.description ?? "");
+    setEditOccurredAt(event.occurred_at ? toLocalInputValue(new Date(event.occurred_at)) : "");
+    setEditVisibility(event.visibility_mode);
+    setEditing(true);
+  }
+
+  async function saveEventEdit() {
+    if (!event || !editTitle.trim() || savingEdit) return;
+    setSavingEdit(true);
     try {
-      const updated = await api.updateEvent(event.id, { meeting_session_id: meetingSessionId });
+      const updated = await api.updateEvent(event.id, {
+        title: editTitle.trim(),
+        description: editDescription.trim() || null,
+        occurred_at: editOccurredAt ? fromLocalInputValue(editOccurredAt) : null,
+        visibility_mode: editVisibility,
+      });
       setEvent(updated);
-      setMeetingSessions(await api.listMeetingSessions().catch(() => meetingSessions));
-      return updated;
-    } catch {
-      setEvent(previous);
-      return null;
+      setEditing(false);
+      toast.success("记录已保存");
+    } finally {
+      setSavingEdit(false);
     }
-  }
-
-  async function handleCreateMeetingSession(payload: { title: string }) {
-    if (!event) return null;
-    const meetingSession = await api.createMeetingSession(payload);
-    setMeetingSessions((sessions) => [meetingSession, ...sessions]);
-    const updated = await handleAssignMeetingSession(meetingSession.id);
-    return updated;
-  }
-
-  async function handleRenameMeetingSession(meetingSessionId: number, title: string) {
-    const updatedSession = await api.updateMeetingSession(meetingSessionId, { title });
-    setMeetingSessions((sessions) =>
-      sessions.map((session) => (session.id === updatedSession.id ? updatedSession : session)),
-    );
-    setEvent((previous) =>
-      previous?.meeting_session_id === updatedSession.id
-        ? { ...previous, meeting_session: updatedSession }
-        : previous,
-    );
-    return updatedSession;
   }
 
   if (!event) {
@@ -363,8 +358,17 @@ function EventDetailInner() {
           isMine ? (
             <>
               <button
+                onClick={beginEditing}
+                disabled={editing || savingEdit}
+                className="grid h-10 w-10 place-items-center rounded-full text-ink-soft transition hover:bg-peach/16 hover:text-rose-deep focus-ring disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="编辑记录"
+                title="编辑记录"
+              >
+                <Pencil className="h-4.5 w-4.5" />
+              </button>
+              <button
                 onClick={handleToggleMeetingKind}
-                disabled={updatingKind}
+                disabled={updatingKind || editing}
                 className={cn(
                   "grid h-10 w-10 place-items-center rounded-full transition focus-ring disabled:cursor-wait disabled:opacity-60",
                   isMeeting
@@ -400,7 +404,7 @@ function EventDetailInner() {
             {isMeeting && (
               <span className="pill inline-flex items-center gap-1.5 bg-rose/10 text-rose-deep">
                 <CalendarHeart className="h-3 w-3" />
-                线下见面
+                {event.meeting_session?.title ?? "线下见面"}
               </span>
             )}
             <VisibilityBadge mode={event.visibility_mode} />
@@ -412,14 +416,96 @@ function EventDetailInner() {
             )}
           </div>
 
-          <h1 className="mt-3 font-display text-2xl font-bold leading-snug text-ink sm:text-3xl">
-            {event.title}
-          </h1>
-
-          {event.description && (
-            <p className="mt-3 whitespace-pre-wrap font-sc text-[15px] leading-relaxed text-ink-soft">
-              {event.description}
-            </p>
+          {editing ? (
+            <div className="mt-4 space-y-4">
+              <div className="space-y-2">
+                <label htmlFor="event-edit-title" className="font-sc text-xs font-medium text-ink-muted">标题</label>
+                <input
+                  id="event-edit-title"
+                  className="input-field font-display text-lg font-semibold"
+                  value={editTitle}
+                  maxLength={200}
+                  autoFocus
+                  disabled={savingEdit}
+                  onChange={(inputEvent) => setEditTitle(inputEvent.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="event-edit-description" className="font-sc text-xs font-medium text-ink-muted">内容</label>
+                <textarea
+                  id="event-edit-description"
+                  className="input-field min-h-28 resize-y font-sc leading-relaxed"
+                  value={editDescription}
+                  maxLength={2000}
+                  disabled={savingEdit}
+                  onChange={(inputEvent) => setEditDescription(inputEvent.target.value)}
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label htmlFor="event-edit-time" className="font-sc text-xs font-medium text-ink-muted">发生时间</label>
+                  <input
+                    id="event-edit-time"
+                    type="datetime-local"
+                    className="input-field font-sc"
+                    value={editOccurredAt}
+                    disabled={savingEdit}
+                    onChange={(inputEvent) => setEditOccurredAt(inputEvent.target.value)}
+                  />
+                </div>
+                <fieldset className="space-y-2">
+                  <legend className="font-sc text-xs font-medium text-ink-muted">可见方式</legend>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["public", "mutual_submit"] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        disabled={savingEdit}
+                        aria-pressed={editVisibility === mode}
+                        className={cn(
+                          "min-h-11 rounded-2xl px-3 font-sc text-sm transition focus-ring",
+                          editVisibility === mode ? "bg-rose text-white" : "bg-peach/18 text-ink-soft hover:bg-peach/28",
+                        )}
+                        onClick={() => setEditVisibility(mode)}
+                      >
+                        {mode === "public" ? "公开" : "双方提交后"}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+              </div>
+              <div className="flex flex-wrap justify-end gap-2 border-t border-line/55 pt-4">
+                <button
+                  type="button"
+                  className="btn-ghost inline-flex min-h-11 items-center gap-2 rounded-2xl px-4 font-sc text-sm focus-ring"
+                  disabled={savingEdit}
+                  onClick={() => setEditing(false)}
+                >
+                  <X className="h-4 w-4" />
+                  取消编辑
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary inline-flex min-h-11 items-center gap-2 rounded-2xl px-4 font-sc text-sm focus-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!editTitle.trim() || savingEdit}
+                  onClick={() => void saveEventEdit()}
+                >
+                  {savingEdit ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  保存记录
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <h1 className="mt-3 font-display text-2xl font-bold leading-snug text-ink sm:text-3xl">
+                {event.title}
+              </h1>
+              {event.description && (
+                <p className="mt-3 whitespace-pre-wrap font-sc text-[15px] leading-relaxed text-ink-soft">
+                  {event.description}
+                </p>
+              )}
+            </>
           )}
 
           <div className="mt-5 flex items-center gap-3">
@@ -432,14 +518,6 @@ function EventDetailInner() {
             </div>
           </div>
         </motion.section>
-
-        <MeetingSessionOrganizer
-          event={event}
-          sessions={meetingSessions}
-          onAssign={handleAssignMeetingSession}
-          onCreateAndAssign={handleCreateMeetingSession}
-          onRenameSession={handleRenameMeetingSession}
-        />
 
         {/* Submission state */}
         <motion.section
@@ -845,202 +923,6 @@ function ReactionIconButton({
     >
       <Icon className={cn(large ? "h-6 w-6" : "h-4 w-4")} />
     </button>
-  );
-}
-
-function MeetingSessionOrganizer({
-  event,
-  sessions,
-  onAssign,
-  onCreateAndAssign,
-  onRenameSession,
-}: {
-  event: EventDetail;
-  sessions: MeetingSessionOut[];
-  onAssign: (meetingSessionId: number | null) => EventDetail | null | void | Promise<EventDetail | null | void>;
-  onCreateAndAssign: (payload: { title: string }) => EventDetail | null | void | Promise<EventDetail | null | void>;
-  onRenameSession: (meetingSessionId: number, title: string) => MeetingSessionOut | void | Promise<MeetingSessionOut | void>;
-}) {
-  const savedSessionId = event.meeting_session_id ? String(event.meeting_session_id) : "";
-  const initialSession = sessions.find((session) => String(session.id) === savedSessionId);
-  const [selectedSessionId, setSelectedSessionId] = useState(savedSessionId);
-  const [assignmentStatus, setAssignmentStatus] = useState<"idle" | "dirty" | "saving" | "saved">("idle");
-  const [newTitle, setNewTitle] = useState(event.title);
-  const [newTitleTouched, setNewTitleTouched] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [editTitle, setEditTitle] = useState(initialSession?.title ?? "");
-  const [renameStatus, setRenameStatus] = useState<"idle" | "saving" | "saved">("idle");
-  const selectedOptionSession = sessions.find((session) => String(session.id) === selectedSessionId);
-
-  useEffect(() => {
-    setSelectedSessionId(savedSessionId);
-    setAssignmentStatus((status) => (status === "saving" ? "saved" : "idle"));
-  }, [event.id, savedSessionId]);
-
-  useEffect(() => {
-    if (!newTitleTouched) setNewTitle(event.title);
-  }, [event.title, newTitleTouched]);
-
-  useEffect(() => {
-    setEditTitle(selectedOptionSession?.title ?? "");
-    setRenameStatus("idle");
-  }, [selectedOptionSession?.id, selectedOptionSession?.title]);
-
-  const assignmentChanged = selectedSessionId !== savedSessionId;
-  const canRename = Boolean(selectedOptionSession && editTitle.trim() && editTitle.trim() !== selectedOptionSession.title);
-
-  function changeSelectedSession(value: string) {
-    setSelectedSessionId(value);
-    setAssignmentStatus(value === savedSessionId ? "idle" : "dirty");
-  }
-
-  async function saveAssignment() {
-    if (!assignmentChanged || assignmentStatus === "saving") return;
-    setAssignmentStatus("saving");
-    const updated = await onAssign(selectedSessionId ? Number(selectedSessionId) : null);
-    if (updated) {
-      toast.success(selectedSessionId ? "已整理到这次见面" : "已移出见面场次");
-      setAssignmentStatus("saved");
-    } else {
-      setAssignmentStatus("dirty");
-    }
-  }
-
-  async function createAndAssign() {
-    if (!newTitle.trim() || creating) return;
-    setCreating(true);
-    try {
-      const updated = await onCreateAndAssign({ title: newTitle.trim() });
-      if (updated) {
-        toast.success("已新建场次并整理进去");
-        setAssignmentStatus("saved");
-        setNewTitle(event.title);
-        setNewTitleTouched(false);
-      }
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  async function saveSessionTitle() {
-    if (!selectedOptionSession || !canRename || renameStatus === "saving") return;
-    setRenameStatus("saving");
-    try {
-      await onRenameSession(selectedOptionSession.id, editTitle.trim());
-      setRenameStatus("saved");
-      toast.success("场次名称已保存");
-    } catch {
-      setRenameStatus("idle");
-    }
-  }
-
-  return (
-    <section className="mt-4 rounded-3xl bg-peach/12 p-4 hairline sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="font-sc text-xs font-medium text-rose-deep">见面场次</p>
-          <p className="mt-1 font-sc text-sm text-ink-soft">双方都可以整理归属；内容和发生时间仍只按原权限编辑。</p>
-        </div>
-        <span className="pill inline-flex items-center gap-1 bg-rose/10 text-rose-deep">
-          <CalendarHeart className="h-3.5 w-3.5" />
-          {event.meeting_session?.title ?? "未整理"}
-        </span>
-      </div>
-
-      <div className="mt-4 grid gap-3">
-        <select
-          className="input-field font-sc"
-          value={selectedSessionId}
-          disabled={assignmentStatus === "saving" || creating}
-          onChange={(selectEvent) => changeSelectedSession(selectEvent.target.value)}
-        >
-          <option value="">未整理</option>
-          {sessions.map((session) => (
-            <option key={session.id} value={session.id}>
-              {session.title}
-            </option>
-          ))}
-        </select>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="btn-primary inline-flex min-h-11 items-center gap-2 rounded-2xl px-4 font-sc text-sm focus-ring disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={!assignmentChanged || assignmentStatus === "saving" || creating}
-            onClick={() => void saveAssignment()}
-          >
-            {assignmentStatus === "saving" && <Loader2 className="h-4 w-4 animate-spin" />}
-            保存归属
-          </button>
-          {assignmentStatus === "dirty" && <span className="font-sc text-xs text-rose-deep">还没保存</span>}
-          {assignmentStatus === "saved" && (
-            <span className="inline-flex items-center gap-1 font-sc text-xs text-sage">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              已保存
-            </span>
-          )}
-        </div>
-
-        {selectedOptionSession && (
-          <div className="grid gap-2 rounded-2xl bg-surface-raised/72 p-3 hairline">
-            <label className="font-sc text-xs font-medium text-ink-muted">场次标题</label>
-            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-              <input
-                className="input-field font-sc"
-                value={editTitle}
-                maxLength={200}
-                disabled={renameStatus === "saving"}
-                onChange={(inputEvent) => {
-                  setEditTitle(inputEvent.target.value);
-                  setRenameStatus("idle");
-                }}
-              />
-              <button
-                type="button"
-                className="btn-ghost inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-4 font-sc text-sm focus-ring disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={!canRename || renameStatus === "saving"}
-                onClick={() => void saveSessionTitle()}
-              >
-                {renameStatus === "saving" && <Loader2 className="h-4 w-4 animate-spin" />}
-                保存名称
-              </button>
-            </div>
-            {renameStatus === "saved" && (
-              <span className="inline-flex items-center gap-1 font-sc text-xs text-sage">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                名称已保存
-              </span>
-            )}
-          </div>
-        )}
-
-        <div className="grid gap-3 rounded-2xl bg-surface-raised/72 p-3 hairline">
-          <input
-            className="input-field font-sc"
-            placeholder="新场次名称，例如：周末见面"
-            value={newTitle}
-            maxLength={200}
-            disabled={creating}
-            onChange={(inputEvent) => {
-              setNewTitleTouched(true);
-              setNewTitle(inputEvent.target.value);
-            }}
-          />
-          <p className="font-sc text-[11px] leading-relaxed text-ink-muted">
-            新场次默认用这条小事的标题，日期范围会由归入其中的事件自动计算。
-          </p>
-          <button
-            type="button"
-            className="btn-ghost inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-4 font-sc text-sm focus-ring disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={!newTitle.trim() || creating}
-            onClick={() => void createAndAssign()}
-          >
-            {creating && <Loader2 className="h-4 w-4 animate-spin" />}
-            新建并归入
-          </button>
-        </div>
-      </div>
-    </section>
   );
 }
 

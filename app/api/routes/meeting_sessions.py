@@ -1,4 +1,4 @@
-"""Meeting session route handlers for manually named offline-meeting clusters with event-derived time ranges."""
+"""Meeting route handlers for shared titles, event-derived time ranges, and atomic batch assignment of existing records."""
 
 from datetime import datetime
 
@@ -8,9 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.database import get_db
-from app.models import Event, MeetingSession, User
-from app.schemas import MeetingSessionCreate, MeetingSessionOut, MeetingSessionUpdate
-from app.services import ensure_pair_meeting_session, meeting_session_time_range
+from app.models import Event, EventKind, MeetingSession, User
+from app.schemas import MeetingSessionCreate, MeetingSessionEventsAssign, MeetingSessionOut, MeetingSessionUpdate
+from app.services import delete_meeting_if_empty, ensure_pair_event, ensure_pair_meeting_session, meeting_session_time_range
 
 router = APIRouter(prefix="/meeting-sessions", tags=["meeting-sessions"])
 
@@ -72,6 +72,32 @@ def update_meeting_session(
     updates = payload.model_dump(exclude_unset=True)
     for field, value in updates.items():
         setattr(meeting_session, field, value)
+    db.commit()
+    db.refresh(meeting_session)
+    return _meeting_session_out(db, meeting_session)
+
+
+@router.post("/{session_id}/events", response_model=MeetingSessionOut)
+def assign_events_to_meeting_session(
+    session_id: int,
+    payload: MeetingSessionEventsAssign,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MeetingSessionOut:
+    pair = get_pair_for_user(db, current_user.id)
+    meeting_session = ensure_pair_meeting_session(db, session_id, pair)
+    events = [ensure_pair_event(db, event_id, pair) for event_id in payload.event_ids]
+    previous_session_ids = {
+        event.meeting_session_id
+        for event in events
+        if event.meeting_session_id is not None and event.meeting_session_id != meeting_session.id
+    }
+    for event in events:
+        event.meeting_session_id = meeting_session.id
+        event.event_kind = EventKind.offline_meeting
+    db.flush()
+    for previous_session_id in previous_session_ids:
+        delete_meeting_if_empty(db, previous_session_id)
     db.commit()
     db.refresh(meeting_session)
     return _meeting_session_out(db, meeting_session)

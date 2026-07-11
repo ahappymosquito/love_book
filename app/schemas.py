@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests with an enable switch, rich AMap restaurant evidence, habit check-ins, manual todo candidate queues, named meeting sessions with event-derived ranges, typed timeline events, media, quotes, cycle records with empty/predicted days, and todo APIs."""
+"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests with an enable switch, rich AMap restaurant evidence, habit check-ins, manual todo candidate queues, automatically named meetings with batch event assignment, typed timeline events, media, quotes, cycle records with empty/predicted days, and todo APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -198,6 +198,15 @@ class MeetingSessionUpdate(APIModel):
         if not value:
             raise ValueError("Meeting title cannot be empty")
         return value
+
+
+class MeetingSessionEventsAssign(APIModel):
+    event_ids: list[int] = Field(min_length=1, max_length=100)
+
+    @field_validator("event_ids")
+    @classmethod
+    def unique_event_ids(cls, value: list[int]) -> list[int]:
+        return list(dict.fromkeys(value))
 
 
 class MeetingSessionLite(APIModel):

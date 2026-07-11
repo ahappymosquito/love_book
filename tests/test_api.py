@@ -1,4 +1,4 @@
-"""API regression tests for auth, profiles, user locations, habit dashboards and reminders, media, typed timeline events with event-derived meeting sessions, todo boards, cycle fact storage with predicted phases, AMap-grounded AI tests, and fallback data."""
+"""API regression tests for auth, profiles, user locations, habit dashboards and reminders, media, typed timeline events with automatic meetings and batch assignment, todo boards, cycle fact storage with predicted phases, AMap-grounded AI tests, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -837,6 +837,155 @@ def test_event_kind_defaults_create_list_detail_and_update_permissions(
     assert updated.status_code == 200
     assert updated.json()["event_kind"] == "memory"
     assert updated.json()["meeting_session_id"] is None
+
+
+def test_offline_event_automatically_creates_same_title_meeting(
+    client: TestClient, pair_tokens: dict[str, str | int], db_session: Session
+) -> None:
+    token = str(pair_tokens["user_a_token"])
+    created = client.post(
+        "/events",
+        headers=auth(token),
+        json={
+            "title": "西湖边散步",
+            "event_kind": "offline_meeting",
+            "visibility_mode": "public",
+        },
+    )
+
+    assert created.status_code == 201
+    payload = created.json()
+    assert payload["meeting_session_id"] is not None
+    assert payload["meeting_session"]["title"] == "西湖边散步"
+    meetings = db_session.execute(select(MeetingSession)).scalars().all()
+    assert len(meetings) == 1
+    assert meetings[0].title == "西湖边散步"
+
+
+def test_marking_memory_creates_meeting_and_event_title_stays_independent(
+    client: TestClient, pair_tokens: dict[str, str | int]
+) -> None:
+    token = str(pair_tokens["user_a_token"])
+    event = client.post(
+        "/events",
+        headers=auth(token),
+        json={"title": "第一次去夜市", "visibility_mode": "public"},
+    ).json()
+
+    marked = client.patch(
+        f"/events/{event['id']}",
+        headers=auth(token),
+        json={"event_kind": "offline_meeting"},
+    )
+    assert marked.status_code == 200
+    meeting_id = marked.json()["meeting_session_id"]
+    assert marked.json()["meeting_session"]["title"] == "第一次去夜市"
+
+    edited = client.patch(
+        f"/events/{event['id']}",
+        headers=auth(token),
+        json={"title": "第一次一起去夜市"},
+    )
+    renamed = client.patch(
+        f"/meeting-sessions/{meeting_id}",
+        headers=auth(token),
+        json={"title": "夏夜约会"},
+    )
+    detail = client.get(f"/events/{event['id']}", headers=auth(token)).json()
+
+    assert edited.json()["meeting_session"]["title"] == "第一次去夜市"
+    assert renamed.status_code == 200
+    assert detail["title"] == "第一次一起去夜市"
+    assert detail["meeting_session"]["title"] == "夏夜约会"
+
+
+def test_unmarking_or_deleting_last_event_removes_empty_meeting(
+    client: TestClient, pair_tokens: dict[str, str | int], db_session: Session
+) -> None:
+    token = str(pair_tokens["user_a_token"])
+    first = client.post(
+        "/events",
+        headers=auth(token),
+        json={"title": "短暂见面", "event_kind": "offline_meeting", "visibility_mode": "public"},
+    ).json()
+    first_meeting_id = first["meeting_session_id"]
+
+    unmarked = client.patch(
+        f"/events/{first['id']}",
+        headers=auth(token),
+        json={"event_kind": "memory"},
+    )
+    assert unmarked.status_code == 200
+    assert db_session.get(MeetingSession, first_meeting_id) is None
+
+    second = client.post(
+        "/events",
+        headers=auth(token),
+        json={"title": "另一场见面", "event_kind": "offline_meeting", "visibility_mode": "public"},
+    ).json()
+    second_meeting_id = second["meeting_session_id"]
+    deleted = client.delete(f"/events/{second['id']}", headers=auth(token))
+
+    assert deleted.status_code == 204
+    assert db_session.get(MeetingSession, second_meeting_id) is None
+
+
+def test_batch_assign_meeting_events_is_atomic_and_cleans_empty_source(
+    client: TestClient, pair_tokens: dict[str, str | int], db_session: Session
+) -> None:
+    token_a = str(pair_tokens["user_a_token"])
+    token_b = str(pair_tokens["user_b_token"])
+    target_event = client.post(
+        "/events",
+        headers=auth(token_a),
+        json={"title": "周末约会", "event_kind": "offline_meeting", "visibility_mode": "public"},
+    ).json()
+    moving_event = client.post(
+        "/events",
+        headers=auth(token_a),
+        json={"title": "一起看电影", "event_kind": "offline_meeting", "visibility_mode": "public"},
+    ).json()
+    ordinary_event = client.post(
+        "/events",
+        headers=auth(token_a),
+        json={"title": "吃了晚饭", "visibility_mode": "public"},
+    ).json()
+    source_meeting_id = moving_event["meeting_session_id"]
+
+    assigned = client.post(
+        f"/meeting-sessions/{target_event['meeting_session_id']}/events",
+        headers=auth(token_b),
+        json={"event_ids": [moving_event["id"], ordinary_event["id"], ordinary_event["id"]]},
+    )
+
+    assert assigned.status_code == 200
+    assert assigned.json()["event_count"] == 3
+    assert db_session.get(MeetingSession, source_meeting_id) is None
+    moved_rows = db_session.execute(
+        select(Event).where(Event.id.in_([moving_event["id"], ordinary_event["id"]]))
+    ).scalars().all()
+    assert all(row.meeting_session_id == target_event["meeting_session_id"] for row in moved_rows)
+    assert all(row.event_kind.value == "offline_meeting" for row in moved_rows)
+
+    other_pair = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={"user_a_display_name": "Other A", "user_b_display_name": "Other B"},
+    ).json()
+    foreign_event = client.post(
+        "/events",
+        headers=auth(other_pair["user_a_token"]),
+        json={"title": "别人的记录", "visibility_mode": "public"},
+    ).json()
+    before_session_id = db_session.get(Event, ordinary_event["id"]).meeting_session_id
+    rejected = client.post(
+        f"/meeting-sessions/{target_event['meeting_session_id']}/events",
+        headers=auth(token_a),
+        json={"event_ids": [ordinary_event["id"], foreign_event["id"]]},
+    )
+
+    assert rejected.status_code == 404
+    assert db_session.get(Event, ordinary_event["id"]).meeting_session_id == before_session_id
 
 
 def test_named_meeting_session_groups_multiple_offline_events(
