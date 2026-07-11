@@ -1,6 +1,6 @@
 "use client";
 
-// Compact profile settings page with mobile viewport guards, inline identity editing, cross-device location preferences, and equal-width shared/default quote rows.
+// Grouped iOS-style settings surface with inline identity editing, private avatar, geocoded location, and continuous shared/default quote rows.
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
@@ -249,7 +249,7 @@ function MeInner() {
         <motion.section
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="glass-card overflow-hidden rounded-3xl p-4 sm:p-5"
+          className="content-surface overflow-hidden p-4 sm:p-5"
         >
           <div className="flex min-w-0 items-start gap-4">
             <button
@@ -331,7 +331,7 @@ function MeInner() {
           </div>
         </motion.section>
 
-        <section className="mt-5 glass-card overflow-hidden rounded-3xl p-5 sm:p-6">
+        <section className="settings-group mt-5 p-5 sm:p-6">
           <div className="flex items-start gap-3">
             <span className="grid h-10 w-10 flex-none place-items-center rounded-2xl bg-peach/20 text-rose-deep">
               <MapPin className="h-5 w-5" />
@@ -397,7 +397,7 @@ function MeInner() {
           </form>
         </section>
 
-        <section className="mt-5 glass-card overflow-hidden rounded-3xl">
+        <section className="settings-group mt-5 overflow-hidden">
           <QuotePanelHeader
             title="共享语录"
             icon={<Sparkles className="h-5 w-5 text-rose-deep" />}
@@ -432,7 +432,7 @@ function MeInner() {
                   <QuoteMessage>还没有自定义语录。</QuoteMessage>
                 ) : (
                   quotes.map((quote) => (
-                    <div key={quote.id} className="flex w-full items-start gap-3 rounded-2xl bg-peach/12 px-4 py-3 hairline">
+                    <div key={quote.id} className="settings-row flex w-full items-start gap-3 px-4 py-3">
                       <p className="min-w-0 flex-1 break-words font-sc text-sm leading-relaxed text-ink">
                         {quote.text}
                       </p>
@@ -454,7 +454,7 @@ function MeInner() {
                   defaultQuotes.map((quote) => (
                     <p
                       key={quote.id}
-                      className="w-full break-words rounded-2xl bg-sage/10 px-4 py-3 font-sc text-sm leading-relaxed text-ink-soft hairline"
+                      className="settings-row w-full break-words px-4 py-3 font-sc text-sm leading-relaxed text-ink-soft"
                     >
                       {quote.text}
                     </p>

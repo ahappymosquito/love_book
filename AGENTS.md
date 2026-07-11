@@ -10,6 +10,8 @@
 
 ## 当前约定
 
+- 前端采用 Apple Liquid Glass 分层原则：玻璃只用于导航、工具条、分段控件、浮动操作和临时浮层；时间线、日历、表单、Todo 列表、设置分组和详情正文必须使用清晰实体内容层，禁止嵌套 `backdrop-filter`。
+- 新视觉 token 使用 `web/src/app/globals.css` 中的 `--lb-*` OKLCH 通道；旧 RGB token 只作为现有 Tailwind 类的兼容桥。新增玻璃控件优先复用 `GlassSurface`，视图切换优先复用 `SegmentedControl`。
 - 本地开发一键启动脚本为 [start_dev.bat](C:\RPA\code\love_book\start_dev.bat)。
 - 前端默认按 [PRODUCT.md](C:\RPA\code\love_book\PRODUCT.md) 和 [DESIGN.md](C:\RPA\code\love_book\DESIGN.md) 的 product register 设计上下文执行；整体气质为“温暖、可爱、舒服、可信”。
 - 前端视觉基线是柔和恋爱手账型产品 UI：低饱和玫瑰为主色，暖桃承载重点，鼠尾草薄荷用于完成和正向状态；避免晃眼高饱和色、清冷灰后台、装饰玻璃拟态、渐变文字和低对比彩色文本。

@@ -1,12 +1,12 @@
 "use client";
 
-// Shared card primitives for lively scrapbook panels, dashboard summaries, forms, and statistics.
+// Shared solid content-surface primitives for readable dashboard summaries, forms, grouped lists, and statistics.
 
 import * as React from "react";
 import { cn } from "@/lib/cn";
 
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("glass-card rounded-3xl", className)} {...props} />;
+  return <div className={cn("content-surface", className)} {...props} />;
 }
 
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {

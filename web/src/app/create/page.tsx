@@ -1,6 +1,6 @@
 "use client";
 
-// Direct-link event creation page reusing the same form as the global bottom-sheet create window inside a mobile-safe viewport.
+// Direct-link event creation page reusing the shared grouped form inside a readable solid content surface and mobile-safe viewport.
 
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -26,7 +26,7 @@ function CreateInner() {
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="glass-card rounded-3xl p-5 sm:p-6"
+          className="content-surface p-5 sm:p-6"
         >
           <CreateEventForm onCreated={(event) => router.replace(`/timeline/${event.id}`)} />
         </motion.div>

@@ -1,6 +1,6 @@
 "use client";
 
-// Global accessible create window with updated near-full-height mobile spacing that opens after the bottom navigation liquid lens gathers into the center action.
+// Global accessible create Sheet with a solid form canvas and Liquid Glass action layer that opens after the bottom navigation lens gathers into the center action.
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";

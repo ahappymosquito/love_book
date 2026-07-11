@@ -1,6 +1,6 @@
 "use client";
 
-// Radix Dialog based sheet for warm mobile and side panels with mobile-safe width, safer height, close affordances, and motion presets shared by create and detail flows.
+// Radix Dialog sheet with a solid readable content layer, Liquid Glass close control, mobile safe areas, and restrained shared motion presets.
 
 import * as Dialog from "@radix-ui/react-dialog";
 import type React from "react";
@@ -31,15 +31,15 @@ export function SheetContent({
 
   return (
     <Dialog.Portal forceMount>
-      <Dialog.Overlay className="fixed inset-0 z-40 max-w-full bg-black/30 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0" />
+      <Dialog.Overlay className="fixed inset-0 z-40 max-w-full bg-black/24 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0" />
       <Dialog.Content asChild>
         <motion.div
           initial={reducedMotion ? false : { opacity: 0, y: side === "bottom" ? bottomOffset : 0, x: side === "right" ? 32 : 0 }}
           animate={{ opacity: 1, y: 0, x: 0 }}
           exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: side === "bottom" ? bottomOffset : 0, x: side === "right" ? 24 : 0 }}
-          transition={reducedMotion ? { duration: 0 } : { duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          transition={reducedMotion ? { duration: 0 } : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
           className={cn(
-            "fixed z-50 box-border max-w-full bg-surface-raised text-ink shadow-glow outline-none hairline",
+            "content-surface fixed z-50 box-border max-w-full text-ink outline-none",
             side === "bottom"
               ? "inset-x-0 bottom-0 w-full max-h-[92dvh] rounded-t-[1.75rem] p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1.15rem)] pt-5 sm:max-h-[90dvh] sm:p-5 sm:pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)]"
               : "right-0 top-0 h-dvh w-full max-w-md rounded-none p-5",

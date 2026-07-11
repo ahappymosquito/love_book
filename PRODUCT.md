@@ -27,6 +27,7 @@ Avoid cold neutral dashboards, lifeless gray panels, harsh saturated colors, and
 ## Design Principles
 
 - Let color carry warmth through a soft rose, peach, and sage palette.
+- Treat Liquid Glass as a functional control layer for navigation, toolbars, segmented controls, and transient sheets; keep memories, calendars, tasks, and settings rows on solid readable content surfaces.
 - Make primary tasks obvious: log in, write a memory, read a detail, add content, schedule a plan, check off a habit, record a cycle day, copy an entry link.
 - Preserve trust through readable contrast, predictable controls, stable layout, and clear states.
 - Use the same cute, rounded, comfortable component vocabulary across the pair app and admin surfaces.

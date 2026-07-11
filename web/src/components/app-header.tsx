@@ -1,6 +1,6 @@
 "use client";
 
-// Unified authenticated app header for the main user surfaces, with mobile-safe width, avatar navigation, optional back/action slots, safe-area spacing, and logout.
+// Unified authenticated Liquid Glass app header with mobile-safe width, avatar navigation, predictable action placement, safe-area spacing, and logout.
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { ArrowLeft, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar } from "./avatar";
+import { GlassSurface } from "@/components/ui/glass-surface";
 import { cn } from "@/lib/cn";
 import { useAppStore } from "@/lib/store";
 
@@ -38,10 +39,11 @@ export function AppHeader({
   const defaultSubtitle = subtitle ?? `和 ${me.counterpart.display_name} 一起收集日常`;
 
   return (
-    <header className="sticky top-0 z-30 max-w-full frosted-bar pt-[env(safe-area-inset-top,0px)]">
-      <div
+    <header className="app-header-shell sticky top-0 z-30 max-w-full">
+      <GlassSurface
+        variant="regular"
         className={cn(
-          "mx-auto flex w-full min-w-0 items-center gap-3 px-4 sm:px-6",
+          "app-header-glass flex w-full min-w-0 items-center gap-3",
           maxWidth === "5xl" ? "max-w-5xl" : "max-w-7xl",
           compact ? "h-[60px] sm:h-[64px]" : "h-16",
         )}
@@ -109,7 +111,7 @@ export function AppHeader({
             <LogOut className={compact ? "h-4 w-4 sm:h-5 sm:w-5" : "h-5 w-5"} />
           </button>
         </div>
-      </div>
+      </GlassSurface>
     </header>
   );
 }

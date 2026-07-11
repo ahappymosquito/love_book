@@ -1,6 +1,6 @@
 "use client";
 
-// Reusable event creation form shared by the direct /create page and the global bottom-sheet create window, including title-defaulted meeting sessions whose date ranges are derived from assigned events.
+// Shared grouped event form for the direct page and global Sheet, with solid content sections, a Liquid Glass action bar, and derived meeting-session dates.
 
 import { useEffect, useState } from "react";
 import { CalendarHeart, Eye, Loader2, Lock, Sparkles } from "lucide-react";
@@ -78,8 +78,8 @@ export function CreateEventForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className={cn("space-y-6", className)}>
-      <div>
+    <form onSubmit={onSubmit} className={cn("space-y-4", className)}>
+      <div className="pb-2">
         <p className="mb-1 font-sc text-xs font-semibold text-rose-deep">写进今天的小贴纸</p>
         <h1 className="font-display text-2xl font-bold leading-tight text-ink">记下这一笔</h1>
         <p className="mt-2 font-sc text-sm leading-relaxed text-ink-soft">
@@ -88,7 +88,7 @@ export function CreateEventForm({
       </div>
 
       {eventKind === "offline_meeting" && (
-        <div className="space-y-3 rounded-2xl bg-peach/12 p-4 hairline">
+        <div className="form-section space-y-3 bg-peach/10">
           <div className="space-y-2">
             <Label>见面场次</Label>
             <select
@@ -128,7 +128,7 @@ export function CreateEventForm({
         </div>
       )}
 
-      <div className="space-y-2">
+      <div className="form-section space-y-2">
         <Label>标题</Label>
         <input
           className="input-field font-display text-lg font-semibold"
@@ -141,7 +141,7 @@ export function CreateEventForm({
         />
       </div>
 
-      <div className="space-y-2">
+      <div className="form-section space-y-2">
         <Label>描述（可不写）</Label>
         <textarea
           className="input-field min-h-[112px] resize-none leading-relaxed"
@@ -152,7 +152,7 @@ export function CreateEventForm({
         />
       </div>
 
-      <div className="space-y-2">
+      <div className="form-section space-y-2">
         <Label>记录类型</Label>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <RecordKindCard
@@ -172,7 +172,7 @@ export function CreateEventForm({
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="form-section space-y-2">
         <Label icon={<CalendarHeart className="h-3.5 w-3.5" />}>发生时间</Label>
         <input
           type="datetime-local"
@@ -183,7 +183,7 @@ export function CreateEventForm({
         <p className="font-sc text-[11px] text-ink-muted">留空就用此刻；选过去也行。</p>
       </div>
 
-      <div className="space-y-2">
+      <div className="form-section space-y-2">
         <Label>可见方式</Label>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <VisibilityCard
@@ -203,7 +203,7 @@ export function CreateEventForm({
         </div>
       </div>
 
-      <div className="flex justify-end pt-2">
+      <div className="glass-surface glass-prominent sticky bottom-0 z-10 flex justify-end rounded-[18px] p-2">
         <button
           type="submit"
           disabled={!title.trim() || (eventKind === "offline_meeting" && meetingSessionChoice === "new" && !newMeetingTitle.trim()) || submitting}

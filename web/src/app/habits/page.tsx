@@ -1,6 +1,6 @@
 "use client";
 
-// Habit page lets both partners review daily progress under the unified AppHeader with mobile-safe calendar controls, color popovers, personal habits, and date check-ins.
+// Habit page presents pair progress on a solid calendar canvas with Liquid Glass date controls, vertical personal lists, editable colors, and reduced-motion feedback.
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
@@ -21,6 +21,7 @@ import { Avatar } from "@/components/avatar";
 import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { useAppStore } from "@/lib/store";
@@ -393,21 +394,16 @@ function CalendarToolbar({
 }) {
   return (
     <div className="flex w-full min-w-0 flex-col gap-3 sm:items-end">
-      <div className="liquid-chip grid grid-cols-2 rounded-full p-1">
-        {(["week", "month"] as CalendarMode[]).map((item) => (
-          <button
-            key={item}
-            type="button"
-            onClick={() => onMode(item)}
-            className={cn(
-              "min-h-9 rounded-full px-4 font-sc text-xs font-medium text-ink-soft transition focus-ring",
-              mode === item && "bg-surface-raised text-ink shadow-[0_8px_18px_-14px_rgb(var(--rose-deep)/0.6)]",
-            )}
-          >
-            {item === "week" ? "周" : "月"}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        value={mode}
+        onChange={onMode}
+        ariaLabel="切换习惯日历视图"
+        layoutId="habit-calendar-view-lens"
+        options={[
+          { value: "week", label: "周" },
+          { value: "month", label: "月" },
+        ]}
+      />
       <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 sm:w-auto">
         <Button variant="outline" size="icon" onClick={onPrev} aria-label={mode === "week" ? "上一周" : "上个月"}>
           <ChevronLeft className="h-4 w-4" />

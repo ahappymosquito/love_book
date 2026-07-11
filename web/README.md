@@ -2,6 +2,23 @@
 
 基于 Next.js 15 (App Router) + TypeScript + Tailwind CSS 的双人事件记录应用，对应 FastAPI 后端 `app.main:app`。
 
+## Liquid Glass 视觉系统
+
+前端明确分成两层：
+
+- 控制层：`GlassSurface`、`SegmentedControl`、`AppHeader`、`BottomNav`、浮动操作和临时 Sheet 使用自适应 Liquid Glass。
+- 内容层：`Card`、`content-surface`、`form-section` 和 `settings-group` 为时间线、日历、Todo、表单和设置提供不模糊的实体背景。
+
+主题值集中在 `src/app/globals.css` 的 `--lb-*` OKLCH 通道，同时提供亮色和暖夜深色。样式包含不支持 `backdrop-filter`、高对比度、强制色彩与低动效回退；旧 RGB 变量暂时保留给现有 Tailwind 颜色类。
+
+共享组件入口：
+
+- `src/components/ui/glass-surface.tsx`：玻璃变体、形状和交互接口。
+- `src/components/ui/segmented-control.tsx`：可访问的共享选择镜片。
+- `src/components/ui/card.tsx` 与 `src/components/ui/sheet.tsx`：实体内容层和临时浮层。
+
+提交 UI 改动前运行 `npm run build`，并验证 407×885、430×932、768×1024、1440×900。移动端必须满足 `scrollWidth === clientWidth`，确需横向浏览的内容只能放在 `local-x-scroll` 内。
+
 ## 准备
 
 ```powershell

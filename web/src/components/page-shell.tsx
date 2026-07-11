@@ -1,13 +1,13 @@
 "use client";
 
-// Motion page shell that keeps animated screens inside the mobile viewport width.
+// Mobile-safe page shell with restrained state-transition motion and no decorative load choreography.
 
 import { motion } from "framer-motion";
 
 const variants = {
   initial: { opacity: 0, y: 8 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] } },
-  exit: { opacity: 0, y: -8, transition: { duration: 0.26, ease: [0.22, 1, 0.36, 1] } },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } },
+  exit: { opacity: 0, y: -6, transition: { duration: 0.18, ease: [0.22, 1, 0.36, 1] } },
 };
 
 export function PageShell({ children }: { children: React.ReactNode }) {

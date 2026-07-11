@@ -1,6 +1,6 @@
 "use client";
 
-// Full-screen puppy login stage with mobile viewport guards, an offset foreground token panel, token auto-login, and a minimal sweetheart welcome path.
+// Full-screen puppy login stage with mobile-safe framing, high-contrast Liquid Glass controls, restrained motion, token auto-login, and admin entry.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -131,7 +131,7 @@ export default function LoginPage() {
 
       <div className="relative z-10 flex min-h-dvh w-full max-w-full flex-col px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pt-[calc(env(safe-area-inset-top,0px)+1rem)] sm:px-6 lg:px-8">
         <div className="flex items-start justify-between">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-surface-raised/82 px-3.5 py-2 text-sm font-semibold text-ink shadow-[0_12px_26px_-22px_rgb(var(--rose)/0.4)] backdrop-blur-sm">
+          <div className="login-brand-chip inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-semibold">
             <Heart className="h-4 w-4 text-rose" fill="currentColor" />
             <span className="font-display">love book</span>
           </div>
@@ -139,9 +139,9 @@ export default function LoginPage() {
 
         <main className="flex flex-1 items-end pb-2 sm:pb-4 lg:items-end lg:pb-[7vh]">
           <motion.section
-            initial={{ opacity: 0, y: 24, scale: 0.98 }}
+            initial={{ opacity: 0, y: 12, scale: 0.99 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             className="login-floating-panel w-full max-w-[23rem] sm:max-w-[25rem] lg:ml-auto lg:mr-[6vw] xl:mr-[8vw]"
           >
             <div className="mb-6">

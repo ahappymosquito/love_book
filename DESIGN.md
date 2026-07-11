@@ -4,8 +4,11 @@
 
 Love Book uses a soft couple-scrapbook product interface. The UI is light by default with a warm night mode, muted rose and peach warmth, sage positive states, creamy readable surfaces, and rounded controls that feel cute without causing visual fatigue.
 
+The current visual system follows Apple Liquid Glass layering rather than decorative glassmorphism. Navigation, floating controls, segmented selectors, transient sheets, and color pickers may use adaptive glass; timelines, calendars, forms, task lists, settings groups, and detail content use solid surfaces. Glass must never be nested inside another blurred surface.
+
 ## Color
 
+- New design-system values are defined as `--lb-*` OKLCH channels in `web/src/app/globals.css`; legacy RGB channels remain only as a compatibility bridge for existing Tailwind utilities.
 - `ink`: primary readable text.
 - `ink-soft` and `ink-muted`: secondary labels, helper copy, and metadata.
 - `cream` and `cream-deep`: warm scrapbook background and tinted neutral layers.
@@ -23,6 +26,9 @@ The interface uses Inter plus Noto Sans SC through `next/font`. `font-display`, 
 
 ## Components
 
+- `GlassSurface` is the shared control-layer primitive. It supports `regular`, `clear`, and `prominent` variants; `panel`, `capsule`, and `circle` shapes; and optional interactive feedback.
+- `SegmentedControl` provides the shared morphing selection lens used by Timeline, Cycle, and Habits. It retains standard button semantics and disables travel motion under reduced-motion preferences.
+- `content-surface`, `form-section`, and `settings-group` are opaque content-layer patterns. Prefer them over glass for reading, editing, lists, calendars, and long-lived panels.
 - `glass-card` is a soft scrapbook panel: readable surface, warm border, low-contrast color shadow, and no blur dependency.
 - `btn-primary` is a muted rose-to-peach action button with hover, active, disabled, and focus states.
 - `btn-ghost` is a warm secondary button with calm hover feedback.

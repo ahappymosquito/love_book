@@ -1,6 +1,6 @@
 "use client";
 
-// Pair-shared todo workspace with the unified AppHeader, mobile viewport guards, quick-add classification, candidate confirmation, scheduling, and shared check-ins.
+// Pair-shared Todo workspace with a solid task canvas, restrained category accents, Liquid Glass controls, mobile-safe detail Sheet, and shared check-ins.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -81,36 +81,36 @@ const TODO_CATEGORY_OPTIONS: TodoCategory[] = ["food", "play", "stay", "wish"];
 const QUICK_ADD_CATEGORY_OPTIONS: TodoCategory[] = ["food", "play", "stay"];
 const TODO_SECTION_STYLE: Record<TodoCategory, { shell: string; header: string; icon: string; title: string; count: string; body: string }> = {
   food: {
-    shell: "border-peach/68 bg-peach/18",
-    header: "bg-peach/16 hover:bg-peach/24",
+    shell: "border-line/70 bg-surface-raised/82",
+    header: "hover:bg-peach/12",
     icon: "bg-peach/42 text-peach-deep",
     title: "text-ink",
     count: "bg-peach/32 text-ink-soft",
-    body: "border-peach/42 bg-peach/8",
+    body: "border-line/55 bg-surface/48",
   },
   play: {
-    shell: "border-rose/46 bg-rose/12",
-    header: "bg-rose/12 hover:bg-rose/18",
+    shell: "border-line/70 bg-surface-raised/82",
+    header: "hover:bg-rose/10",
     icon: "bg-rose/24 text-rose-deep",
     title: "text-rose-deep",
     count: "bg-rose/18 text-rose-deep",
-    body: "border-rose/28 bg-rose/5",
+    body: "border-line/55 bg-surface/48",
   },
   stay: {
-    shell: "border-sage/58 bg-sage/14",
-    header: "bg-sage/14 hover:bg-sage/20",
+    shell: "border-line/70 bg-surface-raised/82",
+    header: "hover:bg-sage/10",
     icon: "bg-sage/28 text-ink-soft",
     title: "text-ink-soft",
     count: "bg-sage/22 text-ink-soft",
-    body: "border-sage/36 bg-sage/6",
+    body: "border-line/55 bg-surface/48",
   },
   wish: {
-    shell: "border-rose/38 bg-[linear-gradient(180deg,rgb(var(--rose)/0.12),rgb(var(--peach)/0.14))]",
-    header: "bg-[linear-gradient(90deg,rgb(var(--rose)/0.12),rgb(var(--peach)/0.18))] hover:bg-peach/20",
+    shell: "border-line/70 bg-surface-raised/82",
+    header: "hover:bg-peach/12",
     icon: "bg-surface-raised/82 text-rose-deep ring-1 ring-rose/24",
     title: "text-rose-deep",
     count: "bg-surface-raised/78 text-rose-deep ring-1 ring-rose/18",
-    body: "border-peach/36 bg-surface/48",
+    body: "border-line/55 bg-surface/48",
   },
 };
 
@@ -349,11 +349,11 @@ function TodoInner() {
   }
 
   return (
-    <div className="viewport-guard min-h-dvh bg-[rgb(var(--cream)/0.68)] pb-[calc(env(safe-area-inset-bottom,0px)+9rem)] text-ink">
+    <div className="viewport-guard min-h-dvh pb-[calc(env(safe-area-inset-bottom,0px)+9rem)] text-ink">
       <AppHeader title="Todo" subtitle="想吃、想玩和想许的愿望都收进来" />
 
       <div className="mx-auto flex min-h-[calc(100dvh-64px)] w-full max-w-7xl min-w-0 gap-0 px-3 py-3 sm:px-5 lg:px-6">
-        <main className="min-w-0 flex flex-1 flex-col overflow-hidden rounded-[1.4rem] bg-surface/82 shadow-[0_12px_34px_-28px_rgb(var(--rose)/0.42)] hairline">
+        <main className="content-surface min-w-0 flex flex-1 flex-col overflow-hidden">
           <TodoBoardHeader
             loading={loading}
             openCount={items.filter((item) => !item.checked_in).length}

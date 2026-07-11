@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home screen for reading shared memories and manually named offline-meeting sessions with event-derived date ranges inside a mobile-safe viewport with a tappable relationship quote panel that keeps bottom-nav features out of the top section.
+// Timeline home with a quiet relationship focus, solid grouped memory lists, and Liquid Glass controls for view switching, reminders, and navigation.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -18,6 +18,7 @@ import { AuthGate } from "@/components/auth-gate";
 import { Avatar } from "@/components/avatar";
 import { LoadingScreen } from "@/components/loading-screen";
 import { AppHeader } from "@/components/app-header";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { SubmissionBadge, VisibilityBadge } from "@/components/visibility-badge";
 import { api } from "@/lib/api";
 import {
@@ -391,34 +392,25 @@ function TimelineViewSwitch({
   ];
 
   return (
-    <div className="mb-4 flex items-center justify-between gap-3 rounded-[1.35rem] bg-surface-raised/68 p-1.5 hairline sm:mb-5">
-      {options.map((option) => (
-        <button
-          key={option.key}
-          type="button"
-          onClick={() => onChange(option.key)}
-          aria-pressed={view === option.key}
-          className={cn(
-            "relative min-h-11 flex-1 rounded-[1.05rem] px-3 font-sc text-sm font-medium transition focus-ring",
-            view === option.key ? "text-rose-deep" : "text-ink-muted hover:text-rose-deep",
-          )}
-        >
-          {view === option.key && (
-            <motion.span
-              layoutId="timeline-view-lens"
-              className="absolute inset-0 rounded-[1.05rem] bg-peach/24 shadow-soft"
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              aria-hidden="true"
-            />
-          )}
-          <span className="relative z-10 inline-flex items-center justify-center gap-1.5">
-            {option.label}
-            <span className="rounded-full bg-white/60 px-2 py-0.5 text-[11px] text-ink-soft">
-              {option.count}
+    <div className="page-toolbar mb-4 flex justify-center sm:mb-5">
+      <SegmentedControl
+        value={view}
+        onChange={onChange}
+        ariaLabel="切换首页内容"
+        layoutId="timeline-view-lens"
+        className="w-full max-w-sm"
+        options={options.map((option) => ({
+          value: option.key,
+          label: (
+            <span className="inline-flex items-center justify-center gap-1.5">
+              {option.label}
+              <span className="rounded-full bg-white/55 px-1.5 py-0.5 text-[11px] text-ink-soft">
+                {option.count}
+              </span>
             </span>
-          </span>
-        </button>
-      ))}
+          ),
+        }))}
+      />
     </div>
   );
 }
@@ -431,7 +423,7 @@ function MeetingTimeRiver({
   eventCount: number;
 }) {
   return (
-    <section className="meeting-river-shell overflow-hidden rounded-[1.85rem] px-5 py-5 sm:px-7 sm:py-6">
+    <section className="meeting-river-shell content-surface overflow-hidden px-5 py-5 sm:px-7 sm:py-6">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line/55 pb-4">
         <div>
           <p className="font-sc text-xs font-medium text-rose-deep">线下见面</p>
@@ -557,7 +549,7 @@ function MonthEventGroup({
   onToggle: () => void;
 }) {
   return (
-    <section className="glass-card overflow-hidden rounded-[1.85rem]">
+    <section className="content-surface overflow-hidden">
       <button
         type="button"
         onClick={onToggle}

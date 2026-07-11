@@ -1,6 +1,6 @@
 "use client";
 
-// Authenticated five-slot bottom navigation with a shared liquid-glass selection lens, mobile-safe viewport width, habit destination, settings via avatar, and compact rose create action.
+// Authenticated five-slot Liquid Glass bottom navigation with a shared morphing selection lens, mobile-safe width, habit destination, and prominent center create action.
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";

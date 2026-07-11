@@ -1,6 +1,6 @@
 "use client";
 
-// CycleCalendarDashboard records period facts below the unified AppHeader, keeps mobile horizontal scrolling local to controls, refreshes predictions after edits, and links cycle terms to mainland-friendly encyclopedia search.
+// Cycle dashboard with a solid calendar canvas, Liquid Glass date and view controls, readable prediction hierarchy, and shared mobile-safe record editing.
 
 import {
   addDays,
@@ -44,6 +44,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { readCycleReminderDays, saveCycleReminderDays } from "@/lib/cycle-reminder";
@@ -527,26 +528,17 @@ function CalendarToolbar({
           今天
         </Button>
       </div>
-      <div className="grid grid-cols-3 rounded-2xl bg-peach/18 p-1">
-        {[
-          ["month", CalendarDays, "月视图"],
-          ["week", Moon, "周视图"],
-          ["list", List, "列表"],
-        ].map(([mode, Icon, label]) => (
-          <button
-            key={String(mode)}
-            type="button"
-            onClick={() => onMode(mode as ViewMode)}
-            className={cn(
-              "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-medium text-ink-soft transition focus-ring",
-              viewMode === mode && "bg-surface-raised text-ink shadow-soft",
-            )}
-          >
-            <Icon className="h-4 w-4" />
-            {String(label)}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        value={viewMode}
+        onChange={onMode}
+        ariaLabel="切换周期日历视图"
+        layoutId="cycle-view-lens"
+        options={[
+          { value: "month", label: <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" />月</span> },
+          { value: "week", label: <span className="inline-flex items-center gap-1.5"><Moon className="h-4 w-4" />周</span> },
+          { value: "list", label: <span className="inline-flex items-center gap-1.5"><List className="h-4 w-4" />列表</span> },
+        ]}
+      />
     </div>
   );
 }
