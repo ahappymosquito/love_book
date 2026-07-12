@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests with an enable switch, habits, todo candidate queues with manual category fallback, scheduling, weather hints, automatically named meetings with batch event assignment and derived ranges, typed timeline events, quotes, live cycle dashboards, reactions, and media including todo image deletion.
+// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests with an enable switch, habits, todo candidate queues with manual category fallback, scheduling, weather hints, automatically named meetings with batch event assignment and derived ranges, typed timeline events, quote libraries and sampled batches, live cycle dashboards, reactions, and media including todo image deletion.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -31,6 +31,7 @@ import type {
   PairCreated,
   PairOut,
   QuoteOut,
+  QuoteSampleOut,
   TodoCategory,
   TodoCandidateOut,
   TodoClassifyOpenOut,
@@ -262,6 +263,7 @@ export const api = {
     }),
 
   // Quotes
+  sampleQuotes: (limit = 5) => apiRequest<QuoteSampleOut>(`/quotes/sample?limit=${limit}`, { silent: true }),
   listQuotes: () => apiRequest<QuoteOut[]>("/quotes"),
   listDefaultQuotes: () => apiRequest<DefaultQuoteOut[]>("/quotes/defaults"),
   createQuote: (text: string) =>

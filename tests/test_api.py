@@ -1,4 +1,4 @@
-"""API regression tests for auth, profiles, user locations, habit dashboards and reminders, media, typed timeline events with automatic meetings and batch assignment, todo boards, cycle fact storage with predicted phases, AMap-grounded AI tests, and fallback data."""
+"""API regression tests for auth, profiles, user locations, habit dashboards and reminders, media, sampled quotes, typed timeline events with automatic meetings and batch assignment, todo boards, cycle fact storage with predicted phases, AMap-grounded AI tests, and fallback data."""
 
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import app.api.routes.admin as admin_routes
+import app.api.routes.quotes as quote_routes
 import app.core.database as database
 import app.cycles as cycles
 import app.habits as habits
@@ -629,7 +630,60 @@ def test_anniversary_endpoint_uses_pair_and_default_quotes_in_one_random_pool(
 
 def test_quotes_require_login(client: TestClient) -> None:
     assert client.get("/quotes").status_code == 401
+    assert client.get("/quotes/sample").status_code == 401
     assert client.post("/quotes", json={"text": "hello"}).status_code == 401
+
+
+def test_quote_sample_combines_pair_and_default_quotes_without_cross_pair_leaks(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = str(pair_tokens["user_a_token"])
+    other_pair = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={"user_a_display_name": "C", "user_b_display_name": "D"},
+    ).json()
+    assert client.post("/quotes", headers=auth(token), json={"text": "只属于第一对"}).status_code == 201
+    assert client.post(
+        "/quotes",
+        headers=auth(other_pair["user_a_token"]),
+        json={"text": "只属于第二对"},
+    ).status_code == 201
+
+    def fail_if_holiday_is_loaded(*args: object, **kwargs: object) -> object:
+        raise AssertionError("quote sampling must not load holiday data")
+
+    monkeypatch.setattr(services, "fetch_holiday_item", fail_if_holiday_is_loaded)
+    response = client.get("/quotes/sample?limit=10", headers=auth(token))
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert len(items) == len(set(items))
+    assert len(items) <= 10
+    assert "只属于第一对" in items
+    assert "只属于第二对" not in items
+    assert set(services.DEFAULT_LOVE_QUOTES).issubset(set(items))
+    assert client.get("/quotes/sample?limit=0", headers=auth(token)).status_code == 422
+    assert client.get("/quotes/sample?limit=11", headers=auth(token)).status_code == 422
+
+
+def test_quote_sample_returns_available_items_when_pool_is_smaller_than_limit(
+    client: TestClient,
+    pair_tokens: dict[str, str | int],
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token = str(pair_tokens["user_a_token"])
+    db_session.query(DefaultQuote).delete()
+    db_session.commit()
+    monkeypatch.setattr(quote_routes, "ensure_default_quotes", lambda db: None)
+    assert client.post("/quotes", headers=auth(token), json={"text": "第一句"}).status_code == 201
+    assert client.post("/quotes", headers=auth(token), json={"text": "第二句"}).status_code == 201
+
+    response = client.get("/quotes/sample?limit=5", headers=auth(token))
+
+    assert response.status_code == 200
+    assert set(response.json()["items"]) == {"第一句", "第二句"}
 
 
 def test_quote_text_must_not_be_blank(client: TestClient, pair_tokens: dict[str, str | int]) -> None:

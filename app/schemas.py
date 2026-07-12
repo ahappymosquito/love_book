@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests with an enable switch, rich AMap restaurant evidence, habit check-ins, manual todo candidate queues, automatically named meetings with batch event assignment, typed timeline events, media, quotes, cycle records with empty/predicted days, and todo APIs."""
+"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests with an enable switch, rich AMap restaurant evidence, habit check-ins, manual todo candidate queues, automatically named meetings with batch event assignment, typed timeline events, sampled quote batches, media, cycle records with empty/predicted days, and todo APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -140,6 +140,10 @@ class QuoteOut(APIModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class QuoteSampleOut(APIModel):
+    items: list[str]
 
 
 class DefaultQuoteOut(APIModel):

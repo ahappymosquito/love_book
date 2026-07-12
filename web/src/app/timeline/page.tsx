@@ -1,10 +1,10 @@
 "use client";
 
-// Timeline home with a quiet relationship focus, solid grouped memory lists, inline meeting-title editing, batch record assignment, and Liquid Glass controls for view switching, reminders, and navigation.
+// Timeline home with instant in-memory quote rotation, a quiet relationship focus, solid grouped memory lists, inline meeting-title editing, batch record assignment, and Liquid Glass controls for view switching, reminders, and navigation.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   BookHeart,
@@ -44,6 +44,8 @@ const PuppyScene = dynamic(
 const LOCAL_REMINDER_QUOTES = [
   "我说伤心了怎么办，小狗说忘忘忘忘忘。",
 ];
+const QUOTE_BATCH_SIZE = 5;
+const QUOTE_REFILL_THRESHOLD = 2;
 
 type TimelineView = "all" | "meetings";
 
@@ -134,19 +136,100 @@ function TimelineInner() {
   const [meetingSessions, setMeetingSessions] = useState<MeetingSessionOut[]>([]);
   const [anniversary, setAnniversary] = useState<AnniversaryOut | null>(null);
   const [quoteRefreshing, setQuoteRefreshing] = useState(false);
+  const quoteQueueRef = useRef<string[]>([]);
+  const quoteBatchPromiseRef = useRef<Promise<string[]> | null>(null);
+  const quoteBatchPairIdRef = useRef<number | null>(null);
+  const quotePairIdRef = useRef<number | null>(null);
+  const pendingQuoteAdvanceRef = useRef(false);
+  const quoteAdvancedRef = useRef(false);
+  const currentQuoteRef = useRef(LOCAL_REMINDER_QUOTES[0]);
   const [cycleDashboard, setCycleDashboard] = useState<CycleDashboardOut | null>(null);
   const [cyclePromptDismissed, setCyclePromptDismissed] = useState(false);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => new Set([todayDateOnly().slice(0, 7)]));
   const [timelineView, setTimelineView] = useState<TimelineView>("all");
+
+  const loadQuoteBatch = useCallback((): Promise<string[]> => {
+    const pairId = me?.pair_id;
+    if (!pairId) return Promise.resolve([]);
+    if (quoteBatchPromiseRef.current && quoteBatchPairIdRef.current === pairId) {
+      return quoteBatchPromiseRef.current;
+    }
+
+    const request = api
+      .sampleQuotes(QUOTE_BATCH_SIZE)
+      .then(({ items }) => {
+        if (quotePairIdRef.current !== pairId) return items;
+        const existingQuotes = new Set([currentQuoteRef.current, ...quoteQueueRef.current]);
+        const freshQuotes = items.filter((item) => item && !existingQuotes.has(item));
+        quoteQueueRef.current = [...quoteQueueRef.current, ...freshQuotes];
+
+        if (me && pendingQuoteAdvanceRef.current && quoteQueueRef.current.length > 0) {
+          const [nextQuote, ...remainingQuotes] = quoteQueueRef.current;
+          quoteQueueRef.current = remainingQuotes;
+          pendingQuoteAdvanceRef.current = false;
+          currentQuoteRef.current = nextQuote;
+          quoteAdvancedRef.current = true;
+          setAnniversary((previous) => ({
+            ...(previous ?? immediateAnniversary(me.love_started_on)),
+            message: nextQuote,
+            message_source: "local",
+          }));
+        }
+        return items;
+      })
+      .catch(() => [])
+      .finally(() => {
+        if (quoteBatchPromiseRef.current === request) {
+          quoteBatchPromiseRef.current = null;
+          quoteBatchPairIdRef.current = null;
+        }
+      });
+
+    quoteBatchPromiseRef.current = request;
+    quoteBatchPairIdRef.current = pairId;
+    return request;
+  }, [me]);
+
+  const showNextQueuedQuote = useCallback((refill = true): boolean => {
+    if (!me) return false;
+    const [nextQuote, ...remainingQuotes] = quoteQueueRef.current;
+    if (!nextQuote) return false;
+
+    quoteQueueRef.current = remainingQuotes;
+    currentQuoteRef.current = nextQuote;
+    quoteAdvancedRef.current = true;
+    setAnniversary((previous) => ({
+      ...(previous ?? immediateAnniversary(me.love_started_on)),
+      message: nextQuote,
+      message_source: "local",
+    }));
+
+    if (refill && remainingQuotes.length <= QUOTE_REFILL_THRESHOLD) {
+      void loadQuoteBatch();
+    }
+    return true;
+  }, [loadQuoteBatch, me]);
 
   useEffect(() => {
     void load();
   }, []);
 
   useEffect(() => {
-    if (!me) return;
-    setAnniversary(immediateAnniversary(me.love_started_on));
+    if (!me) {
+      quotePairIdRef.current = null;
+      quoteQueueRef.current = [];
+      pendingQuoteAdvanceRef.current = false;
+      return;
+    }
+    const immediate = immediateAnniversary(me.love_started_on);
+    quotePairIdRef.current = me.pair_id;
+    quoteQueueRef.current = [];
+    pendingQuoteAdvanceRef.current = false;
+    quoteAdvancedRef.current = false;
+    currentQuoteRef.current = immediate.message;
+    setAnniversary(immediate);
     void loadAnniversary(me.love_started_on);
+    void loadQuoteBatch();
     const today = todayDateOnly();
     const range = reminderRange(today);
     void api
@@ -156,7 +239,7 @@ function TimelineInner() {
         setCyclePromptDismissed(isCycleReminderDismissed(me.pair_id, today));
       })
       .catch(() => setCycleDashboard(null));
-  }, [me]);
+  }, [loadQuoteBatch, me]);
 
   const eventGroups = useMemo(() => {
     const map = new Map<string, EventSummary[]>();
@@ -242,9 +325,23 @@ function TimelineInner() {
 
   async function loadAnniversary(startedOn: string) {
     try {
-      setAnniversary(await api.getAnniversary());
+      const loaded = await api.getAnniversary();
+      if (quoteAdvancedRef.current) {
+        setAnniversary((previous) => ({
+          ...loaded,
+          message: previous?.message ?? currentQuoteRef.current,
+          message_source: previous?.message_source ?? "local",
+        }));
+      } else {
+        currentQuoteRef.current = loaded.message;
+        setAnniversary(loaded);
+      }
     } catch {
-      setAnniversary(immediateAnniversary(startedOn));
+      if (!quoteAdvancedRef.current) {
+        const immediate = immediateAnniversary(startedOn);
+        currentQuoteRef.current = immediate.message;
+        setAnniversary(immediate);
+      }
     }
   }
 
@@ -266,14 +363,16 @@ function TimelineInner() {
     setCyclePromptDismissed(true);
   }
 
-  async function refreshAnniversary() {
+  function refreshQuote() {
     if (!me) return;
+    if (showNextQueuedQuote()) return;
+
+    pendingQuoteAdvanceRef.current = true;
     setQuoteRefreshing(true);
-    try {
-      await loadAnniversary(me.love_started_on);
-    } finally {
+    void loadQuoteBatch().finally(() => {
+      pendingQuoteAdvanceRef.current = false;
       setQuoteRefreshing(false);
-    }
+    });
   }
 
   if (!me) return <LoadingScreen />;
@@ -291,7 +390,7 @@ function TimelineInner() {
           relationshipDays={relationshipDays}
           data={anniversary ?? immediateAnniversary(me.love_started_on)}
           quoteRefreshing={quoteRefreshing}
-          onRefreshQuote={refreshAnniversary}
+          onRefreshQuote={refreshQuote}
         />
 
         {events !== null && events.length > 0 && (
@@ -377,8 +476,9 @@ function HomeHero({
           disabled={quoteRefreshing}
           className="block w-full max-w-3xl rounded-[1.35rem] py-1 text-left font-display text-[1.55rem] font-semibold leading-snug text-ink transition hover:text-rose-deep focus-ring disabled:cursor-wait disabled:opacity-70 sm:text-[1.9rem]"
           aria-label="刷新今日话语"
+          aria-busy={quoteRefreshing}
         >
-          {data.message}
+          <span aria-live="polite" aria-atomic="true">{data.message}</span>
         </button>
       </div>
     </section>

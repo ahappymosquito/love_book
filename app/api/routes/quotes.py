@@ -1,16 +1,33 @@
-"""Quote route handlers for pair-shared editable quotes and read-only default reminder quotes."""
+"""Quote routes for pair-shared edits, read-only defaults, and fast randomized batches for Timeline rotation."""
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+import random
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.database import get_db
 from app.models import DefaultQuote, Quote, User
-from app.schemas import DefaultQuoteOut, QuoteCreate, QuoteOut
+from app.schemas import DefaultQuoteOut, QuoteCreate, QuoteOut, QuoteSampleOut
 from app.services import ensure_default_quotes
 
 router = APIRouter(prefix="/quotes", tags=["quotes"])
+
+
+@router.get("/sample", response_model=QuoteSampleOut)
+def sample_quotes(
+    limit: int = Query(default=5, ge=1, le=10),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> QuoteSampleOut:
+    pair = get_pair_for_user(db, current_user.id)
+    ensure_default_quotes(db)
+    pair_quotes = db.execute(select(Quote.text).where(Quote.pair_id == pair.id)).scalars().all()
+    default_quotes = db.execute(select(DefaultQuote.text)).scalars().all()
+    quote_pool = list(dict.fromkeys([*pair_quotes, *default_quotes]))
+    sample_size = min(limit, len(quote_pool))
+    return QuoteSampleOut(items=random.sample(quote_pool, sample_size) if sample_size else [])
 
 
 @router.get("", response_model=list[QuoteOut])

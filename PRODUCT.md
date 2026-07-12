@@ -16,6 +16,8 @@ Meeting sessions remain an internal counting and grouping model rather than a vi
 
 The habits surface is a logged-in daily check-in dashboard: the bottom navigation opens `/habits`, settings remain available from the top avatar, the liquid-glass calendar shows both partners' progress with a Monday-start week view by default and an optional month view, and the personal/counterpart checklists stay as vertical collapsible panels on all viewport sizes. Habit colors are chosen from one color button during creation or explicit editing, while completed rows turn sage green with a short completion animation.
 
+Timeline's relationship quote keeps anniversary or festival copy on first load, then rotates ordinary pair/default quotes instantly from a five-item in-memory queue. The queue refills quietly when two items remain so repeated taps do not wait for network or holiday aggregation.
+
 ## Brand Personality
 
 温暖、可爱、舒服、可信. The product should feel like a soft couple scrapbook with product discipline: cheerful enough for memories and plans, gentle enough for long sessions, and reliable enough for sensitive data and admin workflows.
