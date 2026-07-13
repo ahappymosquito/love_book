@@ -1,4 +1,4 @@
-/* Global Love Book visual system: OKLCH Liquid Glass control layers, solid content surfaces, aligned meeting timelines, light and warm-night themes, mobile viewport guards, accessible controls, and reduced-transparency fallbacks. */
+/* Global Love Book visual system: OKLCH Liquid Glass controls, solid content and login surfaces, procedural scene tokens, aligned timelines, warm day/night themes, mobile viewport guards, and accessible motion fallbacks. */
 
 @tailwind base;
 @tailwind components;
@@ -36,6 +36,25 @@
     --lb-radius-panel: 20px;
     --lb-motion-fast: 160ms;
     --lb-motion-base: 220ms;
+    --lb-scene-paper: 0.985 0.014 48;
+    --lb-scene-paper-shade: 0.93 0.028 42;
+    --lb-scene-cover: 0.63 0.13 12;
+    --lb-scene-cover-deep: 0.48 0.13 9;
+    --lb-scene-fur: 0.97 0.018 52;
+    --lb-scene-fur-shade: 0.87 0.045 44;
+    --lb-scene-ear: 0.63 0.09 42;
+    --lb-scene-ink: 0.28 0.035 20;
+    --lb-scene-cheek: 0.77 0.1 12;
+    --lb-scene-rose: 0.62 0.14 12;
+    --lb-scene-peach: 0.79 0.1 48;
+    --lb-scene-sage: 0.68 0.085 153;
+    --lb-scene-sky-top: 0.7 0.09 292;
+    --lb-scene-sky-horizon: 0.9 0.105 64;
+    --lb-scene-grass: 0.43 0.075 150;
+    --lb-scene-grass-tip: 0.57 0.085 136;
+    --lb-scene-sun: 0.9 0.14 72;
+    --lb-scene-glow: 0.78 0.16 28;
+    --lb-scene-shadow: 0.24 0.045 150;
     --ink: 61 43 45;
     --ink-soft: 100 75 73;
     --ink-muted: 135 105 101;
@@ -78,6 +97,25 @@
       --lb-glass-alpha: 0.72;
       --lb-glass-clear-alpha: 0.56;
       --lb-glass-prominent-alpha: 0.88;
+      --lb-scene-paper: 0.9 0.025 35;
+      --lb-scene-paper-shade: 0.77 0.035 28;
+      --lb-scene-cover: 0.65 0.115 10;
+      --lb-scene-cover-deep: 0.4 0.07 10;
+      --lb-scene-fur: 0.88 0.025 42;
+      --lb-scene-fur-shade: 0.72 0.05 38;
+      --lb-scene-ear: 0.62 0.08 38;
+      --lb-scene-ink: 0.2 0.025 18;
+      --lb-scene-cheek: 0.72 0.095 10;
+      --lb-scene-rose: 0.72 0.13 10;
+      --lb-scene-peach: 0.75 0.1 48;
+      --lb-scene-sage: 0.72 0.09 153;
+      --lb-scene-sky-top: 0.36 0.065 294;
+      --lb-scene-sky-horizon: 0.62 0.11 30;
+      --lb-scene-grass: 0.34 0.06 150;
+      --lb-scene-grass-tip: 0.49 0.075 136;
+      --lb-scene-sun: 0.82 0.125 68;
+      --lb-scene-glow: 0.72 0.15 25;
+      --lb-scene-shadow: 0.19 0.035 160;
       --ink: 250 239 235;
       --ink-soft: 224 202 196;
       --ink-muted: 190 160 156;
@@ -215,26 +253,15 @@
 
   .login-floating-panel {
     border-radius: var(--lb-radius-panel);
-    background:
-      linear-gradient(180deg, oklch(1 0 0 / 0.24), transparent 52%),
-      oklch(var(--lb-glass) / var(--lb-glass-prominent-alpha));
-    border-color: oklch(1 0 0 / 0.55);
-    box-shadow:
-      inset 0 1px 0 oklch(1 0 0 / 0.56),
-      0 4px 8px oklch(var(--lb-ink) / 0.1);
-    backdrop-filter: blur(var(--lb-blur)) saturate(1.35);
-    -webkit-backdrop-filter: blur(var(--lb-blur)) saturate(1.35);
+    background: oklch(var(--lb-surface-solid));
+    border: 1px solid oklch(var(--lb-line) / 0.72);
+    box-shadow: 0 4px 8px oklch(var(--lb-ink) / 0.1);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .login-brand-chip {
     color: oklch(var(--lb-ink));
-    border: 1px solid oklch(1 0 0 / 0.55);
-    background: oklch(var(--lb-glass) / 0.88);
-    box-shadow:
-      inset 0 1px 0 oklch(1 0 0 / 0.54),
-      0 2px 6px oklch(var(--lb-ink) / 0.1);
-    backdrop-filter: blur(16px) saturate(1.3);
-    -webkit-backdrop-filter: blur(16px) saturate(1.3);
   }
 
   @media (prefers-color-scheme: dark) {
@@ -474,25 +501,303 @@
     max-height: 92dvh !important;
   }
 
-  .login-floating-panel {
-    border: 1px solid rgb(255 255 255 / 0.66);
-    border-radius: 1.5rem;
+  .login-shell {
+    position: relative;
+    isolation: isolate;
+    width: 100%;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     background:
-      radial-gradient(circle at 18% 0%, rgb(255 255 255 / 0.92), transparent 32%),
-      linear-gradient(180deg, rgb(var(--surface-raised) / 0.94), rgb(var(--surface) / 0.78)),
-      rgb(var(--surface) / 0.88);
-    box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.88) inset,
-      0 22px 48px -28px rgb(var(--ink) / 0.28),
-      0 12px 32px -24px rgb(var(--rose-deep) / 0.3);
-    backdrop-filter: blur(18px) saturate(132%);
-    -webkit-backdrop-filter: blur(18px) saturate(132%);
+      radial-gradient(circle at 24% 30%, oklch(var(--lb-scene-sun) / 0.64), transparent 11rem),
+      linear-gradient(
+        180deg,
+        oklch(var(--lb-scene-sky-top)) 0%,
+        oklch(var(--lb-scene-sky-horizon)) 54%,
+        oklch(var(--lb-scene-grass-tip)) 55%,
+        oklch(var(--lb-scene-grass)) 100%
+      );
+  }
+
+  .login-scene-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100svh;
+    overflow: hidden;
+    pointer-events: none;
+    contain: strict;
+  }
+
+  .login-scene-placeholder {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 24% 31%, oklch(var(--lb-scene-sun) / 0.82), transparent 9rem),
+      radial-gradient(ellipse at 40% 66%, oklch(var(--lb-scene-grass-tip) / 0.82), transparent 42%),
+      linear-gradient(
+        180deg,
+        oklch(var(--lb-scene-sky-top)) 0%,
+        oklch(var(--lb-scene-sky-horizon)) 55%,
+        oklch(var(--lb-scene-grass)) 56%,
+        oklch(var(--lb-scene-shadow)) 130%
+      );
+    opacity: 1;
+    transition: opacity 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .login-scene-layer .puppy-scene-hero {
+    opacity: 0;
+    transition: opacity 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .login-scene-layer.is-ready .login-scene-placeholder {
+    opacity: 0;
+  }
+
+  .login-scene-layer.is-ready .puppy-scene-hero {
+    opacity: 1;
+  }
+
+  .login-submit-flight {
+    position: fixed;
+    left: 50%;
+    bottom: 38%;
+    z-index: 5;
+    width: min(34vh, 14rem);
+    height: 1.25rem;
+    transform: rotate(-90deg);
+    transform-origin: left center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .login-submit-flight::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    transform: translateY(-50%) scaleX(0);
+    transform-origin: left center;
+    border-radius: 999px;
+    background: linear-gradient(90deg, oklch(var(--lb-scene-rose) / 0.1), oklch(var(--lb-scene-glow) / 0.92));
+    box-shadow: 0 0 8px oklch(var(--lb-scene-glow) / 0.58);
+  }
+
+  .login-submit-flight span {
+    position: absolute;
+    top: 50%;
+    right: -0.35rem;
+    width: 0.82rem;
+    height: 0.82rem;
+    transform: translateY(-50%) scale(0.55);
+    border-radius: 999px;
+    background: oklch(var(--lb-scene-glow));
+    box-shadow: 0 0 8px oklch(var(--lb-scene-glow) / 0.76);
+    opacity: 0;
+  }
+
+  .login-shell[data-login-mood="submitting"] .login-submit-flight,
+  .login-shell[data-login-mood="success"] .login-submit-flight {
+    opacity: 1;
+  }
+
+  .login-shell[data-login-mood="submitting"] .login-submit-flight::before {
+    animation: login-flight-trace 720ms cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  }
+
+  .login-shell[data-login-mood="submitting"] .login-submit-flight span,
+  .login-shell[data-login-mood="success"] .login-submit-flight span {
+    animation: login-flight-pulse 720ms cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  }
+
+  .login-submit-button {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    transition:
+      transform 140ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .login-submit-button::after {
+    content: "";
+    position: absolute;
+    inset: -60% -20%;
+    z-index: -1;
+    transform: translateX(-72%) rotate(14deg);
+    background: linear-gradient(90deg, transparent, oklch(var(--lb-scene-sun) / 0.42), transparent);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .login-submit-button:active {
+    transform: scale(0.975);
+  }
+
+  .login-shell[data-login-mood="submitting"] .login-submit-button {
+    box-shadow: inset 0 0 0 1px oklch(var(--lb-scene-sun) / 0.35);
+  }
+
+  .login-shell[data-login-mood="submitting"] .login-submit-button::after {
+    opacity: 1;
+    animation: login-button-light 820ms cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  }
+
+  @keyframes login-flight-trace {
+    0% {
+      transform: translateY(-50%) scaleX(0);
+      opacity: 0;
+    }
+    22% {
+      opacity: 1;
+    }
+    72%,
+    100% {
+      transform: translateY(-50%) scaleX(1);
+      opacity: 0.85;
+    }
+  }
+
+  @keyframes login-flight-pulse {
+    0%,
+    36% {
+      transform: translateY(-50%) scale(0.45);
+      opacity: 0;
+    }
+    72% {
+      transform: translateY(-50%) scale(1.25);
+      opacity: 1;
+    }
+    100% {
+      transform: translateY(-50%) scale(0.72);
+      opacity: 0;
+    }
+  }
+
+  @keyframes login-button-light {
+    from {
+      transform: translateX(-72%) rotate(14deg);
+    }
+    to {
+      transform: translateX(72%) rotate(14deg);
+    }
+  }
+
+  .login-content {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    width: 100%;
+    min-height: max(100dvh, 44rem);
+    flex-direction: column;
+    pointer-events: none;
+    padding:
+      calc(env(safe-area-inset-top, 0px) + 1rem)
+      max(1rem, env(safe-area-inset-right, 0px))
+      calc(env(safe-area-inset-bottom, 0px) + 1rem)
+      max(1rem, env(safe-area-inset-left, 0px));
+  }
+
+  .login-brand-row {
+    display: flex;
+    min-height: 2.75rem;
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .login-brand-row,
+  .login-floating-panel {
+    pointer-events: auto;
+  }
+
+  .login-main {
+    display: flex;
+    flex: 1;
+    align-items: flex-end;
+    padding-top: 16rem;
+    padding-bottom: 0.25rem;
+  }
+
+  .login-floating-panel {
+    border: 1px solid oklch(var(--lb-line) / 0.72);
+    border-radius: var(--lb-radius-panel);
+    background: oklch(var(--lb-surface-solid) / 0.98);
+    box-shadow: 0 4px 8px oklch(var(--lb-ink) / 0.1);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     padding: 1.35rem;
   }
 
+  .login-inline-error {
+    display: flex;
+    gap: 0.5rem;
+    color: oklch(var(--lb-danger));
+  }
+
+  .login-input-error {
+    border-color: oklch(var(--lb-danger) / 0.82) !important;
+    box-shadow: 0 0 0 3px oklch(var(--lb-danger) / 0.14) !important;
+  }
+
   @media (min-width: 640px) {
+    .login-content {
+      padding-inline: max(1.5rem, env(safe-area-inset-left, 0px));
+    }
+
     .login-floating-panel {
       padding: 1.55rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .login-content {
+      min-height: 100dvh;
+      padding-inline: 2rem;
+    }
+
+    .login-main {
+      align-items: flex-end;
+      padding-top: 0;
+      padding-bottom: 7vh;
+    }
+
+    .login-floating-panel {
+      margin-right: clamp(3rem, 7vw, 8rem);
+      margin-left: auto;
+    }
+
+    .login-submit-flight {
+      right: 21%;
+      bottom: 28%;
+      left: auto;
+      width: clamp(18rem, 38vw, 42rem);
+      transform: rotate(-8deg);
+      transform-origin: right center;
+    }
+
+    .login-submit-flight::before {
+      transform-origin: right center;
+    }
+
+    .login-submit-flight span {
+      right: auto;
+      left: -0.35rem;
+    }
+  }
+
+  @media (max-height: 720px) and (max-width: 767px) {
+    .login-content {
+      min-height: 44rem;
+    }
+
+    .login-main {
+      padding-top: 12.5rem;
     }
   }
 
@@ -512,8 +817,17 @@
 
   .puppy-scene-hero::after {
     background:
-      radial-gradient(circle at 50% 20%, rgb(255 255 255 / 0.28), transparent 34%),
-      linear-gradient(180deg, transparent 46%, rgb(var(--cream)) / 0.3 100%);
+      radial-gradient(circle at 26% 28%, oklch(var(--lb-scene-sun) / 0.16), transparent 28%),
+      linear-gradient(180deg, transparent 58%, oklch(var(--lb-scene-shadow) / 0.08) 82%, oklch(var(--lb-scene-shadow) / 0.28) 100%);
+  }
+
+  .puppy-scene-hero canvas {
+    cursor: crosshair;
+  }
+
+  .puppy-scene-hero[data-scene-mood="focused"] canvas,
+  .puppy-scene-hero[data-scene-mood="submitting"] canvas {
+    cursor: default;
   }
 
   .puppy-scene-inline::after {
@@ -701,14 +1015,9 @@
     }
 
     .login-floating-panel {
-      border-color: rgb(255 255 255 / 0.16);
-      background:
-        radial-gradient(circle at 18% 0%, rgb(255 255 255 / 0.14), transparent 32%),
-        linear-gradient(180deg, rgb(var(--surface-raised) / 0.88), rgb(var(--surface) / 0.82)),
-        rgb(var(--surface) / 0.84);
-      box-shadow:
-        0 1px 0 rgb(255 255 255 / 0.08) inset,
-        0 24px 44px -28px rgb(0 0 0 / 0.62);
+      border-color: oklch(var(--lb-line) / 0.82);
+      background: oklch(var(--lb-surface-solid));
+      box-shadow: 0 4px 8px oklch(0.08 0.015 18 / 0.28);
     }
 
     .timeline-hero-panel {
@@ -1192,8 +1501,7 @@
   .liquid-nav-shell,
   .liquid-chip,
   .liquid-color-button,
-  .liquid-color-popover,
-  .login-floating-panel {
+  .liquid-color-popover {
     background: oklch(var(--lb-surface-elevated));
   }
 }
@@ -1223,12 +1531,33 @@
     border-color: CanvasText;
     box-shadow: none;
   }
+
+  .login-shell {
+    background: Canvas;
+  }
+
+  .login-scene-layer,
+  .login-submit-flight {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .glass-interactive,
   .segmented-control-item,
-  .segmented-control-lens {
+  .segmented-control-lens,
+  .login-scene-placeholder,
+  .login-scene-layer .puppy-scene-hero,
+  .login-submit-button {
     transition-duration: 0.01ms !important;
+  }
+
+  .login-submit-flight {
+    display: none;
+  }
+
+  .login-submit-button::after {
+    animation: none !important;
+    opacity: 0 !important;
   }
 }

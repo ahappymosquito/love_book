@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests with an enable switch, habits, todo candidate queues with manual category fallback, scheduling, weather hints, editable meeting date ranges with automatic event classification, typed timeline events, quote libraries and sampled batches, live cycle dashboards, reactions, and media including todo image deletion.
+// Browser API client for authenticated profiles with optional silent login recovery, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests with an enable switch, habits, todo candidate queues with manual category fallback, scheduling, weather hints, editable meeting date ranges with automatic event classification, typed timeline events, quote libraries and sampled batches, live cycle dashboards, reactions, and media including todo image deletion.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -238,7 +238,7 @@ export const api = {
     }),
 
   // Auth
-  me: () => apiRequest<MeOut>("/auth/me"),
+  me: (options?: { silent?: boolean }) => apiRequest<MeOut>("/auth/me", { silent: options?.silent }),
   getAnniversary: () => apiRequest<AnniversaryOut>("/auth/anniversary", { silent: true }),
   patchMe: (payload: { display_name?: string; avatar?: string; email?: string | null }) =>
     apiRequest<UserOut>("/auth/me", { method: "PATCH", json: payload }),
