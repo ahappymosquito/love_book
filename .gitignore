@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.pytest-tmp/
 .pytest_tmp/
 pair_events.db
 media/
@@ -10,6 +11,8 @@ pytest-cache-files-*/
 .idea
 .qoder
 .codegraph/
+.playwright-cli/
+output/
 
 # web/ frontend
 web/node_modules/
