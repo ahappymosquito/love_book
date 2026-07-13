@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests with an enable switch, habits, todo candidate queues with manual category fallback, scheduling, weather hints, automatically named meetings with batch event assignment and derived ranges, typed timeline events, quote libraries and sampled batches, live cycle dashboards, reactions, and media including todo image deletion.
+// Browser API client for authenticated profiles, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests with an enable switch, habits, todo candidate queues with manual category fallback, scheduling, weather hints, editable meeting date ranges with automatic event classification, typed timeline events, quote libraries and sampled batches, live cycle dashboards, reactions, and media including todo image deletion.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -375,24 +375,21 @@ export const api = {
 
   // Events
   listMeetingSessions: () => apiRequest<MeetingSessionOut[]>("/meeting-sessions"),
-  createMeetingSession: (payload: { title: string }) =>
+  createMeetingSession: (payload: { title: string; started_on: string; ended_on: string }) =>
     apiRequest<MeetingSessionOut>("/meeting-sessions", {
       method: "POST",
       json: payload,
     }),
   updateMeetingSession: (
     id: number,
-    payload: { title?: string },
+    payload: { title?: string; started_on?: string; ended_on?: string },
   ) =>
     apiRequest<MeetingSessionOut>(`/meeting-sessions/${id}`, {
       method: "PATCH",
       json: payload,
     }),
-  assignEventsToMeetingSession: (id: number, eventIds: number[]) =>
-    apiRequest<MeetingSessionOut>(`/meeting-sessions/${id}/events`, {
-      method: "POST",
-      json: { event_ids: eventIds },
-    }),
+  deleteMeetingSession: (id: number) =>
+    apiRequest<void>(`/meeting-sessions/${id}`, { method: "DELETE" }),
   listEvents: () => apiRequest<EventSummary[]>("/events"),
   getEvent: (id: number) => apiRequest<EventDetail>(`/events/${id}`),
   createEvent: (payload: {

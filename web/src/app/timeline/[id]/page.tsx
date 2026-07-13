@@ -1,6 +1,6 @@
 "use client";
 
-// Event detail screen with mobile viewport guards, creator-only inline event editing, automatic meeting marking, warm scrapbook reading layout, avatar-aware authors, stable-hover reactions, media stream, submission state, and bottom-nav-covering composer.
+// Event detail screen with mobile viewport guards, creator-only inline event editing, automatic meeting marking and shared range editing, warm scrapbook reading layout, avatar-aware authors, stable-hover reactions, media stream, submission state, and bottom-nav-covering composer.
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -29,6 +29,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ImageThumb } from "@/components/image-thumb";
 import { Lightbox } from "@/components/lightbox";
 import { LoadingScreen } from "@/components/loading-screen";
+import { MeetingEditorDialog } from "@/components/meeting-editor-dialog";
 import { VisibilityBadge } from "@/components/visibility-badge";
 import { VoicePlayer } from "@/components/voice-player";
 import { api } from "@/lib/api";
@@ -39,7 +40,6 @@ import type {
   CommentReactionSummary,
   CommentReactionType,
   EventDetail,
-  EventKind,
   ImageOut,
   UserOut,
   VisibilityMode,
@@ -99,6 +99,7 @@ function EventDetailInner() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [updatingKind, setUpdatingKind] = useState(false);
+  const [meetingEditorOpen, setMeetingEditorOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editTitle, setEditTitle] = useState("");
@@ -292,14 +293,17 @@ function EventDetailInner() {
 
   async function handleToggleMeetingKind() {
     if (!event || updatingKind) return;
-    const nextKind: EventKind = event.event_kind === "offline_meeting" ? "memory" : "offline_meeting";
+    if (event.event_kind === "offline_meeting" && event.meeting_session) {
+      setMeetingEditorOpen(true);
+      return;
+    }
     const previous = event;
     setUpdatingKind(true);
-    setEvent({ ...event, event_kind: nextKind });
+    setEvent({ ...event, event_kind: "offline_meeting" });
     try {
-      const updated = await api.updateEvent(event.id, { event_kind: nextKind });
+      const updated = await api.updateEvent(event.id, { event_kind: "offline_meeting" });
       setEvent(updated);
-      toast.success(nextKind === "offline_meeting" ? "已放进见面时间河流" : "已取消见面标记");
+      toast.success("已放进见面时间河流");
     } catch {
       setEvent(previous);
     } finally {
@@ -375,8 +379,8 @@ function EventDetailInner() {
                     ? "bg-rose/12 text-rose-deep hover:bg-rose/18"
                     : "text-ink-soft hover:bg-peach/16 hover:text-rose-deep",
                 )}
-                aria-label={isMeeting ? "取消线下见面标记" : "标记为线下见面"}
-                title={isMeeting ? "取消线下见面标记" : "标记为线下见面"}
+                aria-label={isMeeting ? "编辑这次见面" : "标记为线下见面"}
+                title={isMeeting ? "编辑这次见面" : "标记为线下见面"}
               >
                 <CalendarHeart className="h-5 w-5" />
               </button>
@@ -680,6 +684,9 @@ function EventDetailInner() {
       />
 
       <Lightbox url={lightbox} onClose={() => setLightbox(null)} />
+
+      <MeetingEditorDialog open={meetingEditorOpen} session={event.meeting_session}
+        onOpenChange={setMeetingEditorOpen} onSaved={async () => load()} onDeleted={async () => load()} />
 
       <ConfirmDialog
         open={confirmDelete}

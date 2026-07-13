@@ -1,4 +1,4 @@
-"""Shared business logic for pair access, automatically named meetings, empty-meeting cleanup, event-derived ranges, typed event summaries, comment reactions, content visibility, media metadata, database quotes, and home reminders."""
+"""Shared business logic for pair access, editable Beijing-date meeting ranges, overlap merging, automatic event classification, typed event summaries, comment reactions, content visibility, media metadata, database quotes, and home reminders."""
 
 import random
 from datetime import date, datetime, timedelta, timezone
@@ -9,7 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, exists, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Comment, CommentReaction, DefaultQuote, DeviceToken, Event, Image, MeetingSession, Pair, Quote, User, VisibilityMode, Voice, utc_now
+from app.models import Comment, CommentReaction, DefaultQuote, DeviceToken, Event, EventKind, Image, MeetingSession, Pair, Quote, User, VisibilityMode, Voice, utc_now
 from app.schemas import (
     AnniversaryOut,
     CommentOut,
@@ -27,6 +27,7 @@ from app.storage import media_file_exists
 
 COMMENT_REACTION_TYPES = ("like", "dislike")
 CHINA_TZ = timezone(timedelta(hours=8))
+MEETING_TZ = CHINA_TZ
 HOLIDAY_INFO_URL = "https://timor.tech/api/holiday/info/{date}"
 DEFAULT_LOVE_QUOTES = [
     "我说伤心了怎么办 小狗说忘忘忘忘忘忘",
@@ -227,8 +228,56 @@ def ensure_pair_meeting_session(db: Session, session_id: int, pair: Pair) -> Mee
     return meeting_session
 
 
-def create_meeting_for_event(db: Session, pair: Pair, user: User, title: str) -> MeetingSession:
-    meeting = MeetingSession(pair_id=pair.id, title=title, created_by_id=user.id)
+def meeting_date_for_values(occurred_at: datetime | None, created_at: datetime) -> date:
+    event_time = occurred_at or created_at
+    if event_time.tzinfo is None:
+        event_time = event_time.replace(tzinfo=timezone.utc)
+    return event_time.astimezone(MEETING_TZ).date()
+
+
+def meeting_date_for_event(event: Event) -> date:
+    return meeting_date_for_values(event.occurred_at, event.created_at)
+
+
+def meeting_contains_date(meeting: MeetingSession, event_date: date) -> bool:
+    return bool(
+        meeting.started_on is not None
+        and meeting.ended_on is not None
+        and meeting.started_on <= event_date <= meeting.ended_on
+    )
+
+
+def find_meeting_for_date(db: Session, pair_id: int, event_date: date) -> MeetingSession | None:
+    meetings = db.execute(
+        select(MeetingSession)
+        .where(
+            MeetingSession.pair_id == pair_id,
+            MeetingSession.started_on <= event_date,
+            MeetingSession.ended_on >= event_date,
+        )
+        .order_by(MeetingSession.created_at, MeetingSession.id)
+    ).scalars().all()
+    return meetings[0] if meetings else None
+
+
+def get_or_create_single_day_meeting(
+    db: Session,
+    pair: Pair,
+    user: User,
+    title: str,
+    event_date: date,
+) -> MeetingSession:
+    db.execute(select(Pair.id).where(Pair.id == pair.id).with_for_update())
+    meeting = find_meeting_for_date(db, pair.id, event_date)
+    if meeting is not None:
+        return meeting
+    meeting = MeetingSession(
+        pair_id=pair.id,
+        title=title,
+        started_on=event_date,
+        ended_on=event_date,
+        created_by_id=user.id,
+    )
     db.add(meeting)
     db.flush()
     return meeting
@@ -244,6 +293,119 @@ def delete_meeting_if_empty(db: Session, meeting_session_id: int | None) -> None
             db.delete(meeting)
 
 
+def meeting_ranges_overlap(left: MeetingSession, right: MeetingSession) -> bool:
+    if left.started_on is None or left.ended_on is None or right.started_on is None or right.ended_on is None:
+        return False
+    return left.started_on <= right.ended_on and right.started_on <= left.ended_on
+
+
+def meeting_creation_key(meeting: MeetingSession) -> tuple[float, int]:
+    created_at = meeting.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    return created_at.timestamp(), meeting.id
+
+
+def reconcile_pair_meeting_ranges(db: Session, pair_id: int) -> list[MeetingSession]:
+    meetings = db.execute(
+        select(MeetingSession)
+        .where(
+            MeetingSession.pair_id == pair_id,
+            MeetingSession.started_on.is_not(None),
+            MeetingSession.ended_on.is_not(None),
+        )
+        .order_by(MeetingSession.created_at, MeetingSession.id)
+    ).scalars().all()
+
+    remaining = list(meetings)
+    canonical_meetings: list[MeetingSession] = []
+    while remaining:
+        component = [remaining.pop(0)]
+        expanded = True
+        while expanded:
+            expanded = False
+            for candidate in list(remaining):
+                if any(meeting_ranges_overlap(candidate, member) for member in component):
+                    component.append(candidate)
+                    remaining.remove(candidate)
+                    expanded = True
+        canonical = min(component, key=meeting_creation_key)
+        canonical.started_on = min(meeting.started_on for meeting in component if meeting.started_on is not None)
+        canonical.ended_on = max(meeting.ended_on for meeting in component if meeting.ended_on is not None)
+        for merged in component:
+            if merged.id == canonical.id:
+                continue
+            db.execute(
+                Event.__table__.update()
+                .where(Event.meeting_session_id == merged.id)
+                .values(meeting_session_id=canonical.id, event_kind=EventKind.offline_meeting)
+            )
+            db.delete(merged)
+        canonical_meetings.append(canonical)
+
+    db.flush()
+    events = db.execute(select(Event).where(Event.pair_id == pair_id)).scalars().all()
+    canonical_meetings.sort(key=lambda meeting: (meeting.started_on or date.min, meeting_creation_key(meeting)))
+    for event in events:
+        event_date = meeting_date_for_event(event)
+        matching = next(
+            (meeting for meeting in canonical_meetings if meeting_contains_date(meeting, event_date)),
+            None,
+        )
+        if matching is None:
+            event.event_kind = EventKind.memory
+            event.meeting_session_id = None
+        else:
+            event.event_kind = EventKind.offline_meeting
+            event.meeting_session_id = matching.id
+    db.flush()
+    return canonical_meetings
+
+
+def normalize_meeting_ranges(db: Session) -> None:
+    meetings = db.execute(select(MeetingSession).order_by(MeetingSession.created_at, MeetingSession.id)).scalars().all()
+    for meeting in meetings:
+        assigned_events = db.execute(
+            select(Event).where(Event.meeting_session_id == meeting.id).order_by(Event.created_at, Event.id)
+        ).scalars().all()
+        if meeting.started_on is None or meeting.ended_on is None:
+            if not assigned_events:
+                db.delete(meeting)
+                continue
+            event_dates = [meeting_date_for_event(event) for event in assigned_events]
+            meeting.started_on = min(event_dates)
+            meeting.ended_on = max(event_dates)
+        elif meeting.started_on > meeting.ended_on:
+            meeting.started_on, meeting.ended_on = meeting.ended_on, meeting.started_on
+    db.flush()
+
+    orphan_events = db.execute(
+        select(Event)
+        .where(Event.event_kind == EventKind.offline_meeting, Event.meeting_session_id.is_(None))
+        .order_by(Event.created_at, Event.id)
+    ).scalars().all()
+    for event in orphan_events:
+        event_date = meeting_date_for_event(event)
+        meeting = find_meeting_for_date(db, event.pair_id, event_date)
+        if meeting is None:
+            meeting = MeetingSession(
+                pair_id=event.pair_id,
+                title=event.title,
+                started_on=event_date,
+                ended_on=event_date,
+                created_by_id=event.creator_id,
+                created_at=event.created_at,
+                updated_at=event.created_at,
+            )
+            db.add(meeting)
+            db.flush()
+        event.meeting_session_id = meeting.id
+
+    pair_ids = db.execute(select(MeetingSession.pair_id).distinct()).scalars().all()
+    for pair_id in pair_ids:
+        reconcile_pair_meeting_ranges(db, pair_id)
+
+
 def meeting_session_time_range(db: Session, meeting_session_id: int) -> tuple[datetime | None, datetime | None]:
     event_time = func.coalesce(Event.occurred_at, Event.created_at)
     started_at, ended_at = db.execute(
@@ -257,6 +419,8 @@ def meeting_session_lite(db: Session, meeting_session: MeetingSession) -> Meetin
     return MeetingSessionLite(
         id=meeting_session.id,
         title=meeting_session.title,
+        started_on=meeting_session.started_on,
+        ended_on=meeting_session.ended_on,
         started_at=started_at,
         ended_at=ended_at,
     )

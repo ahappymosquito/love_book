@@ -1,4 +1,4 @@
-"""Event route handlers for creating, listing, updating, deleting, automatic meeting creation and cleanup, and notifying timeline events.
+"""Event route handlers for creating, listing, updating, deleting, editable-range meeting classification, and notifying timeline events.
 
 Mutation endpoints commit before returning so the frontend can immediately reload the new or changed event.
 """
@@ -10,9 +10,9 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.database import get_db
 from app.emailer import notify_event_created
-from app.models import Event, EventKind, User
+from app.models import Event, EventKind, User, utc_now
 from app.schemas import EventCreate, EventDetail, EventSummary, EventUpdate
-from app.services import active_token_for_user, counterpart, create_meeting_for_event, delete_meeting_if_empty, ensure_pair_event, ensure_pair_meeting_session, event_detail, event_summary
+from app.services import active_token_for_user, counterpart, ensure_pair_event, ensure_pair_meeting_session, event_detail, event_summary, find_meeting_for_date, get_or_create_single_day_meeting, meeting_date_for_values
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -25,12 +25,22 @@ def create_event(
     db: Session = Depends(get_db),
 ) -> EventDetail:
     pair = get_pair_for_user(db, current_user.id)
-    meeting_session_id = payload.meeting_session_id
-    if meeting_session_id is not None:
-        ensure_pair_meeting_session(db, meeting_session_id, pair)
-    elif payload.event_kind == EventKind.offline_meeting:
-        meeting_session_id = create_meeting_for_event(db, pair, current_user, payload.title).id
-    event_kind = EventKind.offline_meeting if meeting_session_id is not None else payload.event_kind
+    if payload.meeting_session_id is not None:
+        ensure_pair_meeting_session(db, payload.meeting_session_id, pair)
+    explicitly_offline = payload.event_kind == EventKind.offline_meeting or payload.meeting_session_id is not None
+    created_at = utc_now()
+    event_date = meeting_date_for_values(payload.occurred_at, created_at)
+    meeting_session = find_meeting_for_date(db, pair.id, event_date)
+    if meeting_session is None and explicitly_offline:
+        meeting_session = get_or_create_single_day_meeting(
+            db,
+            pair,
+            current_user,
+            payload.title,
+            event_date,
+        )
+    meeting_session_id = meeting_session.id if meeting_session is not None else None
+    event_kind = EventKind.offline_meeting if meeting_session is not None else EventKind.memory
     event = Event(
         pair_id=pair.id,
         creator_id=current_user.id,
@@ -40,6 +50,7 @@ def create_event(
         occurred_at=payload.occurred_at,
         event_kind=event_kind,
         visibility_mode=payload.visibility_mode,
+        created_at=created_at,
     )
     db.add(event)
     db.flush()
@@ -90,36 +101,43 @@ def update_event(
 ) -> EventDetail:
     pair = get_pair_for_user(db, current_user.id)
     event = ensure_pair_event(db, event_id, pair)
-    previous_meeting_session_id = event.meeting_session_id
     updates = payload.model_dump(exclude_unset=True)
     classification_update_only = set(updates) <= {"meeting_session_id"}
     if event.creator_id != current_user.id and not classification_update_only:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the creator can update this event")
 
-    if updates.get("event_kind") != EventKind.offline_meeting and updates.get("meeting_session_id") is not None:
-        if "event_kind" in updates:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Assigned meeting events must use the offline meeting kind",
-            )
-
     if "meeting_session_id" in updates:
         if updates["meeting_session_id"] is not None:
             ensure_pair_meeting_session(db, updates["meeting_session_id"], pair)
             updates["event_kind"] = EventKind.offline_meeting
+
+    explicitly_offline = (
+        updates.get("event_kind") == EventKind.offline_meeting
+        or updates.get("meeting_session_id") is not None
+    )
+    event_date = meeting_date_for_values(
+        updates.get("occurred_at", event.occurred_at),
+        event.created_at,
+    )
+    meeting_session = find_meeting_for_date(db, pair.id, event_date)
+    if meeting_session is None and explicitly_offline:
+        meeting_session = get_or_create_single_day_meeting(
+            db,
+            pair,
+            current_user,
+            updates.get("title", event.title),
+            event_date,
+        )
+    if meeting_session is not None:
+        updates["event_kind"] = EventKind.offline_meeting
+        updates["meeting_session_id"] = meeting_session.id
     else:
-        next_kind = updates.get("event_kind", event.event_kind)
-        if next_kind == EventKind.offline_meeting and event.meeting_session_id is None:
-            meeting_title = updates.get("title", event.title)
-            updates["meeting_session_id"] = create_meeting_for_event(db, pair, current_user, meeting_title).id
-        elif next_kind != EventKind.offline_meeting:
-            updates["meeting_session_id"] = None
+        updates["event_kind"] = EventKind.memory
+        updates["meeting_session_id"] = None
 
     for field, value in updates.items():
         setattr(event, field, value)
     db.flush()
-    if previous_meeting_session_id != event.meeting_session_id:
-        delete_meeting_if_empty(db, previous_meeting_session_id)
     db.commit()
     db.refresh(event)
     return event_detail(db, event, current_user, pair)
@@ -135,9 +153,7 @@ def delete_event(
     event = ensure_pair_event(db, event_id, pair)
     if event.creator_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the creator can delete this event")
-    meeting_session_id = event.meeting_session_id
     db.delete(event)
     db.flush()
-    delete_meeting_if_empty(db, meeting_session_id)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

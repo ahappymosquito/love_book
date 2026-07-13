@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home with instant in-memory quote rotation, a quiet relationship focus, solid grouped memory lists, inline meeting-title editing, batch record assignment, and Liquid Glass controls for view switching, reminders, and navigation.
+// Timeline home with instant in-memory quote rotation, a quiet relationship focus, solid grouped memory lists, editable meeting date ranges, and Liquid Glass controls for view switching, reminders, and navigation.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -9,21 +9,17 @@ import { motion } from "framer-motion";
 import {
   BookHeart,
   CalendarHeart,
-  Check,
   ChevronDown,
   ChevronRight,
   Droplet,
-  Loader2,
   Plus,
-  X,
 } from "lucide-react";
-import { toast } from "sonner";
 import { AuthGate } from "@/components/auth-gate";
 import { Avatar } from "@/components/avatar";
 import { LoadingScreen } from "@/components/loading-screen";
+import { MeetingEditorDialog } from "@/components/meeting-editor-dialog";
 import { AppHeader } from "@/components/app-header";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { Sheet, SheetBody, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { SubmissionBadge, VisibilityBadge } from "@/components/visibility-badge";
 import { api } from "@/lib/api";
 import {
@@ -99,11 +95,12 @@ function monthSortValue(key: string): number {
 }
 
 function meetingSessionDateLabel(session: MeetingSessionOut): string {
-  if (session.started_at && session.ended_at && session.started_at.slice(0, 10) !== session.ended_at.slice(0, 10)) {
-    return `${formatAbsolute(session.started_at, false)} - ${formatAbsolute(session.ended_at, false)}`;
-  }
-  if (session.started_at) return formatAbsolute(session.started_at, false);
-  return "日期未定";
+  const formatDate = (value: string) => {
+    const [year, month, day] = value.split("-").map(Number);
+    return `${year}年${month}月${day}日`;
+  };
+  if (session.started_on === session.ended_on) return formatDate(session.started_on);
+  return `${formatDate(session.started_on)} - ${formatDate(session.ended_on)}`;
 }
 
 function daysUntil(date: string, today: string): number {
@@ -281,6 +278,8 @@ function TimelineInner() {
           id: 0,
           pair_id: 0,
           title: "未整理的见面",
+          started_on: (orphanEvents[orphanEvents.length - 1]?.occurred_at ?? orphanEvents[orphanEvents.length - 1]?.created_at ?? "").slice(0, 10),
+          ended_on: (orphanEvents[0]?.occurred_at ?? orphanEvents[0]?.created_at ?? "").slice(0, 10),
           started_at: null,
           ended_at: null,
           created_by_id: 0,
@@ -413,7 +412,6 @@ function TimelineInner() {
             <MeetingTimeRiver
               groups={meetingGroups}
               eventCount={meetingEvents.length}
-              allEvents={events}
               onChanged={load}
             />
           )
@@ -528,12 +526,10 @@ function TimelineViewSwitch({
 function MeetingTimeRiver({
   groups,
   eventCount,
-  allEvents,
   onChanged,
 }: {
   groups: Array<{ session: MeetingSessionOut; events: EventSummary[] }>;
   eventCount: number;
-  allEvents: EventSummary[];
   onChanged: () => Promise<void>;
 }) {
   return (
@@ -552,7 +548,6 @@ function MeetingTimeRiver({
           <MeetingGroup
             key={group.session.id || "orphans"}
             group={group}
-            allEvents={allEvents}
             onChanged={onChanged}
           />
         ))}
@@ -563,138 +558,25 @@ function MeetingTimeRiver({
 
 function MeetingGroup({
   group,
-  allEvents,
   onChanged,
 }: {
   group: { session: MeetingSessionOut; events: EventSummary[] };
-  allEvents: EventSummary[];
   onChanged: () => Promise<void>;
 }) {
-  const me = useAppStore((state) => state.me)!;
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [title, setTitle] = useState(group.session.title);
-  const [savingTitle, setSavingTitle] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [assigning, setAssigning] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const canOrganize = group.session.id > 0;
-  const availableEvents = allEvents.filter((event) => event.meeting_session_id !== group.session.id);
-
-  useEffect(() => {
-    if (!editingTitle) setTitle(group.session.title);
-  }, [editingTitle, group.session.title]);
-
-  function cancelTitleEdit() {
-    setTitle(group.session.title);
-    setEditingTitle(false);
-  }
-
-  async function saveTitle() {
-    const nextTitle = title.trim();
-    if (!canOrganize || !nextTitle || nextTitle === group.session.title || savingTitle) {
-      if (nextTitle === group.session.title) setEditingTitle(false);
-      return;
-    }
-    setSavingTitle(true);
-    try {
-      await api.updateMeetingSession(group.session.id, { title: nextTitle });
-      await onChanged();
-      setEditingTitle(false);
-      toast.success("见面名称已保存");
-    } finally {
-      setSavingTitle(false);
-    }
-  }
-
-  function toggleSelected(eventId: number) {
-    setSelectedIds((previous) => {
-      const next = new Set(previous);
-      if (next.has(eventId)) next.delete(eventId);
-      else next.add(eventId);
-      return next;
-    });
-  }
-
-  async function addSelectedEvents() {
-    if (!canOrganize || selectedIds.size === 0 || assigning) return;
-    setAssigning(true);
-    try {
-      await api.assignEventsToMeetingSession(group.session.id, [...selectedIds]);
-      await onChanged();
-      setSelectedIds(new Set());
-      setPickerOpen(false);
-      toast.success("记录已加入这次见面");
-    } finally {
-      setAssigning(false);
-    }
-  }
 
   return (
     <div className="relative pl-8 sm:pl-10">
       <div className="meeting-month-node" aria-hidden="true" />
       <div className="mb-3 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
-        {editingTitle ? (
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:flex-initial">
-            <input
-              className="input-field min-w-0 flex-1 py-2 font-display text-base font-semibold sm:w-72"
-              value={title}
-              maxLength={200}
-              autoFocus
-              disabled={savingTitle}
-              aria-label="见面名称"
-              onChange={(inputEvent) => setTitle(inputEvent.target.value)}
-              onKeyDown={(keyboardEvent) => {
-                if (keyboardEvent.key === "Enter") {
-                  keyboardEvent.preventDefault();
-                  void saveTitle();
-                }
-                if (keyboardEvent.key === "Escape") cancelTitleEdit();
-              }}
-            />
-            <button
-              type="button"
-              className="grid h-11 w-11 flex-none place-items-center rounded-full bg-rose text-white transition focus-ring disabled:opacity-50"
-              disabled={!title.trim() || savingTitle}
-              onClick={() => void saveTitle()}
-              aria-label="保存见面名称"
-            >
-              {savingTitle ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            </button>
-            <button
-              type="button"
-              className="grid h-11 w-11 flex-none place-items-center rounded-full text-ink-soft transition hover:bg-peach/18 focus-ring"
-              disabled={savingTitle}
-              onClick={cancelTitleEdit}
-              aria-label="取消修改见面名称"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className={cn(
-              "min-h-11 max-w-full truncate rounded-xl px-1 text-left font-display text-lg font-semibold text-ink transition focus-ring",
-              canOrganize && "hover:text-rose-deep",
-            )}
-            disabled={!canOrganize}
-            onClick={() => setEditingTitle(true)}
-            title={canOrganize ? "修改见面名称" : undefined}
-          >
-            {group.session.title}
-          </button>
-        )}
-        {canOrganize && !editingTitle && (
-          <button
-            type="button"
-            className="grid h-11 w-11 flex-none place-items-center rounded-full bg-peach/18 text-rose-deep transition hover:bg-peach/30 focus-ring"
-            onClick={() => setPickerOpen(true)}
-            aria-label={`给${group.session.title}添加记录`}
-            title="添加已有记录"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
-        )}
+        <button type="button" className={cn(
+          "min-h-11 max-w-full truncate rounded-xl px-1 text-left font-display text-lg font-semibold text-ink transition focus-ring",
+          canOrganize && "hover:text-rose-deep",
+        )} disabled={!canOrganize} onClick={() => setEditorOpen(true)}
+          title={canOrganize ? "编辑见面标题和日期" : undefined}>
+          {group.session.title}
+        </button>
         <span className="font-sc text-xs text-ink-muted">{meetingSessionDateLabel(group.session)}</span>
         <span className="font-sc text-xs text-rose-deep">{group.events.length} 条小事</span>
       </div>
@@ -711,72 +593,8 @@ function MeetingGroup({
           </motion.div>
         ))}
       </div>
-
-      <Sheet open={pickerOpen} onOpenChange={(open) => {
-        setPickerOpen(open);
-        if (!open && !assigning) setSelectedIds(new Set());
-      }}>
-        <SheetBody open={pickerOpen}>
-          <SheetContent className="mx-auto max-w-2xl overflow-y-auto" closeLabel="关闭记录选择">
-            <SheetTitle className="pr-12 font-display text-xl font-semibold text-ink">添加到“{group.session.title}”</SheetTitle>
-            <SheetDescription className="mt-2 font-sc text-sm leading-relaxed text-ink-soft">
-              可以一次选择多条记录。已经属于其他见面的记录会移动到这里。
-            </SheetDescription>
-
-            {availableEvents.length === 0 ? (
-              <p className="mt-8 rounded-2xl bg-peach/14 px-4 py-6 text-center font-sc text-sm text-ink-soft">
-                其他记录都已经在这次见面里了。
-              </p>
-            ) : (
-              <div className="mt-5 space-y-2">
-                {availableEvents.map((event) => {
-                  const selected = selectedIds.has(event.id);
-                  const author = event.creator_id === me.user.id ? me.user : me.counterpart;
-                  return (
-                    <button
-                      key={event.id}
-                      type="button"
-                      aria-pressed={selected}
-                      className={cn(
-                        "flex min-h-16 w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition focus-ring hairline",
-                        selected ? "bg-rose/10" : "bg-surface-raised/72 hover:bg-peach/12",
-                      )}
-                      disabled={assigning}
-                      onClick={() => toggleSelected(event.id)}
-                    >
-                      <span className={cn(
-                        "grid h-6 w-6 flex-none place-items-center rounded-md border",
-                        selected ? "border-rose bg-rose text-white" : "border-line bg-surface text-transparent",
-                      )}>
-                        <Check className="h-3.5 w-3.5" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-sc text-sm font-medium text-ink">{event.title}</span>
-                        <span className="mt-0.5 block truncate font-sc text-xs text-ink-muted">
-                          {author.display_name} · {formatAbsolute(event.occurred_at ?? event.created_at, false)}
-                          {event.meeting_session ? ` · 当前在“${event.meeting_session.title}”` : ""}
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="sticky bottom-0 mt-5 flex justify-end border-t border-line/55 bg-surface/95 pt-4">
-              <button
-                type="button"
-                className="btn-primary inline-flex min-h-12 items-center gap-2 rounded-2xl px-5 font-sc text-sm focus-ring disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={selectedIds.size === 0 || assigning}
-                onClick={() => void addSelectedEvents()}
-              >
-                {assigning && <Loader2 className="h-4 w-4 animate-spin" />}
-                加入 {selectedIds.size > 0 ? `${selectedIds.size} 条记录` : "这次见面"}
-              </button>
-            </div>
-          </SheetContent>
-        </SheetBody>
-      </Sheet>
+      <MeetingEditorDialog open={editorOpen} session={canOrganize ? group.session : null}
+        onOpenChange={setEditorOpen} onSaved={async () => onChanged()} onDeleted={async () => onChanged()} />
     </div>
   );
 }

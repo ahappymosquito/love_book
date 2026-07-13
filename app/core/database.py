@@ -1,6 +1,4 @@
-"""Database setup, sessions, default quote seeding, and lightweight migrations for named meeting sessions, event kinds, media, user locations, todo category enums, AI enable state, model lists, and avatars."""
-
-"""Database engine, session factory, and lightweight migrations for evolving auth, meeting session, media, AI, and rich AMap restaurant schemas."""
+"""Database engine, session factory, and lightweight migrations for editable meeting ranges, auth, media, AI, and rich AMap restaurant schemas."""
 
 from collections.abc import Generator
 
@@ -337,12 +335,13 @@ def _ensure_legacy_meeting_sessions(target_engine: Engine) -> None:
 
 def init_db() -> None:
     from app import models  # noqa: F401
-    from app.services import ensure_default_quotes
+    from app.services import ensure_default_quotes, normalize_meeting_ranges
 
     Base.metadata.create_all(bind=engine)
     _ensure_columns(engine)
     _ensure_todo_category_enum(engine)
     _ensure_legacy_meeting_sessions(engine)
     with SessionLocal() as db:
+        normalize_meeting_ranges(db)
         ensure_default_quotes(db)
         db.commit()

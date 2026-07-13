@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair timelines with named meeting sessions, user location preferences, comment reactions, food/play/stay/wish todo boards, personal habit check-ins, candidate queues, rich AMap restaurant evidence, media keys, quotes, AI settings with an enable switch and saved model lists, and login logs."""
+"""SQLAlchemy models for pair timelines with editable meeting date ranges, user location preferences, comment reactions, food/play/stay/wish todo boards, personal habit check-ins, candidate queues, rich AMap restaurant evidence, media keys, quotes, AI settings with an enable switch and saved model lists, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum

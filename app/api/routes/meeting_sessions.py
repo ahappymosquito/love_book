@@ -1,16 +1,16 @@
-"""Meeting route handlers for shared titles, event-derived time ranges, and atomic batch assignment of existing records."""
+"""Meeting route handlers for shared editable date ranges, overlap merging, automatic event classification, and cancellation."""
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.database import get_db
-from app.models import Event, EventKind, MeetingSession, User
-from app.schemas import MeetingSessionCreate, MeetingSessionEventsAssign, MeetingSessionOut, MeetingSessionUpdate
-from app.services import delete_meeting_if_empty, ensure_pair_event, ensure_pair_meeting_session, meeting_session_time_range
+from app.models import Event, MeetingSession, User
+from app.schemas import MeetingSessionCreate, MeetingSessionOut, MeetingSessionUpdate
+from app.services import ensure_pair_meeting_session, meeting_creation_key, meeting_ranges_overlap, meeting_session_time_range, reconcile_pair_meeting_ranges
 
 router = APIRouter(prefix="/meeting-sessions", tags=["meeting-sessions"])
 
@@ -49,15 +49,26 @@ def create_meeting_session(
     db: Session = Depends(get_db),
 ) -> MeetingSessionOut:
     pair = get_pair_for_user(db, current_user.id)
+    if payload.started_on > payload.ended_on:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Meeting start date must not be after end date")
     meeting_session = MeetingSession(
         pair_id=pair.id,
         title=payload.title,
+        started_on=payload.started_on,
+        ended_on=payload.ended_on,
         created_by_id=current_user.id,
     )
     db.add(meeting_session)
+    db.flush()
+    candidates = db.execute(select(MeetingSession).where(MeetingSession.pair_id == pair.id)).scalars().all()
+    overlapping = [candidate for candidate in candidates if meeting_ranges_overlap(candidate, meeting_session)]
+    canonical_id = min(overlapping, key=meeting_creation_key).id
+    reconcile_pair_meeting_ranges(db, pair.id)
     db.commit()
-    db.refresh(meeting_session)
-    return _meeting_session_out(db, meeting_session)
+    canonical = db.get(MeetingSession, canonical_id)
+    if canonical is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Meeting merge failed")
+    return _meeting_session_out(db, canonical)
 
 
 @router.patch("/{session_id}", response_model=MeetingSessionOut)
@@ -70,34 +81,34 @@ def update_meeting_session(
     pair = get_pair_for_user(db, current_user.id)
     meeting_session = ensure_pair_meeting_session(db, session_id, pair)
     updates = payload.model_dump(exclude_unset=True)
+    next_started_on = updates.get("started_on", meeting_session.started_on)
+    next_ended_on = updates.get("ended_on", meeting_session.ended_on)
+    if next_started_on is None or next_ended_on is None or next_started_on > next_ended_on:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Meeting date range is invalid")
     for field, value in updates.items():
         setattr(meeting_session, field, value)
+    db.flush()
+    candidates = db.execute(select(MeetingSession).where(MeetingSession.pair_id == pair.id)).scalars().all()
+    overlapping = [candidate for candidate in candidates if meeting_ranges_overlap(candidate, meeting_session)]
+    canonical_id = min(overlapping, key=meeting_creation_key).id
+    reconcile_pair_meeting_ranges(db, pair.id)
     db.commit()
-    db.refresh(meeting_session)
-    return _meeting_session_out(db, meeting_session)
+    canonical = db.get(MeetingSession, canonical_id)
+    if canonical is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Meeting merge failed")
+    return _meeting_session_out(db, canonical)
 
 
-@router.post("/{session_id}/events", response_model=MeetingSessionOut)
-def assign_events_to_meeting_session(
+@router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_meeting_session(
     session_id: int,
-    payload: MeetingSessionEventsAssign,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> MeetingSessionOut:
+) -> Response:
     pair = get_pair_for_user(db, current_user.id)
     meeting_session = ensure_pair_meeting_session(db, session_id, pair)
-    events = [ensure_pair_event(db, event_id, pair) for event_id in payload.event_ids]
-    previous_session_ids = {
-        event.meeting_session_id
-        for event in events
-        if event.meeting_session_id is not None and event.meeting_session_id != meeting_session.id
-    }
-    for event in events:
-        event.meeting_session_id = meeting_session.id
-        event.event_kind = EventKind.offline_meeting
+    db.delete(meeting_session)
     db.flush()
-    for previous_session_id in previous_session_ids:
-        delete_meeting_if_empty(db, previous_session_id)
+    reconcile_pair_meeting_ranges(db, pair.id)
     db.commit()
-    db.refresh(meeting_session)
-    return _meeting_session_out(db, meeting_session)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

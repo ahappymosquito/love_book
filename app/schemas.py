@@ -1,4 +1,4 @@
-"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests with an enable switch, rich AMap restaurant evidence, habit check-ins, manual todo candidate queues, automatically named meetings with batch event assignment, typed timeline events, sampled quote batches, media, cycle records with empty/predicted days, and todo APIs."""
+"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests with an enable switch, rich AMap restaurant evidence, habit check-ins, manual todo candidate queues, editable meeting date ranges, typed timeline events, sampled quote batches, media, cycle records with empty/predicted days, and todo APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -180,6 +180,8 @@ class SubmissionState(APIModel):
 
 class MeetingSessionCreate(APIModel):
     title: str = Field(min_length=1, max_length=200)
+    started_on: date
+    ended_on: date
 
     @field_validator("title")
     @classmethod
@@ -192,6 +194,8 @@ class MeetingSessionCreate(APIModel):
 
 class MeetingSessionUpdate(APIModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
+    started_on: date | None = None
+    ended_on: date | None = None
 
     @field_validator("title")
     @classmethod
@@ -204,18 +208,11 @@ class MeetingSessionUpdate(APIModel):
         return value
 
 
-class MeetingSessionEventsAssign(APIModel):
-    event_ids: list[int] = Field(min_length=1, max_length=100)
-
-    @field_validator("event_ids")
-    @classmethod
-    def unique_event_ids(cls, value: list[int]) -> list[int]:
-        return list(dict.fromkeys(value))
-
-
 class MeetingSessionLite(APIModel):
     id: int
     title: str
+    started_on: date
+    ended_on: date
     started_at: datetime | None = None
     ended_at: datetime | None = None
 
