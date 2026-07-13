@@ -1,5 +1,6 @@
-"""API regression tests for auth, profiles, locations, habits, media, quotes, typed timeline events with editable meeting ranges, todo boards, cycle predictions, AI tests, and fallbacks."""
+"""API regression tests for auth, profiles, resilient habit reminders, media, timeline, todo, cycles, AI, and fallbacks."""
 
+import asyncio
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 
@@ -14,6 +15,7 @@ import app.api.routes.quotes as quote_routes
 import app.core.database as database
 import app.cycles as cycles
 import app.habits as habits
+import app.main as main_app
 import app.services as services
 from app.core.config import get_settings
 from app.models import AISetting, CycleDailyLog, CyclePhase, DefaultQuote, DeviceToken, Event, HabitReminderRun, HabitTask, Image as DBImage, MeetingSession, TodoImage, Voice
@@ -293,7 +295,7 @@ def test_habit_reminder_scan_sends_only_unfinished_once(
     client.patch("/auth/me", headers=auth(token), json={"email": "a@example.com"})
     task = client.post("/habits/tasks", headers=auth(token), json={"title": "拉伸", "color": "peach"}).json()
     sent: list[dict[str, object]] = []
-    monkeypatch.setattr("app.habits.notify_habit_reminder", lambda **kwargs: sent.append(kwargs))
+    monkeypatch.setattr("app.habits.notify_habit_reminder", lambda **kwargs: sent.append(kwargs) or True)
 
     first_count = habits.scan_habit_reminders(db_session, date(2026, 6, 10))
     second_count = habits.scan_habit_reminders(db_session, date(2026, 6, 10))
@@ -310,6 +312,60 @@ def test_habit_reminder_scan_sends_only_unfinished_once(
     assert len(sent) == 1
     assert sent[0]["recipient_email"] == "a@example.com"
     assert db_session.query(HabitReminderRun).filter_by(date=date(2026, 6, 10)).count() == 1
+
+
+def test_habit_reminder_scan_retries_after_failed_delivery(
+    client: TestClient,
+    pair_tokens: dict[str, str | int],
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token = str(pair_tokens["user_a_token"])
+    client.patch("/auth/me", headers=auth(token), json={"email": "a@example.com"})
+    client.post("/habits/tasks", headers=auth(token), json={"title": "拉伸", "color": "peach"})
+    target_date = date(2026, 6, 10)
+
+    monkeypatch.setattr("app.habits.notify_habit_reminder", lambda **kwargs: False)
+    failed_count = habits.scan_habit_reminders(db_session, target_date)
+
+    assert failed_count == 0
+    assert db_session.query(HabitReminderRun).filter_by(date=target_date).count() == 0
+
+    monkeypatch.setattr("app.habits.notify_habit_reminder", lambda **kwargs: True)
+    retried_count = habits.scan_habit_reminders(db_session, target_date)
+
+    assert retried_count == 1
+    assert db_session.query(HabitReminderRun).filter_by(date=target_date).count() == 1
+
+
+def test_habit_reminder_loop_continues_after_scan_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    scan_calls = 0
+
+    class DummySession:
+        def __enter__(self) -> object:
+            return object()
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    async def no_wait(_: float) -> None:
+        return None
+
+    def flaky_scan(*args: object) -> int:
+        nonlocal scan_calls
+        scan_calls += 1
+        if scan_calls == 1:
+            raise RuntimeError("temporary database failure")
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(main_app, "SessionLocal", DummySession)
+    monkeypatch.setattr(main_app.asyncio, "sleep", no_wait)
+    monkeypatch.setattr(main_app, "scan_habit_reminders", flaky_scan)
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(main_app.habit_reminder_loop())
+
+    assert scan_calls == 2
 
 
 def test_habit_reminder_skips_no_email_and_inactive_habits(
@@ -2191,6 +2247,28 @@ def test_todo_restaurant_create_auto_saves_rich_amap_detail(client: TestClient, 
     assert restaurant["first_photo_url"].startswith("https://aos-comment.amap.com/")
     assert restaurant["amap_navigation_url"].startswith("https://uri.amap.com/marker")
     assert any(fact["label"] == "地图导航" and fact["href"] for fact in restaurant["display_facts"])
+
+
+def test_todo_restaurant_drops_unsafe_external_photo_link(
+    client: TestClient, pair_tokens: dict[str, str | int]
+) -> None:
+    created = client.post(
+        "/todos/restaurants",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        json={
+            "candidate": {
+                "name": "不可信链接测试店",
+                "first_photo_url": "javascript:alert(document.domain)",
+            }
+        },
+    )
+
+    assert created.status_code == 201
+    restaurant = created.json()["restaurant"]
+    assert restaurant["first_photo_url"] is None
+    photo_fact = next(fact for fact in restaurant["display_facts"] if fact["label"] == "门店照片")
+    assert photo_fact["value"] is None
+    assert photo_fact["href"] is None
 
 
 def test_todo_restaurant_create_keeps_candidate_when_detail_fails(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,4 +1,4 @@
-"""SMTP email helpers for timeline notices, habit reminders, food/play/stay todo schedule notices, and locked-content privacy rules."""
+"""SMTP email helpers for timeline notices, delivery-aware habit reminders, todo notices, and locked-content privacy rules."""
 from __future__ import annotations
 
 from html import escape
@@ -120,9 +120,9 @@ def notify_habit_reminder(
     target_date: date,
     total_count: int,
     completed_count: int,
-) -> None:
+) -> bool:
     if not recipient_email:
-        return
+        return False
     link = _habit_link(target_date, recipient_token)
     safe_recipient_name = escape(recipient_name)
     safe_date = escape(target_date.isoformat())
@@ -145,7 +145,7 @@ def notify_habit_reminder(
       <p style="color:#a09489;font-size:12px;margin-top:24px;">-- 我们之间的小事</p>
     </div>
     """
-    send_email(recipient_email, subject, text_body, html_body)
+    return send_email(recipient_email, subject, text_body, html_body)
 
 
 def notify_todo_schedule_created(

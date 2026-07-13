@@ -1,8 +1,8 @@
-"""SQLAlchemy models for pair timelines with editable meeting date ranges, user location preferences, comment reactions, food/play/stay/wish todo boards, personal habit check-ins, candidate queues, rich AMap restaurant evidence, media keys, quotes, AI settings with an enable switch and saved model lists, and login logs."""
+"""SQLAlchemy models for pair timelines, safe restaurant links, habits, media, quotes, AI settings, and login logs."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from sqlalchemy import Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, JSON, LargeBinary, String, Text
 from sqlalchemy.dialects.mysql import LONGBLOB
@@ -14,6 +14,17 @@ from app.core.database import Base
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def safe_external_url(value: str | None) -> str | None:
+    """Return only absolute HTTP(S) URLs that are safe to expose as browser links."""
+    if not value:
+        return None
+    candidate = str(value).strip()
+    parsed = urlsplit(candidate)
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        return None
+    return candidate
 
 
 class VisibilityMode(StrEnum):
@@ -257,6 +268,7 @@ class TodoRestaurant(Base):
     @property
     def display_facts(self) -> list[dict[str, str | None]]:
         meal_text = None
+        photo_url = safe_external_url(self.first_photo_url)
         if self.meal_ordering is not None:
             meal_text = "支持在线点餐" if str(self.meal_ordering) == "1" else f"高德字段 meal_ordering: {self.meal_ordering}"
         return [
@@ -271,7 +283,7 @@ class TodoRestaurant(Base):
             {"label": "坐标", "value": self.location},
             {"label": "高德 POI ID", "value": self.amap_poi_id},
             {"label": "是否支持点餐", "value": meal_text},
-            {"label": "门店照片", "value": self.first_photo_url, "href": self.first_photo_url},
+            {"label": "门店照片", "value": photo_url, "href": photo_url},
             {"label": "地图导航", "value": self.amap_navigation_url, "href": self.amap_navigation_url},
         ]
 

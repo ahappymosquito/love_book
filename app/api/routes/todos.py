@@ -1,4 +1,4 @@
-"""Todo board routes for pair-shared tasks, location-aware AMap candidate search, retryable category-overridable candidate confirmation, no-email single-date schedules, weather hints, two-person comment completion, optional LLM category refresh with manual fallback, rich AMap restaurant evidence, images, and image deletion."""
+"""Todo routes for pair tasks, safe AMap evidence, retryable candidates, schedules, comments, and private images."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.media import MediaProcessingError, make_image_thumbnail
-from app.models import Pair, TodoCandidate, TodoCandidateStatus, TodoCategory, TodoComment, TodoImage, TodoItem, TodoParseStatus, TodoRestaurant, TodoSchedule, User
+from app.models import Pair, TodoCandidate, TodoCandidateStatus, TodoCategory, TodoComment, TodoImage, TodoItem, TodoParseStatus, TodoRestaurant, TodoSchedule, User, safe_external_url
 from app.schemas import (
     TodoCandidateConfirm,
     TodoCandidateCreate,
@@ -199,7 +199,7 @@ def _create_item_from_candidate(
         opening_hours=restaurant_data.get("opening_hours"),
         meal_ordering=restaurant_data.get("meal_ordering"),
         photos_count=restaurant_data.get("photos_count") or 0,
-        first_photo_url=restaurant_data.get("first_photo_url"),
+        first_photo_url=safe_external_url(restaurant_data.get("first_photo_url")),
         parse_status=parse_status,
         parse_error=parse_error,
         raw=restaurant_data.get("raw"),

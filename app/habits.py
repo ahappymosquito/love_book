@@ -1,4 +1,4 @@
-"""Habit services for pair-visible personal tasks, daily completion dashboards, check-in toggles, and reminder scans."""
+"""Habit services for pair-visible tasks, daily dashboards, check-ins, and delivery-aware reminder scans."""
 
 from __future__ import annotations
 
@@ -183,7 +183,7 @@ def scan_habit_reminders(db: Session, target_date: date) -> int:
             total, completed, all_done = completion_for_user(db, pair, user, target_date)
             if total == 0 or all_done:
                 continue
-            notify_habit_reminder(
+            delivered = notify_habit_reminder(
                 recipient_email=user.email,
                 recipient_name=user.display_name,
                 recipient_token=active_token_for_user(db, user.id),
@@ -191,6 +191,8 @@ def scan_habit_reminders(db: Session, target_date: date) -> int:
                 total_count=total,
                 completed_count=completed,
             )
+            if not delivered:
+                continue
             db.add(HabitReminderRun(pair_id=pair.id, user_id=user.id, date=target_date))
             sent += 1
     db.commit()

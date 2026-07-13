@@ -1,9 +1,10 @@
-"""FastAPI application factory registering auth, admin, habit, todo, avatar, cycle, event, meeting-session, quote, content routes, and the habit reminder loop."""
+"""FastAPI application factory registering product routes and a resilient daily habit-reminder loop."""
 
 from collections.abc import AsyncGenerator
 import asyncio
 from contextlib import suppress
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,12 +13,17 @@ from app.api.routes import admin, admin_auth, auth, contents, cycles, events, ha
 from app.core.database import SessionLocal, init_db
 from app.habits import reminder_target_date, scan_habit_reminders, seconds_until_next_reminder
 
+logger = logging.getLogger(__name__)
+
 
 async def habit_reminder_loop() -> None:
     while True:
         await asyncio.sleep(seconds_until_next_reminder())
-        with SessionLocal() as db:
-            scan_habit_reminders(db, reminder_target_date())
+        try:
+            with SessionLocal() as db:
+                scan_habit_reminders(db, reminder_target_date())
+        except Exception:
+            logger.exception("Habit reminder scan failed; the daily loop will continue")
 
 
 @asynccontextmanager
