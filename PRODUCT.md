@@ -10,7 +10,7 @@ Love Book is used by a fixed pair of partners who share private tokens and retur
 
 ## Product Purpose
 
-The product gives two people a private shared place to write events, exchange comments, upload voice and image memories, collect multiple offline-meeting notes into named meetings, arrange food/play plans, track personal daily habits, track cycle records, and revisit milestones. Success means the interface feels trustworthy enough for long-term personal use while keeping common tasks quick and clear.
+The product gives two people a private shared place to write events, exchange comments, upload image memories, collect multiple offline-meeting notes into named meetings, arrange food/play plans, track personal daily habits, track cycle records, and revisit milestones. Success means the interface feels trustworthy enough for long-term personal use while keeping common tasks quick and clear.
 
 Meeting sessions remain an internal counting and grouping model rather than a visible form concept. Each meeting owns an inclusive Beijing-time date range; all pair events inside it are classified automatically, while marking an unmatched event creates a same-title single-day range. Either partner can click the meeting title to edit its title, start date, and end date in one responsive dialog. Overlapping ranges merge into the earliest-created meeting and keep that meeting's title, cancellation removes the whole range and reclassifies affected events, and event content permissions and independent event titles remain unchanged.
 

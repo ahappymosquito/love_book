@@ -1,6 +1,6 @@
 "use client";
 
-// Event detail screen with mobile viewport guards, creator-only inline event editing, automatic meeting marking and shared range editing, warm scrapbook reading layout, avatar-aware authors, stable-hover reactions, media stream, submission state, and bottom-nav-covering composer.
+// Event detail screen with editable event and meeting metadata, avatar-aware comments, images, reactions, submission state, and a mobile-safe composer.
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -31,7 +31,6 @@ import { Lightbox } from "@/components/lightbox";
 import { LoadingScreen } from "@/components/loading-screen";
 import { MeetingEditorDialog } from "@/components/meeting-editor-dialog";
 import { VisibilityBadge } from "@/components/visibility-badge";
-import { VoicePlayer } from "@/components/voice-player";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import { formatAbsolute, formatRelative, fromLocalInputValue, toLocalInputValue } from "@/lib/format";
@@ -43,7 +42,6 @@ import type {
   ImageOut,
   UserOut,
   VisibilityMode,
-  VoiceOut,
 } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
@@ -54,14 +52,6 @@ interface PendingComment {
   authorId: number;
   createdAt: string;
 }
-interface PendingVoice {
-  kind: "voice";
-  pendingId: string;
-  authorId: number;
-  durationMs: number;
-  blobUrl: string;
-  createdAt: string;
-}
 interface PendingImage {
   kind: "image";
   pendingId: string;
@@ -69,7 +59,7 @@ interface PendingImage {
   blobUrl: string;
   createdAt: string;
 }
-type Pending = PendingComment | PendingVoice | PendingImage;
+type Pending = PendingComment | PendingImage;
 
 const COMMENT_REACTIONS: {
   type: CommentReactionType;
@@ -175,25 +165,20 @@ function EventDetailInner() {
     if (!event) return [];
     type StreamItem =
       | { kind: "comment"; data: CommentOut; pending?: false }
-      | { kind: "voice"; data: VoiceOut; pending?: false }
       | { kind: "image"; data: ImageOut; pending?: false }
       | { kind: "comment-pending"; data: PendingComment }
-      | { kind: "voice-pending"; data: PendingVoice }
       | { kind: "image-pending"; data: PendingImage };
 
     const items: StreamItem[] = [];
     for (const c of event.contents.comments) items.push({ kind: "comment", data: c });
-    for (const v of event.contents.voices) items.push({ kind: "voice", data: v });
     for (const i of event.contents.images) items.push({ kind: "image", data: i });
     for (const p of pending) {
       if (p.kind === "comment") items.push({ kind: "comment-pending", data: p });
-      if (p.kind === "voice") items.push({ kind: "voice-pending", data: p });
       if (p.kind === "image") items.push({ kind: "image-pending", data: p });
     }
     const timeOf = (it: StreamItem) => {
       if (
         it.kind === "comment-pending" ||
-        it.kind === "voice-pending" ||
         it.kind === "image-pending"
       ) {
         return new Date(it.data.createdAt).getTime();
@@ -217,35 +202,6 @@ function EventDetailInner() {
       await refreshContents();
     } catch {
       setPending((p) => p.filter((x) => x.kind !== "comment" || x.pendingId !== tempId));
-    }
-  }
-
-  async function handleUploadVoice(blob: Blob, durationMs: number) {
-    const tempId = `v-${Date.now()}`;
-    const createdAt = new Date().toISOString();
-    const blobUrl = URL.createObjectURL(blob);
-    setPending((p) => [
-      ...p,
-      {
-        kind: "voice",
-        pendingId: tempId,
-        durationMs,
-        authorId: me.user.id,
-        blobUrl,
-        createdAt,
-      },
-    ]);
-    try {
-      await api.postVoice(eventId, blob, durationMs);
-      await refreshContents();
-    } catch {
-      // toast handled
-    } finally {
-      setPending((p) => {
-        const next = p.filter((x) => !(x.kind === "voice" && x.pendingId === tempId));
-        return next;
-      });
-      URL.revokeObjectURL(blobUrl);
     }
   }
 
@@ -550,7 +506,7 @@ function EventDetailInner() {
           </div>
         )}
 
-        {submission.unlocked && event.contents.comments.length + event.contents.voices.length + event.contents.images.length > 0 && (
+        {submission.unlocked && event.contents.comments.length + event.contents.images.length > 0 && (
           <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-sage/18 px-4 py-2 font-sc text-xs text-ink-soft">
             <Sparkles className="h-3 w-3" />
             已解锁双方的全部内容
@@ -569,13 +525,11 @@ function EventDetailInner() {
             {stream.map((item, idx) => {
               const authorId =
                 item.kind === "comment-pending" ||
-                item.kind === "voice-pending" ||
                 item.kind === "image-pending"
                   ? item.data.authorId
                   : item.data.author_id;
               const time =
                 item.kind === "comment-pending" ||
-                item.kind === "voice-pending" ||
                 item.kind === "image-pending"
                   ? item.data.createdAt
                   : item.data.created_at;
@@ -583,7 +537,6 @@ function EventDetailInner() {
               const isMine = authorId === me.user.id;
               const itemKey =
                 item.kind === "comment-pending" ||
-                item.kind === "voice-pending" ||
                 item.kind === "image-pending"
                   ? `pending-${item.data.pendingId}`
                   : `${item.kind}-${item.data.id}`;
@@ -638,23 +591,6 @@ function EventDetailInner() {
                       </div>
                     )}
 
-                    {item.kind === "voice" && (
-                      <VoicePlayer
-                        voiceId={item.data.id}
-                        durationMs={item.data.duration_ms}
-                        mine={isMine}
-                      />
-                    )}
-                    {item.kind === "voice-pending" && (
-                      <VoicePlayer
-                        voiceId={-1}
-                        durationMs={item.data.durationMs}
-                        mine={isMine}
-                        pending
-                        localUrl={item.data.blobUrl}
-                      />
-                    )}
-
                     {item.kind === "image" && (
                       <ImageThumb
                         imageId={item.data.id}
@@ -680,7 +616,6 @@ function EventDetailInner() {
       <Composer
         onSendText={handleSendText}
         onPickImages={handlePickImages}
-        onUploadVoice={handleUploadVoice}
       />
 
       <Lightbox url={lightbox} onClose={() => setLightbox(null)} />
@@ -691,7 +626,7 @@ function EventDetailInner() {
       <ConfirmDialog
         open={confirmDelete}
         title="删除这条记录？"
-        description="一旦删除，连带的评论、语音、图片都会一并消失。要确认吗？"
+        description="一旦删除，连带的评论和图片都会一并消失。要确认吗？"
         confirmLabel="删除"
         destructive
         loading={deleting}

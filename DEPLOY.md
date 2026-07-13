@@ -58,7 +58,7 @@ vim .env
 | `ADMIN_KEY` | 32 位以上随机字符串 | 管理后台密钥 |
 | `DATABASE_URL` | `mysql+pymysql://user:pass@qrqto.club:3306/love_book?charset=utf8mb4` | 数据库连接，密码特殊字符需 URL 编码 |
 | `APP_WEB_URL` | `https://qrqto.club` | 邮件通知中的前端入口链接 |
-| `MEDIA_ROOT` | `/app/media` | 图片和语音媒体根目录，Docker 中挂载 `love_book_media` volume |
+| `MEDIA_ROOT` | `/app/media` | 图片媒体根目录，Docker 中挂载 `love_book_media` volume |
 | `MEDIA_STORAGE` | `local` | 当前图片存储后端 |
 | `SMTP_*` | 邮件服务配置 | 用于事件 / 评论通知 |
 | `AMAP_MAPS_API_KEY` | 高德 Web 服务 Key | `/todo` 餐厅搜索、详情解析和附近抽奖使用；管理端可覆盖保存 |
@@ -156,7 +156,7 @@ chmod +x deploy_server.sh
 
 ## 7. 数据库与媒体
 
-应用启动时 `app.core.database.init_db()` 会自动建表，并对老库做轻量补列。新上传图片的原图、缩略图和 MP3 语音都写入 `MEDIA_ROOT`，数据库只保存 `images.storage_key` / `images.thumb_storage_key` / `voices.storage_key` 等相对 key 和元数据；旧 `images.data` / `images.thumb_data` / `voices.data` BLOB 记录仍可回退读取。旧语音记录如果既没有 `voices.storage_key` 也没有 `voices.data`，下载接口会返回 `404`。
+应用启动时 `app.core.database.init_db()` 会自动建表，并对老库做轻量补列。新上传图片的原图和缩略图写入 `MEDIA_ROOT`，数据库只保存 `images.storage_key` / `images.thumb_storage_key` 等相对 key 和元数据；旧 `images.data` / `images.thumb_data` BLOB 记录仍可回退读取。
 
 历史图片迁出数据库时，先备份数据库和 `love_book_media` volume，再执行：
 
@@ -172,19 +172,9 @@ python scripts/migrate_images_to_media.py --clear-blobs --compact
 
 迁移服务器时必须同时备份数据库和 `love_book_media` volume，否则新图片文件会丢失。
 
-历史语音迁出数据库时，同样先备份数据库和 `love_book_media` volume，再执行：
+语音能力已经移除。已有部署中的 `voices` 表和 `MEDIA_ROOT/voices` 文件会作为不可达备份保留，升级过程不会自动删除；如需清理，必须先备份数据库和 `love_book_media` volume，再由运维显式处理。
 
-```bash
-python scripts/migrate_voices_to_media.py
-```
-
-默认只导出文件并回填 `voices.storage_key`，不清空旧 BLOB。确认接口读取正常后，可执行：
-
-```bash
-python scripts/migrate_voices_to_media.py --clear-blobs --compact
-```
-
-后端镜像已安装 `ffmpeg` 和 Node.js 22。`ffmpeg` 用于语音转码，Node / `npx` 用于运行 `@amap/amap-maps-mcp-server` 高德 MCP。图片缩略图依赖 Python 包 `Pillow`。
+后端镜像安装 Node.js 22 以运行 `@amap/amap-maps-mcp-server` 高德 MCP，图片缩略图依赖 Python 包 `Pillow`。
 
 ## 8. 故障排查
 
@@ -202,9 +192,8 @@ python scripts/migrate_voices_to_media.py --clear-blobs --compact
 | 功能 | 文件 |
 | --- | --- |
 | Docker 编排 | `docker-compose.yml` |
-| 图片和语音媒体 volume | `docker-compose.yml` 的 `love_book_media:/app/media` |
+| 图片媒体与旧媒体备份 volume | `docker-compose.yml` 的 `love_book_media:/app/media` |
 | 历史图片迁移 | `scripts/migrate_images_to_media.py` |
-| 历史语音迁移 | `scripts/migrate_voices_to_media.py` |
 | Caddy HTTPS 与反代 | `deploy/caddy/Caddyfile` |
 | 本机构建部署脚本 | `deploy.sh` / `deploy.bat` |
 | 服务器预构建镜像部署脚本 | `deploy_server.sh` |

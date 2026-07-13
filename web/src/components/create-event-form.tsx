@@ -85,7 +85,7 @@ export function CreateEventForm({
             onClick={() => setEventKind("memory")}
             icon={<Sparkles className="h-4 w-4" />}
             title="小事"
-            desc="日常、想法、照片和语音都放在这里。"
+            desc="日常、想法和照片都放在这里。"
           />
           <RecordKindCard
             active={eventKind === "offline_meeting"}

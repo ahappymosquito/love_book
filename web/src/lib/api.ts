@@ -45,7 +45,6 @@ import type {
   TodoWeatherOut,
   UserOut,
   VisibilityMode,
-  VoiceOut,
 } from "./types";
 
 // 生产环境下通过 Caddy 反代，前端使用相对路径（NEXT_PUBLIC_API_BASE="/api"）。
@@ -438,16 +437,6 @@ export const api = {
     apiRequest<CommentOut>(`/comments/${commentId}/reaction`, {
       method: "DELETE",
     }),
-  postVoice: (eventId: number, file: Blob, durationMs?: number) => {
-    const fd = new FormData();
-    const filename = file instanceof File ? file.name : `voice-${Date.now()}.webm`;
-    fd.append("file", file, filename);
-    if (durationMs != null) fd.append("duration_ms", String(durationMs));
-    return apiRequest<VoiceOut>(`/events/${eventId}/voices`, {
-      method: "POST",
-      body: fd,
-    });
-  },
   postImage: (eventId: number, file: File, dims?: { width?: number; height?: number }) => {
     const fd = new FormData();
     fd.append("file", file, file.name);
@@ -460,7 +449,7 @@ export const api = {
   },
 };
 
-export function fileUrl(kind: "voices" | "images" | "image-thumbs", id: number): string {
+export function fileUrl(kind: "images" | "image-thumbs", id: number): string {
   if (kind === "image-thumbs") return `${API_BASE}/images/${id}/thumb`;
   return `${API_BASE}/${kind}/${id}/file`;
 }
@@ -483,7 +472,7 @@ export async function fetchTodoImageBlob(kind: "file" | "thumb", id: number): Pr
   return URL.createObjectURL(blob);
 }
 
-export async function fetchFileBlob(kind: "voices" | "images" | "image-thumbs", id: number): Promise<string> {
+export async function fetchFileBlob(kind: "images" | "image-thumbs", id: number): Promise<string> {
   const token = useAppStore.getState().token;
   const resp = await fetch(fileUrl(kind, id), {
     headers: token ? { Authorization: `Bearer ${token}` } : {},

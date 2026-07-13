@@ -7,7 +7,7 @@ from io import BytesIO
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image as PILImage
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 import app.api.routes.admin as admin_routes
@@ -18,7 +18,7 @@ import app.habits as habits
 import app.main as main_app
 import app.services as services
 from app.core.config import get_settings
-from app.models import AISetting, CycleDailyLog, CyclePhase, DefaultQuote, DeviceToken, Event, HabitReminderRun, HabitTask, Image as DBImage, MeetingSession, TodoImage, Voice
+from app.models import AISetting, CycleDailyLog, CyclePhase, DefaultQuote, DeviceToken, Event, HabitReminderRun, HabitTask, Image as DBImage, MeetingSession, TodoImage
 from app.storage import media_path
 from tests.conftest import auth
 
@@ -1285,10 +1285,9 @@ def test_counterpart_can_assign_existing_event_to_meeting_session_without_editin
     assert forbidden.status_code == 403
 
 
-def test_mutual_submit_unlocks_after_each_side_submits_any_content(
-    client: TestClient, pair_tokens: dict[str, str | int], db_session: Session, monkeypatch: pytest.MonkeyPatch
+def test_mutual_submit_unlocks_after_each_side_submits_comment_or_image(
+    client: TestClient, pair_tokens: dict[str, str | int], db_session: Session
 ) -> None:
-    monkeypatch.setattr("app.api.routes.contents.normalize_voice_to_mp3", lambda data, mime_type: b"mp3-bytes")
     token_a = str(pair_tokens["user_a_token"])
     token_b = str(pair_tokens["user_b_token"])
     event = client.post(
@@ -1305,37 +1304,24 @@ def test_mutual_submit_unlocks_after_each_side_submits_any_content(
         "unlocked": False,
     }
     assert before["comments"] == []
-    assert before["voices"] == []
+    assert "voices" not in before
 
     upload = client.post(
-        f"/events/{event['id']}/voices",
+        f"/events/{event['id']}/images",
         headers=auth(token_b),
-        files={"file": ("note.webm", b"voice-bytes", "audio/webm;codecs=opus")},
-        data={"duration_ms": "1000"},
+        files={"file": ("photo.png", sample_png_bytes(), "image/png")},
     )
     assert upload.status_code == 201
-    voice_id = upload.json()["id"]
-    stored_voice = db_session.get(Voice, voice_id)
-    assert stored_voice is not None
-    assert stored_voice.file_path == ""
-    assert stored_voice.data is None
-    assert stored_voice.storage_backend == "local"
-    assert stored_voice.storage_key
-    assert stored_voice.storage_key.startswith(f"voices/{pair_tokens['pair_id']}/{event['id']}/")
-    assert media_path(stored_voice.storage_key).read_bytes() == b"mp3-bytes"
-    assert stored_voice.mime_type == "audio/mpeg"
+    image_id = upload.json()["id"]
+    stored_image = db_session.get(DBImage, image_id)
+    assert stored_image is not None
 
     after_a = client.get(f"/events/{event['id']}/contents", headers=auth(token_a)).json()
     after_b = client.get(f"/events/{event['id']}/contents", headers=auth(token_b)).json()
     assert after_a["submission_state"]["unlocked"] is True
     assert after_b["submission_state"]["unlocked"] is True
     assert [item["text"] for item in after_a["comments"]] == ["a-comment"]
-    assert after_a["voices"][0]["id"] == voice_id
-    downloaded = client.get(f"/voices/{voice_id}/file", headers=auth(token_a))
-    assert downloaded.status_code == 200
-    assert downloaded.content == b"mp3-bytes"
-    assert downloaded.headers["content-type"].startswith("audio/mpeg")
-    assert downloaded.headers["cache-control"] == "private, max-age=604800"
+    assert after_a["images"][0]["id"] == image_id
 
 
 def test_comment_reactions_follow_mutual_submit_visibility(
@@ -1468,29 +1454,6 @@ def test_comment_email_respects_unlock_state(client: TestClient, monkeypatch: py
     assert "第二条解锁评论" in unlocked_combined
 
 
-def test_mutual_submit_blocks_voice_download_until_unlocked(
-    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr("app.api.routes.contents.normalize_voice_to_mp3", lambda data, mime_type: b"mp3-bytes")
-    token_a = str(pair_tokens["user_a_token"])
-    token_b = str(pair_tokens["user_b_token"])
-    event = client.post(
-        "/events",
-        headers=auth(token_a),
-        json={"title": "Voice", "visibility_mode": "mutual_submit"},
-    ).json()
-    upload = client.post(
-        f"/events/{event['id']}/voices",
-        headers=auth(token_a),
-        files={"file": ("note.webm", b"voice-bytes", "audio/webm")},
-    )
-    assert upload.status_code == 201
-    voice_id = upload.json()["id"]
-
-    blocked = client.get(f"/voices/{voice_id}/file", headers=auth(token_b))
-    assert blocked.status_code == 403
-
-
 def test_mutual_submit_blocks_image_download_until_unlocked(
     client: TestClient, pair_tokens: dict[str, str | int]
 ) -> None:
@@ -1516,60 +1479,72 @@ def test_mutual_submit_blocks_image_download_until_unlocked(
     assert blocked_thumb.status_code == 403
 
 
-def test_legacy_voice_without_database_data_is_not_downloaded(
+def test_legacy_voice_rows_do_not_count_toward_mutual_submit(
+    client: TestClient, pair_tokens: dict[str, str | int], db_session: Session
+) -> None:
+    token_a = str(pair_tokens["user_a_token"])
+    token_b = str(pair_tokens["user_b_token"])
+    event = client.post(
+        "/events",
+        headers=auth(token_a),
+        json={"title": "Retired voice", "visibility_mode": "mutual_submit"},
+    ).json()
+    db_session.execute(
+        text(
+            "CREATE TABLE voices ("
+            "id INTEGER PRIMARY KEY, event_id INTEGER NOT NULL, author_id INTEGER NOT NULL, data BLOB NULL, "
+            "FOREIGN KEY(event_id) REFERENCES events(id))"
+        )
+    )
+    db_session.execute(
+        text("INSERT INTO voices (id, event_id, author_id, data) VALUES (1, :event_id, :author_id, :data)"),
+        {"event_id": event["id"], "author_id": int(pair_tokens["user_b"]["id"]), "data": b"legacy"},
+    )
+    db_session.commit()
+    client.post(f"/events/{event['id']}/comments", headers=auth(token_a), json={"text": "only active content"})
+
+    contents = client.get(f"/events/{event['id']}/contents", headers=auth(token_b)).json()
+
+    assert contents["submission_state"] == {
+        "current_user_submitted": False,
+        "counterpart_submitted": True,
+        "unlocked": False,
+    }
+    assert "voices" not in contents
+
+
+def test_deleting_event_removes_only_matching_legacy_voice_rows(
     client: TestClient, pair_tokens: dict[str, str | int], db_session: Session
 ) -> None:
     token = str(pair_tokens["user_a_token"])
-    event = client.post(
-        "/events",
-        headers=auth(token),
-        json={"title": "Legacy voice", "visibility_mode": "public"},
+    first = client.post(
+        "/events", headers=auth(token), json={"title": "First", "visibility_mode": "public"}
     ).json()
-    legacy_voice = Voice(
-        event_id=event["id"],
-        author_id=int(pair_tokens["user_a"]["id"]),
-        file_path="uploads/legacy.webm",
-        data=None,
-        duration_ms=1000,
-        mime_type="audio/webm",
-        size_bytes=11,
-    )
-    db_session.add(legacy_voice)
-    db_session.commit()
-    db_session.refresh(legacy_voice)
-
-    response = client.get(f"/voices/{legacy_voice.id}/file", headers=auth(token))
-
-    assert response.status_code == 404
-
-
-def test_legacy_voice_database_data_is_still_downloaded(
-    client: TestClient, pair_tokens: dict[str, str | int], db_session: Session
-) -> None:
-    token = str(pair_tokens["user_a_token"])
-    event = client.post(
-        "/events",
-        headers=auth(token),
-        json={"title": "Legacy voice data", "visibility_mode": "public"},
+    second = client.post(
+        "/events", headers=auth(token), json={"title": "Second", "visibility_mode": "public"}
     ).json()
-    legacy_voice = Voice(
-        event_id=event["id"],
-        author_id=int(pair_tokens["user_a"]["id"]),
-        file_path="",
-        data=b"legacy-mp3",
-        duration_ms=1000,
-        mime_type="audio/mpeg",
-        size_bytes=10,
+    db_session.execute(
+        text(
+            "CREATE TABLE voices ("
+            "id INTEGER PRIMARY KEY, event_id INTEGER NOT NULL, author_id INTEGER NOT NULL, "
+            "FOREIGN KEY(event_id) REFERENCES events(id))"
+        )
     )
-    db_session.add(legacy_voice)
+    db_session.execute(
+        text("INSERT INTO voices (id, event_id, author_id) VALUES (1, :first_id, :author_id), (2, :second_id, :author_id)"),
+        {
+            "first_id": first["id"],
+            "second_id": second["id"],
+            "author_id": int(pair_tokens["user_a"]["id"]),
+        },
+    )
     db_session.commit()
-    db_session.refresh(legacy_voice)
 
-    response = client.get(f"/voices/{legacy_voice.id}/file", headers=auth(token))
+    response = client.delete(f"/events/{first['id']}", headers=auth(token))
+    remaining = db_session.execute(text("SELECT event_id FROM voices ORDER BY id")).scalars().all()
 
-    assert response.status_code == 200
-    assert response.content == b"legacy-mp3"
-    assert response.headers["cache-control"] == "private, max-age=604800"
+    assert response.status_code == 204
+    assert remaining == [second["id"]]
 
 
 def test_third_pair_cannot_access_events(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
@@ -1603,43 +1578,23 @@ def test_only_creator_can_update_or_delete_event(client: TestClient, pair_tokens
     assert client.delete(f"/events/{event['id']}", headers=auth(token_a)).status_code == 204
 
 
-def test_voice_upload_rejects_non_audio(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
+def test_voice_routes_are_removed(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
     event = client.post(
         "/events",
         headers=auth(str(pair_tokens["user_a_token"])),
-        json={"title": "Upload", "visibility_mode": "public"},
+        json={"title": "No voice", "visibility_mode": "public"},
     ).json()
-    response = client.post(
+    upload = client.post(
         f"/events/{event['id']}/voices",
         headers=auth(str(pair_tokens["user_a_token"])),
-        files={"file": ("bad.txt", b"text", "text/plain")},
+        files={"file": ("note.webm", b"voice", "audio/webm")},
     )
-    assert response.status_code == 415
-
-
-def test_voice_upload_rejects_audio_that_cannot_be_converted(
-    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch, db_session: Session
-) -> None:
-    from app.media import MediaProcessingError
-
-    def raise_media_error(data: bytes, mime_type: str) -> bytes:
-        raise MediaProcessingError("bad audio")
-
-    monkeypatch.setattr("app.api.routes.contents.normalize_voice_to_mp3", raise_media_error)
-    event = client.post(
-        "/events",
+    download = client.get(
+        "/voices/1/file",
         headers=auth(str(pair_tokens["user_a_token"])),
-        json={"title": "Bad audio", "visibility_mode": "public"},
-    ).json()
-
-    response = client.post(
-        f"/events/{event['id']}/voices",
-        headers=auth(str(pair_tokens["user_a_token"])),
-        files={"file": ("bad.webm", b"bad-audio", "audio/webm")},
     )
-
-    assert response.status_code == 422
-    assert db_session.query(Voice).filter(Voice.event_id == event["id"]).count() == 0
+    assert upload.status_code == 404
+    assert download.status_code == 404
 
 
 def test_image_upload_generates_and_serves_thumbnail(

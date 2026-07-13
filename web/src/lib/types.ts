@@ -85,17 +85,6 @@ export interface CommentOut {
   reactions: CommentReactionSummary[];
 }
 
-export interface VoiceOut {
-  type: "voice";
-  id: number;
-  event_id: number;
-  author_id: number;
-  duration_ms: number | null;
-  mime_type: string;
-  size_bytes: number;
-  created_at: string;
-}
-
 export interface ImageOut {
   type: "image";
   id: number;
@@ -111,7 +100,6 @@ export interface ImageOut {
 export interface ContentsOut {
   submission_state: SubmissionState;
   comments: CommentOut[];
-  voices: VoiceOut[];
   images: ImageOut[];
 }
 
@@ -136,7 +124,6 @@ export interface PairOut extends PairCreated {
 
 export type ContentItem =
   | (CommentOut & { _kind: "comment" })
-  | (VoiceOut & { _kind: "voice" })
   | (ImageOut & { _kind: "image" });
 
 export interface LoginLogOut {

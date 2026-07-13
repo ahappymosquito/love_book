@@ -1,4 +1,4 @@
-"""Local media storage helpers for avatar, timeline media, todo images with deletion, and voice files under MEDIA_ROOT."""
+"""Local media storage helpers for avatars, timeline images, and todo images under MEDIA_ROOT."""
 
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
@@ -39,10 +39,6 @@ def build_todo_image_storage_keys(pair_id: int, item_id: int, mime_type: str | N
         f"todo/images/originals/{pair_id}/{item_id}/{stem}{ext}",
         f"todo/images/thumbs/{pair_id}/{item_id}/{stem}.jpg",
     )
-
-
-def build_voice_storage_key(pair_id: int, event_id: int) -> str:
-    return f"voices/{pair_id}/{event_id}/{uuid4().hex}.mp3"
 
 
 def build_avatar_storage_key(user_id: int) -> str:

@@ -1,4 +1,4 @@
-"""Database engine, session factory, and lightweight migrations for editable meeting ranges, auth, media, AI, and rich AMap restaurant schemas."""
+"""Database setup, lightweight schema migrations, and retired-voice-table compatibility cleanup."""
 
 from collections.abc import Generator
 
@@ -37,6 +37,13 @@ def get_db() -> Generator[Session, None, None]:
         raise
     finally:
         db.close()
+
+
+def delete_legacy_voice_rows(db: Session, event_id: int) -> None:
+    """Remove retired voice rows only when an existing deployment still has the legacy table."""
+    bind = db.get_bind()
+    if inspect(bind).has_table("voices"):
+        db.execute(text("DELETE FROM voices WHERE event_id = :event_id"), {"event_id": event_id})
 
 
 # Lightweight column-existence migration for environments without Alembic, including rich AMap restaurant evidence columns.
@@ -139,25 +146,6 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
             "mysql": "LONGBLOB NULL",
             "mariadb": "LONGBLOB NULL",
         },
-    ),
-    (
-        "voices",
-        "data",
-        {
-            "default": "BLOB NULL",
-            "mysql": "LONGBLOB NULL",
-            "mariadb": "LONGBLOB NULL",
-        },
-    ),
-    (
-        "voices",
-        "storage_key",
-        {"default": "VARCHAR(500) NULL"},
-    ),
-    (
-        "voices",
-        "storage_backend",
-        {"default": "VARCHAR(50) NOT NULL DEFAULT 'local'"},
     ),
     (
         "images",

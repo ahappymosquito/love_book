@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_pair_for_user
-from app.core.database import get_db
+from app.core.database import delete_legacy_voice_rows, get_db
 from app.emailer import notify_event_created
 from app.models import Event, EventKind, User, utc_now
 from app.schemas import EventCreate, EventDetail, EventSummary, EventUpdate
@@ -153,6 +153,7 @@ def delete_event(
     event = ensure_pair_event(db, event_id, pair)
     if event.creator_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the creator can delete this event")
+    delete_legacy_voice_rows(db, event.id)
     db.delete(event)
     db.flush()
     db.commit()

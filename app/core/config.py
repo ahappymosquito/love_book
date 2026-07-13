@@ -15,20 +15,9 @@ class Settings(BaseModel):
     app_name: str = "Pair Events API"
     database_url: str = "sqlite:///./pair_events.db"
     admin_key: str = "change-me"
-    max_voice_bytes: int = 10 * 1024 * 1024
     max_image_bytes: int = 10 * 1024 * 1024
     media_root: str = "/app/media"
     media_storage: str = "local"
-    allowed_voice_mime_types: set[str] = {
-        "audio/mpeg",
-        "audio/mp3",
-        "audio/mp4",
-        "audio/wav",
-        "audio/x-wav",
-        "audio/webm",
-        "audio/ogg",
-        "audio/aac",
-    }
     allowed_image_mime_types: set[str] = {
         "image/jpeg",
         "image/png",
@@ -60,7 +49,6 @@ def get_settings() -> Settings:
     return Settings(
         database_url=os.getenv("DATABASE_URL", defaults.database_url),
         admin_key=os.getenv("ADMIN_KEY", defaults.admin_key),
-        max_voice_bytes=int(os.getenv("MAX_VOICE_BYTES", str(defaults.max_voice_bytes))),
         max_image_bytes=int(os.getenv("MAX_IMAGE_BYTES", str(defaults.max_image_bytes))),
         media_root=os.getenv("MEDIA_ROOT", defaults.media_root),
         media_storage=os.getenv("MEDIA_STORAGE", defaults.media_storage).strip().lower(),

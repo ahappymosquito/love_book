@@ -1,4 +1,4 @@
-# Backend runtime image for the FastAPI API; ffmpeg handles media and Node/npx runs the AMap MCP server.
+# Backend runtime image for the FastAPI API; Node/npx runs the AMap MCP server.
 
 FROM ubuntu:24.04
 
@@ -22,7 +22,6 @@ RUN set -eux; \
         tzdata \
         curl \
         gnupg \
-        ffmpeg \
         build-essential \
         libssl-dev \
         libffi-dev \

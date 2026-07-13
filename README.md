@@ -1,24 +1,24 @@
 # 事件双人互动后端接口
 
-这是一个基于 FastAPI 的后端接口项目，围绕“两位固定伴侣用户共同参与事件”的场景设计。每个事件只属于一对用户，双方都可以创建事件、发表评论、上传语音。事件创建者可以选择公开可见，或者选择“双方都提交过任意内容后再互相可见”。
+这是一个基于 FastAPI 的后端接口项目，围绕“两位固定伴侣用户共同参与事件”的场景设计。每个事件只属于一对用户，双方都可以创建事件、发表评论和上传图片。事件创建者可以选择公开可见，或者选择“双方都提交过评论或图片后再互相可见”。
 
 > ⚙️ **生产部署**：docker-compose + Caddy 自动 HTTPS 一键部署到 `qrqto.club` 的完整说明见 [`DEPLOY.md`](DEPLOY.md)。
 > 🚀 **服务器一键部署**：使用预构建 GHCR 镜像时，可用 [`deploy_server.sh`](deploy_server.sh) 在服务器生成 `.env` / `Caddyfile` / `docker-compose.yml` 并启动服务，真实密码通过服务器 env 文件传入。
 >
-> 🗄️ **媒体存储**：图片原图、缩略图和 MP3 语音写入 `MEDIA_ROOT` 本地媒体目录，数据库只保存相对 `storage_key`；旧 `images.data` / `images.thumb_data` / `voices.data` 记录仍可回退读取。Docker 部署需要备份数据库和 `love_book_media` volume。
+> 🗄️ **媒体存储**：图片原图和缩略图写入 `MEDIA_ROOT`，数据库只保存相对 `storage_key`；旧 `images.data` / `images.thumb_data` 记录仍可回退读取。升级前已有的 `voices` 表和媒体文件会原样保留为不可达备份，不再通过产品接口读取。
 
 ## 功能概览
 
 - 管理端一次创建一对用户，并返回两个 token，支持默认永久有效或指定过期时间。
 - 普通接口使用 `Authorization: Bearer <token>` 鉴权。
 - 每个 token 直接代表一个用户身份，用户身份和 pair 关系在 token 生成时确定。
-- 两位用户都可以创建事件、提交评论、上传语音、上传图片，并对可见留言添加点赞 / 倒赞 reaction。
+- 两位用户都可以创建事件、提交评论、上传图片，并对可见留言添加点赞 / 倒赞 reaction。
 - 线下见面使用内部 `meeting_sessions` 作为真实见面次数统计单位，并以 `started_on / ended_on` 保存包含首尾整天的北京时间范围；范围内双方事件自动归类，标记范围外事件时自动建立同名单日见面。双方点击见面标题可同时编辑标题与日期范围，重叠范围自动合并并保留较早标题，也可取消整个见面；不再提供加号或手动归入流程，事件内容权限保持不变。
 - 事件、内容和留言 reaction 写接口会在响应返回前完成数据库提交，前端创建、评论或点 reaction 后可以立即刷新详情。
 - 只有 pair 内的两位用户能访问该 pair 的事件和内容。
 - 支持两种事件可见模式：
-  - `public`: 事件下评论 / 语音 / 图片提交后立即对双方可见。
-  - `mutual_submit`: 评论、语音、图片地位相同；双方各自至少提交过一条任意内容后，双方才能看到全部内容。
+  - `public`: 事件下评论 / 图片提交后立即对双方可见。
+  - `mutual_submit`: 双方各自至少提交过一条评论或图片后，双方才能看到全部内容。
 
 ## 项目结构
 
@@ -41,12 +41,11 @@ app/
       quotes.py           情侣共享本地语录库接口
       events.py           事件接口
       meeting_sessions.py 共享见面标题/日期范围编辑、合并和取消接口
-      contents.py         评论、留言 reaction、语音、图片和内容接口
+      contents.py         评论、留言 reaction、图片和内容接口
 tests/
   test_api.py             核心接口测试
 scripts/
   migrate_images_to_media.py  手动把历史图片 BLOB 迁出到媒体目录
-  migrate_voices_to_media.py  手动把历史语音 BLOB 迁出到媒体目录
 deploy_server.sh          服务器预构建镜像一键部署脚本
 ```
 
@@ -66,12 +65,11 @@ pip install -r requirements.txt
 | --- | --- | --- |
 | `DATABASE_URL` | `sqlite:///./pair_events.db` | 数据库连接地址。默认使用当前目录下的 SQLite 文件。 |
 | `ADMIN_KEY` | `change-me` | 管理接口密钥，请求管理接口时放在 `X-Admin-Key` 请求头中。 |
-| `MAX_VOICE_BYTES` | `10485760` | 单个语音文件最大字节数，默认 10MB。 |
 | `MAX_IMAGE_BYTES` | `10485760` | 单张图片文件最大字节数，默认 10MB。 |
-| `MEDIA_ROOT` | `/app/media` | 图片原图、缩略图和 MP3 语音的本地媒体根目录；Docker 中由 `love_book_media` volume 持久化。 |
+| `MEDIA_ROOT` | `/app/media` | 图片原图和缩略图的本地媒体根目录；Docker 中由 `love_book_media` volume 持久化。 |
 | `MEDIA_STORAGE` | `local` | 当前图片存储后端，现阶段固定使用本地文件。 |
 
-语音上传需要本机或容器内可执行 `ffmpeg`，用于把浏览器录音统一转为 iPhone / Android 都可播放的 MP3。图片缩略图由 Pillow 生成。
+图片缩略图由 Pillow 生成。
 
 开发环境可以先复制示例文件：
 
@@ -84,7 +82,6 @@ Copy-Item .env.example .env
 ```env
 ADMIN_KEY=your-admin-key
 DATABASE_URL=sqlite:///./pair_events.db
-MAX_VOICE_BYTES=10485760
 MAX_IMAGE_BYTES=10485760
 MEDIA_ROOT=/app/media
 MEDIA_STORAGE=local
@@ -120,7 +117,7 @@ npm run dev
 - `/` 登录页（全屏 3D 小狗背景 + 偏置前景登录框，文案只保留欢迎语、token、进入和管理员入口，支持 `?token=` 或 `#token=` 自动登录）
 - `/admin` 管理控制台（先用 `ADMIN_KEY` 验证身份，然后创建配对 / 复制 token / 复制入口链接；入口链接按当前浏览器 origin 动态生成，复制失败会自动降级到隐藏文本框复制）
 - `/timeline` 事件列表首页（关系状态 hero、全部 / 见面分段、见面标题与日期范围弹窗编辑、月份分组、狗狗空状态和底边栏导航）
-- `/timeline/[id]` 事件详情（创建者可原地编辑标题、描述、发生时间和可见方式；日历爱心可创建见面或打开所属见面编辑窗口；评论 / 语音 / 图片混排，底部输入栏支持文字、录音、相册）
+- `/timeline/[id]` 事件详情（创建者可原地编辑标题、描述、发生时间和可见方式；日历爱心可创建见面或打开所属见面编辑窗口；评论 / 图片混排，底部输入栏支持文字和相册）
 - `/me` 我的页面（当前用户头像、用户名、邮箱、常用位置和共享语录管理）
 - `/create` 新建事件
 - `/todo` 共享 todo 工作区（四板块待确认队列 / 中央任务 / 右侧详情布局，默认展示全部未完成事项，按要完成时间排序，含详情内日期安排、描述编辑、双方打卡评论完成、照片折叠大图预览、餐厅搜索、随机抽奖和打卡详情）
@@ -160,13 +157,13 @@ token 由管理接口生成，默认永久有效；创建 pair 时也可以指�
 
 ### `public`
 
-事件下任意评论、语音或图片一旦提交，pair 内双方都能看到。
+事件下任意评论或图片一旦提交，pair 内双方都能看到。
 
 可见留言支持点赞 / 倒赞 reaction。每个用户对同一留言最多保留一个 reaction，切换到另一个表情会替换原表情，再次点击已选表情会取消；reaction 只在留言下方显示表情和数量，不会触发邮件通知，也不会改变提交状态。桌面端鼠标移入留言显示 reaction 操作条，并保留从留言气泡移动到按钮的 hover 桥接区域；移动端长按留言打开底部表情选择。
 
 ### `mutual_submit`
 
-评论、语音、图片是同等内容类型。只要某个用户提交过其中任意一种内容，就算该用户“已提交”。
+只要某个用户提交过评论或图片，就算该用户“已提交”。旧语音记录不参与该状态。
 
 示例：
 
@@ -174,25 +171,21 @@ token 由管理接口生成，默认永久有效；创建 pair 时也可以指�
 | --- | --- | --- |
 | 未提交 | 未提交 | 否 |
 | 提交评论 | 未提交 | 否 |
-| 上传语音 | 未提交 | 否 |
 | 上传图片 | 未提交 | 否 |
-| 提交评论 | 上传语音 | 是 |
-| 上传语音 | 提交评论 | 是 |
 | 上传图片 | 提交评论 | 是 |
-| 上传图片 | 上传语音 | 是 |
 | 提交评论 | 提交评论 | 是 |
 
 未解锁时：
 
-- 当前用户只能看到自己提交的评论、语音和图片。
+- 当前用户只能看到自己提交的评论和图片。
 - 当前用户能看到 `counterpart_submitted` 状态，但看不到对方具体内容。
-- 对方语音 / 图片文件下载接口会返回 `403`。
+- 对方图片文件下载接口会返回 `403`。
 - 邮件通知只提示有新事件或新评论，并提供详情入口；不会展示事件标题、描述或评论正文。
 
 解锁后：
 
-- 双方都能看到事件下全部评论、语音和图片。
-- 双方都能下载可见的语音和图片文件。
+- 双方都能看到事件下全部评论和图片。
+- 双方都能下载可见的图片文件。
 - 邮件通知可以展示已解锁事件标题、摘要和评论正文。
 
 ## 接口文档
@@ -224,10 +217,8 @@ token 由管理接口生成，默认永久有效；创建 pair 时也可以指�
 | contents | POST | `/events/{event_id}/comments` | `Bearer` | 提交评论 |
 | contents | PUT | `/comments/{comment_id}/reaction` | `Bearer` | 设置或替换当前用户对留言的点赞 / 倒赞 |
 | contents | DELETE | `/comments/{comment_id}/reaction` | `Bearer` | 取消当前用户对留言的 reaction |
-| contents | POST | `/events/{event_id}/voices` | `Bearer` | 上传语音（multipart） |
 | contents | POST | `/events/{event_id}/images` | `Bearer` | 上传图片（multipart） |
 | contents | GET | `/events/{event_id}/contents` | `Bearer` | 按可见规则过滤后的内容列表 |
-| contents | GET | `/voices/{voice_id}/file` | `Bearer` | 下载语音文件 |
 | contents | GET | `/images/{image_id}/file` | `Bearer` | 下载图片文件 |
 | contents | GET | `/images/{image_id}/thumb` | `Bearer` | 下载图片缩略图 |
 
@@ -553,7 +544,7 @@ Content-Type: multipart/form-data
 
 - 事件基础信息。
 - `submission_state`。
-- 按可见规则过滤后的 `contents.comments`、`contents.voices` 和 `contents.images`。
+- 按可见规则过滤后的 `contents.comments` 和 `contents.images`。
 
 ### 9. 修改事件
 
@@ -604,61 +595,7 @@ Content-Type: multipart/form-data
 }
 ```
 
-### 12. 上传语音
-
-`POST /events/{event_id}/voices`
-
-请求类型：`multipart/form-data`
-
-服务端会使用 `ffmpeg` 将上传音频统一转为 `audio/mpeg` MP3 后保存到 `MEDIA_ROOT/voices/{pair_id}/{event_id}/...`，数据库只保存相对 `voices.storage_key` 和元数据，避免 Android 录制的 `webm/opus` 在 iPhone 上无法播放。转码失败时返回 `422`，不会保存不可播放语音。
-
-字段：
-
-| 字段 | 必填 | 说明 |
-| --- | --- | --- |
-| `file` | 是 | 音频文件。 |
-| `duration_ms` | 否 | 语音时长，单位毫秒。 |
-
-支持的音频 MIME 类型：
-
-- `audio/mpeg`
-- `audio/mp3`
-- `audio/mp4`
-- `audio/wav`
-- `audio/x-wav`
-- `audio/webm`
-- `audio/webm;codecs=opus`（服务端会按基础 MIME `audio/webm` 校验和保存）
-- `audio/ogg`
-- `audio/ogg;codecs=opus`（服务端会按基础 MIME `audio/ogg` 校验和保存）
-- `audio/aac`
-
-curl 示例：
-
-```bash
-curl -X POST "http://127.0.0.1:8000/events/1/voices" \
-  -H "Authorization: Bearer token-for-alice" \
-  -F "file=@voice.webm;type=audio/webm" \
-  -F "duration_ms=3200"
-```
-
-成功响应：
-
-```json
-{
-  "type": "voice",
-  "id": 1,
-  "event_id": 1,
-  "author_id": 1,
-  "duration_ms": 3200,
-  "mime_type": "audio/webm",
-  "size_bytes": 12345,
-  "created_at": "2026-04-29T12:00:00Z"
-}
-```
-
-超出大小返回 `413`，不支持的 MIME 类型返回 `415`。
-
-### 13. 上传图片
+### 12. 上传图片
 
 `POST /events/{event_id}/images`
 
@@ -707,7 +644,7 @@ curl -X POST "http://127.0.0.1:8000/events/1/images" \
 }
 ```
 
-### 14. 获取事件内容
+### 13. 获取事件内容
 
 `GET /events/{event_id}/contents`
 
@@ -730,18 +667,6 @@ curl -X POST "http://127.0.0.1:8000/events/1/images" \
       "created_at": "2026-04-29T12:00:00Z"
     }
   ],
-  "voices": [
-    {
-      "type": "voice",
-      "id": 1,
-      "event_id": 1,
-      "author_id": 2,
-      "duration_ms": 3200,
-      "mime_type": "audio/webm",
-      "size_bytes": 12345,
-      "created_at": "2026-04-29T12:00:00Z"
-    }
-  ],
   "images": [
     {
       "type": "image",
@@ -758,21 +683,15 @@ curl -X POST "http://127.0.0.1:8000/events/1/images" \
 }
 ```
 
-按 `mutual_submit` 规则未解锁时，三个数组只包含当前用户自己提交的内容。
+按 `mutual_submit` 规则未解锁时，两个数组只包含当前用户自己提交的内容。
 
-### 15. 下载语音文件
-
-`GET /voices/{voice_id}/file`
-
-返回 MP3 语音文件流。接口优先读取 `voices.storage_key` 指向的本地媒体文件；旧记录没有 key 时回退读取 `voices.data`。如果当前用户无权访问该语音，或 `mutual_submit` 事件还未解锁，会返回 `403`；语音不存在或旧记录没有可用数据时返回 `404`。响应会带 `Cache-Control: private` 缓存头。
-
-### 16. 下载图片文件
+### 14. 下载图片文件
 
 `GET /images/{image_id}/file`
 
 返回原始图片文件流。接口优先读取 `images.storage_key` 指向的本地媒体文件；旧记录没有 key 时回退读取 `images.data`。如果当前用户无权访问该图片，或 `mutual_submit` 事件还未解锁，会返回 `403`；图片不存在返回 `404`。响应会带 `Cache-Control: private` 缓存头。
 
-### 17. 下载图片缩略图
+### 15. 下载图片缩略图
 
 `GET /images/{image_id}/thumb`
 
@@ -794,19 +713,9 @@ python scripts/migrate_images_to_media.py --clear-blobs --compact
 
 Docker 生产环境迁移服务器时需要同时备份数据库和 `love_book_media` volume。
 
-## 历史语音迁移
+## 已停用语音数据
 
-已有数据库如果仍包含 `voices.data`，先备份数据库和媒体目录，然后执行：
-
-```powershell
-python scripts/migrate_voices_to_media.py
-```
-
-脚本会把历史 MP3 语音导出到 `MEDIA_ROOT`，并回填 `voices.storage_key`，默认不清空旧 BLOB。确认接口读取正常、备份可用后，才执行可选清理：
-
-```powershell
-python scripts/migrate_voices_to_media.py --clear-blobs --compact
-```
+语音上传、下载和网页播放能力已经移除。已有部署中的 `voices` 表、BLOB 和 `MEDIA_ROOT/voices` 文件不会在启动或部署时自动删除，只作为不可达备份保留；新安装环境不再创建 `voices` 表。删除一个旧事件时，后端只清理该事件对应的旧 `voices` 行以兼容外键约束，不清理其他历史语音或媒体文件。
 
 ## 典型流程
 
@@ -814,7 +723,7 @@ python scripts/migrate_voices_to_media.py --clear-blobs --compact
 
 1. 管理员调用 `POST /admin/pairs` 创建 Alice 和 Bob，拿到两个 token。
 2. Alice 调用 `POST /events` 创建事件，`visibility_mode` 使用 `public`。
-3. Alice 提交评论、语音或图片。
+3. Alice 提交评论或图片。
 4. Bob 调用 `GET /events/{event_id}/contents`，立即能看到 Alice 的内容。
 
 ### 互锁事件
@@ -822,9 +731,9 @@ python scripts/migrate_voices_to_media.py --clear-blobs --compact
 1. Alice 创建事件，`visibility_mode` 使用 `mutual_submit`。
 2. Alice 提交评论。
 3. Bob 此时查看内容，只能看到状态：`counterpart_submitted=true`，但看不到 Alice 的评论文本。
-4. Bob 上传语音或图片中任意一种内容。
-5. 双方都已提交任意内容，事件解锁。
-6. Alice 和 Bob 都能看到全部评论、语音和图片，并能下载对应的语音 / 图片文件。
+4. Bob 提交评论或图片中任意一种内容。
+5. 双方都已提交评论或图片，事件解锁。
+6. Alice 和 Bob 都能看到全部评论和图片，并能下载对应的图片文件。
 
 ## 测试
 
@@ -837,13 +746,12 @@ python scripts/migrate_voices_to_media.py --clear-blobs --compact
 - pair 隔离权限。
 - 公开事件立即可见。
 - 互锁事件任意内容提交后解锁。
-- 未解锁时阻止下载对方语音。
-- 语音上传后转 MP3 并落盘到 `MEDIA_ROOT`，数据库不再写新语音 BLOB；旧无 storage key 且无数据语音返回 `404`。
+- 语音路由已移除，旧语音不参与互锁提交状态。
+- 删除含旧语音行的事件时兼容遗留 `voices` 表外键，并保留其他历史语音数据。
 - 图片上传后原图和缩略图落盘到 `MEDIA_ROOT`，数据库不再写新图片 BLOB，详情页缩略图接口不拉取原图。
 - 旧 `images.data` / `images.thumb_data` 图片仍可读取，避免升级后历史图片失效。
 - 只有事件创建者可以修改和删除事件。
 - 情侣共享语录库的添加、列表、删除和 pair 隔离权限。
-- 非音频文件上传被拒绝。
 
 运行测试：
 
@@ -856,7 +764,7 @@ python -m pytest tests -q
 - v1 token 默认永久有效，也可以在创建 pair 时指定过期时间；尚未提供刷新和撤销机制。
 - v1 自动建表，并带少量轻量级补列逻辑（如 `users.avatar`、`device_tokens.expires_at`）。已有生产数据库中的旧 token 因 `expires_at` 为 `NULL` 会继续永久有效。
 - SQLite 适合本地开发；正式部署建议改成 PostgreSQL，并增加迁移、备份和文件存储策略。
-- 图片和语音文件默认保存到 `MEDIA_ROOT` 本地目录；Docker 生产部署已用 `love_book_media` named volume 持久化，服务器迁移时要和数据库一起备份。
+- 图片文件默认保存到 `MEDIA_ROOT` 本地目录；Docker 生产部署已用 `love_book_media` named volume 持久化，服务器迁移时要和数据库一起备份。旧语音文件仍可能存在于该 volume 中，除非运维在备份后手动清理。
 - `.env` 不应提交到版本库；项目已在 `.gitignore` 中排除 `.env`。
 - `ADMIN_KEY` 默认值是 `change-me`，正式环境必须改掉。
 - 前端代码在 `web/`，不参与后端 Python 测试。`web/node_modules/`、`web/.next/`、`web/.env.local` 已在 `.gitignore` 中排除。

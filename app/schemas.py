@@ -275,19 +275,6 @@ class CommentOut(APIModel):
     model_config = {"from_attributes": True}
 
 
-class VoiceOut(APIModel):
-    type: Literal["voice"] = "voice"
-    id: int
-    event_id: int
-    author_id: int
-    duration_ms: int | None
-    mime_type: str
-    size_bytes: int
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
 class ImageOut(APIModel):
     type: Literal["image"] = "image"
     id: int
@@ -306,7 +293,6 @@ class ImageOut(APIModel):
 class ContentsOut(APIModel):
     submission_state: SubmissionState
     comments: list[CommentOut]
-    voices: list[VoiceOut]
     images: list[ImageOut]
 
 

@@ -165,7 +165,6 @@ class Event(Base):
     creator: Mapped[User] = relationship()
     meeting_session: Mapped["MeetingSession | None"] = relationship(back_populates="events")
     comments: Mapped[list["Comment"]] = relationship(cascade="all, delete-orphan")
-    voices: Mapped[list["Voice"]] = relationship(cascade="all, delete-orphan")
     images: Mapped[list["Image"]] = relationship(cascade="all, delete-orphan")
 
 
@@ -470,30 +469,6 @@ class CommentReaction(Base):
     reaction_type: Mapped[str] = mapped_column(String(50), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
-
-    author: Mapped[User] = relationship()
-
-
-class Voice(Base):
-    __tablename__ = "voices"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), nullable=False, index=True)
-    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    # Legacy disk-path column kept as an empty placeholder for old schemas and old rows.
-    file_path: Mapped[str] = mapped_column(String(500), nullable=False, default="", server_default="")
-    # New voice uploads store normalized MP3 bytes in MEDIA_ROOT and keep only a relative key.
-    storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    storage_backend: Mapped[str] = mapped_column(String(50), nullable=False, default="local", server_default="local")
-    # Legacy BLOB column is readable for old rows; new voice uploads leave it NULL.
-    data: Mapped[bytes | None] = mapped_column(
-        LargeBinary().with_variant(LONGBLOB(), "mysql").with_variant(LONGBLOB(), "mariadb"),
-        nullable=True,
-    )
-    duration_ms: Mapped[int | None] = mapped_column(Integer)
-    mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     author: Mapped[User] = relationship()
 

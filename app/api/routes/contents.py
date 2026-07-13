@@ -1,4 +1,4 @@
-"""Content route handlers for comments, comment reactions, local MP3 voice/image storage, and filtered media downloads.
+"""Content route handlers for comments, reactions, local image storage, and filtered image downloads.
 
 Creation endpoints commit before returning so detail pages can refresh content immediately after a submit.
 """
@@ -14,9 +14,9 @@ from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.emailer import notify_comment_created
-from app.media import MediaProcessingError, make_image_thumbnail, normalize_voice_to_mp3
-from app.models import Comment, CommentReaction, Image, User, Voice
-from app.schemas import CommentCreate, CommentOut, CommentReactionCreate, ContentsOut, ImageOut, VoiceOut
+from app.media import MediaProcessingError, make_image_thumbnail
+from app.models import Comment, CommentReaction, Image, User
+from app.schemas import CommentCreate, CommentOut, CommentReactionCreate, ContentsOut, ImageOut
 from app.services import (
     active_token_for_user,
     comment_outs,
@@ -24,7 +24,6 @@ from app.services import (
     ensure_comment_visible,
     ensure_image_file_visible,
     ensure_pair_event,
-    ensure_voice_file_visible,
     submission_state,
     visible_contents,
 )
@@ -32,7 +31,6 @@ from app.storage import (
     PRIVATE_MEDIA_CACHE_HEADERS,
     MediaStorageError,
     build_image_storage_keys,
-    build_voice_storage_key,
     read_media_file,
     write_media_file,
 )
@@ -133,56 +131,6 @@ def delete_comment_reaction(
     return comment_outs(db, [comment], current_user.id)[0]
 
 
-@router.post("/events/{event_id}/voices", response_model=VoiceOut, status_code=status.HTTP_201_CREATED)
-def upload_voice(
-    event_id: int,
-    file: UploadFile = File(...),
-    duration_ms: int | None = Form(default=None),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> VoiceOut:
-    pair = get_pair_for_user(db, current_user.id)
-    event = ensure_pair_event(db, event_id, pair)
-    settings = get_settings()
-    content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
-    if content_type not in settings.allowed_voice_mime_types:
-        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Unsupported audio mime type")
-
-    body = file.file.read(settings.max_voice_bytes + 1)
-    if len(body) > settings.max_voice_bytes:
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Voice file is too large")
-    try:
-        body = normalize_voice_to_mp3(body, content_type)
-    except MediaProcessingError as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Voice audio could not be converted to MP3: {exc}",
-        ) from exc
-
-    storage_key = build_voice_storage_key(pair.id, event.id)
-    try:
-        write_media_file(storage_key, body)
-    except (MediaStorageError, OSError) as exc:
-        raise HTTPException(status_code=500, detail=f"Voice file could not be saved: {exc}") from exc
-
-    voice = Voice(
-        event_id=event_id,
-        author_id=current_user.id,
-        file_path="",
-        storage_key=storage_key,
-        storage_backend=settings.media_storage,
-        data=None,
-        duration_ms=duration_ms,
-        mime_type="audio/mpeg",
-        size_bytes=len(body),
-    )
-    db.add(voice)
-    db.flush()
-    db.commit()
-    db.refresh(voice)
-    return VoiceOut.model_validate(voice)
-
-
 @router.post("/events/{event_id}/images", response_model=ImageOut, status_code=status.HTTP_201_CREATED)
 def upload_image(
     event_id: int,
@@ -250,32 +198,6 @@ def get_contents(
     pair = get_pair_for_user(db, current_user.id)
     event = ensure_pair_event(db, event_id, pair)
     return visible_contents(db, event, current_user, pair)
-
-
-@router.get("/voices/{voice_id}/file")
-def get_voice_file(
-    voice_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    pair = get_pair_for_user(db, current_user.id)
-    voice = ensure_voice_file_visible(db, voice_id, current_user, pair)
-    if voice.storage_key:
-        try:
-            stored = read_media_file(voice.storage_key)
-        except MediaStorageError as exc:
-            raise HTTPException(status_code=500, detail=f"Voice file could not be read: {exc}") from exc
-        if stored is not None:
-            return Response(
-                content=stored,
-                media_type=voice.mime_type or "audio/mpeg",
-                headers=dict(PRIVATE_MEDIA_CACHE_HEADERS),
-            )
-    return Response(
-        content=bytes(voice.data or b""),
-        media_type=voice.mime_type,
-        headers=dict(PRIVATE_MEDIA_CACHE_HEADERS),
-    )
 
 
 @router.get("/images/{image_id}/file")

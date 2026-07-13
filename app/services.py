@@ -1,4 +1,4 @@
-"""Shared business logic for pair access, editable Beijing-date meeting ranges, overlap merging, automatic event classification, typed event summaries, comment reactions, content visibility, media metadata, database quotes, and home reminders."""
+"""Shared pair, meeting, event, comment, image, quote, visibility, and home-reminder business logic."""
 
 import random
 from datetime import date, datetime, timedelta, timezone
@@ -9,7 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, exists, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Comment, CommentReaction, DefaultQuote, DeviceToken, Event, EventKind, Image, MeetingSession, Pair, Quote, User, VisibilityMode, Voice, utc_now
+from app.models import Comment, CommentReaction, DefaultQuote, DeviceToken, Event, EventKind, Image, MeetingSession, Pair, Quote, User, VisibilityMode, utc_now
 from app.schemas import (
     AnniversaryOut,
     CommentOut,
@@ -21,7 +21,6 @@ from app.schemas import (
     MeetingSessionLite,
     ReminderItem,
     SubmissionState,
-    VoiceOut,
 )
 from app.storage import media_file_exists
 
@@ -482,9 +481,8 @@ def comment_outs(db: Session, comments: list[Comment], user_id: int) -> list[Com
 
 def user_has_submitted_query(event_id: int, user_id: int) -> Select[tuple[bool]]:
     comment_exists = exists().where(Comment.event_id == event_id, Comment.author_id == user_id)
-    voice_exists = exists().where(Voice.event_id == event_id, Voice.author_id == user_id)
     image_exists = exists().where(Image.event_id == event_id, Image.author_id == user_id)
-    return select(or_(comment_exists, voice_exists, image_exists))
+    return select(or_(comment_exists, image_exists))
 
 
 def user_has_submitted(db: Session, event_id: int, user_id: int) -> bool:
@@ -506,21 +504,17 @@ def submission_state(db: Session, event: Event, user: User, pair: Pair) -> Submi
 def visible_contents(db: Session, event: Event, user: User, pair: Pair) -> ContentsOut:
     state = submission_state(db, event, user, pair)
     comments_query = select(Comment).where(Comment.event_id == event.id)
-    voices_query = select(Voice).where(Voice.event_id == event.id)
     images_query = select(Image).where(Image.event_id == event.id)
 
     if not state.unlocked:
         comments_query = comments_query.where(Comment.author_id == user.id)
-        voices_query = voices_query.where(Voice.author_id == user.id)
         images_query = images_query.where(Image.author_id == user.id)
 
     comments = db.execute(comments_query.order_by(Comment.created_at, Comment.id)).scalars().all()
-    voices = db.execute(voices_query.order_by(Voice.created_at, Voice.id)).scalars().all()
     images = db.execute(images_query.order_by(Image.created_at, Image.id)).scalars().all()
     return ContentsOut(
         submission_state=state,
         comments=comment_outs(db, comments, user.id),
-        voices=[VoiceOut.model_validate(voice) for voice in voices],
         images=[ImageOut.model_validate(image) for image in images],
     )
 
@@ -556,21 +550,6 @@ def ensure_comment_visible(db: Session, comment_id: int, user: User, pair: Pair)
     if all(item.id != comment.id for item in contents.comments):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Comment is not visible yet")
     return comment
-
-
-def ensure_voice_file_visible(db: Session, voice_id: int, user: User, pair: Pair) -> Voice:
-    voice = db.get(Voice, voice_id)
-    if voice is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voice not found")
-    event = ensure_pair_event(db, voice.event_id, pair)
-    contents = visible_contents(db, event, user, pair)
-    if all(item.id != voice.id for item in contents.voices):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Voice is not visible yet")
-    has_storage = bool(voice.storage_key) and media_file_exists(voice.storage_key or "")
-    has_blob = bool(voice.data)
-    if not has_storage and not has_blob:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voice data not found")
-    return voice
 
 
 def ensure_image_file_visible(db: Session, image_id: int, user: User, pair: Pair) -> Image:
