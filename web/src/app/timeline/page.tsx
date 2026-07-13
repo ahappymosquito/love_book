@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home with instant in-memory quote rotation, a quiet relationship focus, solid grouped memory lists, editable meeting date ranges, and Liquid Glass controls for view switching, reminders, and navigation.
+// Timeline home with instant in-memory quote rotation, a quiet relationship focus, aligned meeting timelines, editable meeting date ranges, and Liquid Glass controls for view switching, reminders, and navigation.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -569,7 +569,7 @@ function MeetingGroup({
   return (
     <div className="relative pl-8 sm:pl-10">
       <div className="meeting-month-node" aria-hidden="true" />
-      <div className="mb-3 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
+      <div className="mb-3 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1.5">
         <button type="button" className={cn(
           "min-h-11 max-w-full truncate rounded-xl px-1 text-left font-display text-lg font-semibold text-ink transition focus-ring",
           canOrganize && "hover:text-rose-deep",

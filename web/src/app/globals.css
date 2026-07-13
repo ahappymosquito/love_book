@@ -1,4 +1,4 @@
-/* Global Love Book visual system: OKLCH Liquid Glass control layers, solid content surfaces, light and warm-night themes, mobile viewport guards, accessible controls, and reduced-transparency fallbacks. */
+/* Global Love Book visual system: OKLCH Liquid Glass control layers, solid content surfaces, aligned meeting timelines, light and warm-night themes, mobile viewport guards, accessible controls, and reduced-transparency fallbacks. */
 
 @tailwind base;
 @tailwind components;
@@ -583,7 +583,8 @@
   .meeting-month-node {
     position: absolute;
     left: 0.25rem;
-    top: 0.2rem;
+    top: 1.375rem;
+    transform: translateY(-50%);
     width: 0.95rem;
     height: 0.95rem;
     border-radius: 999px;
