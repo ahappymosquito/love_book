@@ -1,9 +1,9 @@
 "use client";
 
-// Pair-shared Todo workspace with a solid task canvas, restrained category accents, Liquid Glass controls, mobile-safe detail Sheet, and shared check-ins.
+// Pair-shared Todo workspace with restrained layout continuity for candidates, task sections, detail panels, photos, and shared check-ins.
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import {
   CalendarDays,
   Check,
@@ -31,9 +31,11 @@ import { AppHeader } from "@/components/app-header";
 import { AuthGate } from "@/components/auth-gate";
 import { Avatar } from "@/components/avatar";
 import { TodoLotteryScene } from "@/components/todo-lottery-scene";
+import { MotionCollapse } from "@/components/ui/motion-collapse";
 import { APIError, api, fetchTodoImageBlob } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { formatRelative } from "@/lib/format";
+import { MOTION_TRANSITIONS } from "@/lib/motion";
 import { useAppStore } from "@/lib/store";
 import type {
   TodoCategory,
@@ -197,6 +199,7 @@ function TodoInner() {
   const [loading, setLoading] = useState(true);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [autoEditNoteId, setAutoEditNoteId] = useState<number | null>(null);
+  const [recentlyAddedId, setRecentlyAddedId] = useState<number | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<TodoCategory, boolean>>({
     food: false,
     play: false,
@@ -212,6 +215,12 @@ function TodoInner() {
       setMonth(date.slice(0, 7));
     }
   }, []);
+
+  useEffect(() => {
+    if (recentlyAddedId == null) return;
+    const timer = window.setTimeout(() => setRecentlyAddedId(null), 900);
+    return () => window.clearTimeout(timer);
+  }, [recentlyAddedId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -275,8 +284,9 @@ function TodoInner() {
     if (category === "wish") {
       const item = await api.createTodoItem({ category, title });
       toast.success("已加入许愿");
-      await load();
       setExpandedSections((current) => ({ ...current, wish: true }));
+      await load();
+      setRecentlyAddedId(item.id);
       setAutoEditNoteId(item.id);
       setDetailId(item.id);
       return;
@@ -321,7 +331,10 @@ function TodoInner() {
         selected_candidate: selectedCandidate,
       });
       toast.success("已加入清单");
+      setCandidates((current) => current.filter((item) => item.id !== candidate.id));
+      setExpandedSections((current) => ({ ...current, [category]: true }));
       await load();
+      setRecentlyAddedId(item.id);
       setDetailId(item.id);
     } catch (error) {
       toast.error(`加入失败：${apiErrorMessage(error)}`);
@@ -361,27 +374,30 @@ function TodoInner() {
           />
 
           <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] sm:px-5 sm:pb-5">
-            <div className="space-y-3 pt-3">
-              <QuickAddBar onCreated={addTodo} llmEnabled={llmEnabled} />
-              {TODO_SECTIONS.map((section) => (
-                <TodoCategorySection
-                  key={section.category}
-                  section={section}
-                  expanded={expandedSections[section.category]}
-                  items={items.filter((item) => item.category === section.category && !item.checked_in)}
-                  completedItems={items.filter((item) => item.category === section.category && item.checked_in)}
-                  schedules={schedules}
-                  onToggle={() => toggleSection(section.category)}
-                  onOpen={setDetailId}
+            <LayoutGroup id="todo-board-layout">
+              <motion.div layout className="space-y-3 pt-3" transition={MOTION_TRANSITIONS.layout}>
+                <QuickAddBar onCreated={addTodo} llmEnabled={llmEnabled} />
+                {TODO_SECTIONS.map((section) => (
+                  <TodoCategorySection
+                    key={section.category}
+                    section={section}
+                    expanded={expandedSections[section.category]}
+                    items={items.filter((item) => item.category === section.category && !item.checked_in)}
+                    completedItems={items.filter((item) => item.category === section.category && item.checked_in)}
+                    schedules={schedules}
+                    recentlyAddedId={recentlyAddedId}
+                    onToggle={() => toggleSection(section.category)}
+                    onOpen={setDetailId}
+                  />
+                ))}
+                <CandidateQueue
+                  candidates={queuedCandidates}
+                  llmEnabled={llmEnabled}
+                  onConfirm={confirmCandidate}
+                  onDiscard={discardCandidate}
                 />
-              ))}
-              <CandidateQueue
-                candidates={queuedCandidates}
-                llmEnabled={llmEnabled}
-                onConfirm={confirmCandidate}
-                onDiscard={discardCandidate}
-              />
-            </div>
+              </motion.div>
+            </LayoutGroup>
           </div>
         </main>
 
@@ -501,6 +517,7 @@ function TodoCategorySection({
   items,
   completedItems,
   schedules,
+  recentlyAddedId,
   onToggle,
   onOpen,
 }: {
@@ -509,12 +526,13 @@ function TodoCategorySection({
   items: TodoItemOut[];
   completedItems: TodoItemOut[];
   schedules: TodoScheduleOut[];
+  recentlyAddedId: number | null;
   onToggle: () => void;
   onOpen: (id: number) => void;
 }) {
   const style = TODO_SECTION_STYLE[section.category];
   return (
-    <section className={cn("overflow-hidden rounded-2xl border", style.shell)}>
+    <motion.section layout="position" transition={MOTION_TRANSITIONS.layout} className={cn("overflow-hidden rounded-2xl border", style.shell)}>
       <button type="button" onClick={onToggle} className={cn("flex min-h-14 w-full items-center gap-3 px-4 text-left transition focus-ring", style.header)} aria-expanded={expanded}>
         <span className={cn("grid h-9 w-9 place-items-center rounded-xl", style.icon)}>{section.icon}</span>
         <span className="min-w-0 flex-1">
@@ -524,12 +542,18 @@ function TodoCategorySection({
         <span className={cn("rounded-full px-2 py-0.5 font-sc text-xs", style.count)}>{items.length}</span>
         <ChevronRight className={cn("h-4 w-4 text-ink-muted transition", expanded && "rotate-90")} />
       </button>
-      {expanded && (
+      <MotionCollapse open={expanded}>
         <div className={cn("border-t p-3", style.body)}>
-          <TaskList items={items} completedItems={completedItems} schedules={schedules} onOpen={onOpen} />
+          <TaskList
+            items={items}
+            completedItems={completedItems}
+            schedules={schedules}
+            recentlyAddedId={recentlyAddedId}
+            onOpen={onOpen}
+          />
         </div>
-      )}
-    </section>
+      </MotionCollapse>
+    </motion.section>
   );
 }
 
@@ -544,22 +568,36 @@ function CandidateQueue({
   onConfirm: (candidate: TodoCandidateOut, selectedCandidate?: TodoRestaurantCandidate | null, category?: TodoCategory) => void | Promise<void>;
   onDiscard: (candidate: CandidateQueueItem) => void | Promise<void>;
 }) {
-  if (candidates.length === 0) return null;
   return (
-    <section className="rounded-2xl border border-rose/20 bg-rose/6 p-3">
-      <div className="mb-3 flex items-center justify-between gap-2 px-1">
-        <div>
-          <h2 className="font-display text-base font-semibold text-ink">待确认</h2>
-          <p className="font-sc text-xs text-ink-muted">点击卡片查看解析结果，再确认加入或丢弃。</p>
-        </div>
-        <span className="rounded-full bg-rose/10 px-2 py-0.5 font-sc text-xs text-rose-deep">{candidates.length}</span>
-      </div>
-      <div className="grid gap-2">
-        {candidates.map((candidate) => (
-          <CandidateCard key={candidateKey(candidate)} candidate={candidate} llmEnabled={llmEnabled} onConfirm={onConfirm} onDiscard={onDiscard} />
-        ))}
-      </div>
-    </section>
+    <AnimatePresence initial={false}>
+      {candidates.length > 0 && (
+        <motion.section
+          layout
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={MOTION_TRANSITIONS.state}
+          className="rounded-2xl border border-rose/20 bg-rose/6 p-3"
+        >
+          <div className="mb-3 flex items-center justify-between gap-2 px-1">
+            <div>
+              <h2 className="font-display text-base font-semibold text-ink">待确认</h2>
+              <p className="font-sc text-xs text-ink-muted">点击卡片查看解析结果，再确认加入或丢弃。</p>
+            </div>
+            <motion.span layout className="rounded-full bg-rose/10 px-2 py-0.5 font-sc text-xs text-rose-deep">
+              {candidates.length}
+            </motion.span>
+          </div>
+          <div className="grid gap-2">
+            <AnimatePresence initial={false}>
+              {candidates.map((candidate) => (
+                <CandidateCard key={candidateKey(candidate)} candidate={candidate} llmEnabled={llmEnabled} onConfirm={onConfirm} onDiscard={onDiscard} />
+              ))}
+            </AnimatePresence>
+          </div>
+        </motion.section>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -574,6 +612,7 @@ function CandidateCard({
   onConfirm: (candidate: TodoCandidateOut, selectedCandidate?: TodoRestaurantCandidate | null, category?: TodoCategory) => void | Promise<void>;
   onDiscard: (candidate: CandidateQueueItem) => void | Promise<void>;
 }) {
+  const reducedMotion = useReducedMotion();
   const [expanded, setExpanded] = useState(true);
   const [selected, setSelected] = useState<TodoRestaurantCandidate | null>(candidate.selected_candidate ?? candidate.amap_candidates[0] ?? null);
   const [overrideCategory, setOverrideCategory] = useState<TodoCategory>(candidate.category);
@@ -617,21 +656,39 @@ function CandidateCard({
   const statusText = candidate.status === "ready" ? "待增加" : candidate.status === "needs_choice" ? "需要选择地点" : candidate.status === "failed" ? "解析失败" : "正在解析";
 
   return (
-    <article className="rounded-xl border border-line/58 bg-surface/86 p-3">
+    <motion.article
+      layout
+      initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.99 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.985 }}
+      transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.state}
+      className="rounded-xl border border-line/58 bg-surface/86 p-3"
+    >
       <button type="button" onClick={() => setExpanded((value) => !value)} className="flex w-full items-start gap-3 text-left focus-ring">
         <span className="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-xl bg-peach/18 text-rose-deep">
           {candidate.status === "parsing" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className={cn("h-4 w-4 transition", expanded && "rotate-90")} />}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block font-display text-sm font-semibold text-ink">{candidate.raw_title}</span>
-          <span className="mt-1 block font-sc text-xs text-ink-muted">
-            {TODO_CATEGORY_LABELS[candidate.category]} · {statusText}
+          <span className="mt-1 flex flex-wrap items-center gap-1 font-sc text-xs text-ink-muted">
+            <span>{TODO_CATEGORY_LABELS[candidate.category]} ·</span>
+            <AnimatePresence initial={false} mode="popLayout">
+              <motion.span
+                key={candidate.status}
+                initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 3 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -3 }}
+                transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.fast}
+              >
+                {statusText}
+              </motion.span>
+            </AnimatePresence>
           </span>
           {candidate.selected_candidate && <span className="mt-1 block truncate font-sc text-xs text-ink-muted">{candidate.selected_candidate.name}</span>}
         </span>
       </button>
 
-      {expanded && (
+      <MotionCollapse open={expanded}>
         <div className="mt-3 space-y-3 border-t border-line/52 pt-3">
           {candidate.status === "parsing" && (
             <p className="rounded-xl bg-peach/12 p-3 font-sc text-xs text-ink-muted">
@@ -701,8 +758,8 @@ function CandidateCard({
             </button>
           </div>
         </div>
-      )}
-    </article>
+      </MotionCollapse>
+    </motion.article>
   );
 }
 
@@ -855,11 +912,13 @@ function TaskList({
   items,
   completedItems,
   schedules,
+  recentlyAddedId,
   onOpen,
 }: {
   items: TodoItemOut[];
   completedItems: TodoItemOut[];
   schedules: TodoScheduleOut[];
+  recentlyAddedId: number | null;
   onOpen: (id: number) => void;
 }) {
   return (
@@ -874,20 +933,31 @@ function TaskList({
         </div>
       ) : (
         <ul className="space-y-2">
-          {items.map((item) => (
-            <li key={item.id}>
-              <TaskRow
-                item={item}
-                schedules={schedulesForItem(item, schedules)}
-                onOpen={() => onOpen(item.id)}
-              />
-            </li>
-          ))}
+          <AnimatePresence initial={false}>
+            {items.map((item) => (
+              <motion.li
+                layout="position"
+                key={item.id}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={MOTION_TRANSITIONS.state}
+              >
+                <TaskRow
+                  item={item}
+                  schedules={schedulesForItem(item, schedules)}
+                  recentlyAdded={item.id === recentlyAddedId}
+                  onOpen={() => onOpen(item.id)}
+                />
+              </motion.li>
+            ))}
+          </AnimatePresence>
         </ul>
       )}
       <CompletedTaskSection
         items={completedItems}
         schedules={schedules}
+        recentlyAddedId={recentlyAddedId}
         onOpen={onOpen}
       />
     </div>
@@ -897,10 +967,12 @@ function TaskList({
 function CompletedTaskSection({
   items,
   schedules,
+  recentlyAddedId,
   onOpen,
 }: {
   items: TodoItemOut[];
   schedules: TodoScheduleOut[];
+  recentlyAddedId: number | null;
   onOpen: (id: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -920,19 +992,20 @@ function CompletedTaskSection({
         </span>
         <span className="rounded-full bg-sage/16 px-2 py-0.5 text-xs text-ink-muted">{items.length}</span>
       </button>
-      {expanded && (
+      <MotionCollapse open={expanded}>
         <ul className="space-y-2 border-t border-line/52 p-3">
           {items.map((item) => (
             <li key={item.id}>
               <TaskRow
                 item={item}
                 schedules={schedulesForItem(item, schedules)}
+                recentlyAdded={item.id === recentlyAddedId}
                 onOpen={() => onOpen(item.id)}
               />
             </li>
           ))}
         </ul>
-      )}
+      </MotionCollapse>
     </section>
   );
 }
@@ -940,19 +1013,34 @@ function CompletedTaskSection({
 function TaskRow({
   item,
   schedules,
+  recentlyAdded = false,
   onOpen,
 }: {
   item: TodoItemOut;
   schedules: TodoScheduleOut[];
+  recentlyAdded?: boolean;
   onOpen: () => void;
 }) {
+  const reducedMotion = useReducedMotion();
   const restaurant = item.restaurant;
   const primarySchedule = getPrimarySchedule(item, schedules);
   const primaryScheduleMeta = primarySchedule ? scheduleMeta(primarySchedule.scheduled_on, item.checked_in) : null;
 
   return (
-    <article className="group rounded-2xl border border-line/58 bg-surface-raised/88 px-3 py-3 transition hover:border-rose/26 hover:bg-peach/8">
-      <div className="flex items-start gap-3">
+    <motion.article layout="position" transition={MOTION_TRANSITIONS.layout} className="group relative overflow-hidden rounded-2xl border border-line/58 bg-surface-raised/88 px-3 py-3 transition hover:border-rose/26 hover:bg-peach/8">
+      <AnimatePresence initial={false}>
+        {recentlyAdded && (
+          <motion.span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 bg-rose/14"
+            initial={{ opacity: 0 }}
+            animate={reducedMotion ? { opacity: 0.3 } : { opacity: [0, 0.72, 0] }}
+            exit={{ opacity: 0 }}
+            transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.emphasis}
+          />
+        )}
+      </AnimatePresence>
+      <div className="relative z-10 flex items-start gap-3">
         <button
           type="button"
           onClick={onOpen}
@@ -962,7 +1050,17 @@ function TaskRow({
           )}
           aria-label="打开任务详情"
         >
-          {item.checked_in ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+          <AnimatePresence initial={false} mode="popLayout">
+            <motion.span
+              key={item.checked_in ? "checked" : "open"}
+              initial={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.82 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.82 }}
+              transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.fast}
+            >
+              {item.checked_in ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+            </motion.span>
+          </AnimatePresence>
         </button>
 
         <button type="button" onClick={onOpen} className="min-w-0 flex-1 rounded-xl text-left focus-ring">
@@ -1001,7 +1099,7 @@ function TaskRow({
           </div>
         </button>
       </div>
-    </article>
+    </motion.article>
   );
 }
 
@@ -1435,16 +1533,16 @@ function TodoDetailPanel({
   const currentSchedule = currentSchedules[0] ?? null;
   const panelMotion = reducedMotion
     ? {
-        initial: { opacity: 0 },
-        animate: { opacity: 1 },
-        exit: { opacity: 0 },
-        transition: { duration: 0.12 },
+      initial: { opacity: 0 },
+      animate: { opacity: 1 },
+      exit: { opacity: 0 },
+      transition: MOTION_TRANSITIONS.reduced,
       }
     : {
         initial: { x: 36, y: 18, opacity: 0 },
         animate: { x: 0, y: 0, opacity: 1 },
         exit: { x: 32, y: 18, opacity: 0 },
-        transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] as const },
+      transition: MOTION_TRANSITIONS.state,
       };
 
   return (
@@ -1455,6 +1553,7 @@ function TodoDetailPanel({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
+        transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.overlay}
         aria-label="关闭任务详情"
         onClick={onClose}
       />
@@ -1470,7 +1569,17 @@ function TodoDetailPanel({
               className={cn("mt-1 grid h-8 w-8 place-items-center rounded-full border", current?.checked_in ? "border-sage bg-sage text-white" : "border-rose/42 text-rose-deep")}
               aria-hidden="true"
             >
-              {current?.checked_in ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+              <AnimatePresence initial={false} mode="popLayout">
+                <motion.span
+                  key={current?.checked_in ? "checked" : "open"}
+                  initial={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.82 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.82 }}
+                  transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.fast}
+                >
+                  {current?.checked_in ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                </motion.span>
+              </AnimatePresence>
             </span>
             <div className="min-w-0 flex-1">
               <h2 className="font-display text-xl font-semibold leading-tight text-ink">{current?.title ?? "正在读取"}</h2>
@@ -1606,17 +1715,19 @@ function TodoDetailPanel({
                     <ChevronRight className={cn("h-4 w-4 transition", photosOpen && "rotate-90")} />
                   </span>
                 </button>
-                {photosOpen && (
-                  detail.images.length === 0 ? (
-                    <p className="rounded-xl bg-peach/14 p-4 font-sc text-sm text-ink-muted">还没有照片。</p>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-2">
-                      {detail.images.map((image) => (
-                        <TodoImageThumb key={image.id} image={image} onOpen={() => setSelectedImage(image)} />
-                      ))}
-                    </div>
-                  )
-                )}
+                <MotionCollapse open={photosOpen}>
+                  <div className="pt-1">
+                    {detail.images.length === 0 ? (
+                      <p className="rounded-xl bg-peach/14 p-4 font-sc text-sm text-ink-muted">还没有照片。</p>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2">
+                        {detail.images.map((image) => (
+                          <TodoImageThumb key={image.id} image={image} onOpen={() => setSelectedImage(image)} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </MotionCollapse>
               </section>
             </div>
           )}

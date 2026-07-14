@@ -1,11 +1,11 @@
 "use client";
 
-// Timeline home with instant in-memory quote rotation, a quiet relationship focus, aligned meeting timelines, editable meeting date ranges, and Liquid Glass controls for view switching, reminders, and navigation.
+// Timeline home with signature queued-quote motion, restrained view transitions, aligned meeting timelines, editable meeting ranges, and accessible reminders.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   BookHeart,
   CalendarHeart,
@@ -20,6 +20,7 @@ import { LoadingScreen } from "@/components/loading-screen";
 import { MeetingEditorDialog } from "@/components/meeting-editor-dialog";
 import { AppHeader } from "@/components/app-header";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { MotionCollapse } from "@/components/ui/motion-collapse";
 import { SubmissionBadge, VisibilityBadge } from "@/components/visibility-badge";
 import { api } from "@/lib/api";
 import {
@@ -28,6 +29,7 @@ import {
   readCycleReminderDays,
 } from "@/lib/cycle-reminder";
 import { formatAbsolute, formatRelative } from "@/lib/format";
+import { MOTION_DURATION, MOTION_EASE, MOTION_TRANSITIONS } from "@/lib/motion";
 import { useAppStore } from "@/lib/store";
 import type { AnniversaryOut, CycleDashboardOut, EventSummary, MeetingSessionOut } from "@/lib/types";
 import { cn } from "@/lib/cn";
@@ -144,6 +146,7 @@ function TimelineInner() {
   const [cyclePromptDismissed, setCyclePromptDismissed] = useState(false);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => new Set([todayDateOnly().slice(0, 7)]));
   const [timelineView, setTimelineView] = useState<TimelineView>("all");
+  const reducedMotion = useReducedMotion();
 
   const loadQuoteBatch = useCallback((): Promise<string[]> => {
     const pairId = me?.pair_id;
@@ -405,38 +408,53 @@ function TimelineInner() {
           <ListSkeleton />
         ) : events.length === 0 ? (
           <EmptyState onCreate={openCreateWindow} />
-        ) : timelineView === "meetings" ? (
-          meetingEvents.length === 0 ? (
-            <MeetingEmptyState onCreate={openCreateWindow} />
-          ) : (
-            <MeetingTimeRiver
-              groups={meetingGroups}
-              eventCount={meetingEvents.length}
-              onChanged={load}
-            />
-          )
         ) : (
-          <div className="space-y-4">
-            {eventGroups.map((group) => (
-              <MonthEventGroup
-                key={group.key}
-                month={group.key}
-                events={group.events}
-                expanded={expandedMonths.has(group.key)}
-                onToggle={() => toggleMonth(group.key)}
-              />
-            ))}
-          </div>
+          <AnimatePresence initial={false} mode="popLayout">
+            <motion.div
+              key={timelineView}
+              initial={reducedMotion ? { opacity: 0 } : { opacity: 0, x: timelineView === "meetings" ? 6 : -6 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={reducedMotion ? { opacity: 0 } : { opacity: 0, x: timelineView === "meetings" ? -6 : 6 }}
+              transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.fast}
+              className="min-w-0"
+            >
+              {timelineView === "meetings" ? (
+                meetingEvents.length === 0 ? (
+                  <MeetingEmptyState onCreate={openCreateWindow} />
+                ) : (
+                  <MeetingTimeRiver
+                    groups={meetingGroups}
+                    eventCount={meetingEvents.length}
+                    onChanged={load}
+                  />
+                )
+              ) : (
+                <div className="space-y-4">
+                  {eventGroups.map((group) => (
+                    <MonthEventGroup
+                      key={group.key}
+                      month={group.key}
+                      events={group.events}
+                      expanded={expandedMonths.has(group.key)}
+                      onToggle={() => toggleMonth(group.key)}
+                    />
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
         )}
       </main>
 
-      {cyclePrompt && (
-        <CycleCheckInPrompt
-          daysLeft={cyclePrompt.daysLeft}
-          nextPeriodStart={cyclePrompt.nextPeriodStart}
-          onDismiss={dismissTodayCyclePrompt}
-        />
-      )}
+      <AnimatePresence initial={false}>
+        {cyclePrompt && (
+          <CycleCheckInPrompt
+            daysLeft={cyclePrompt.daysLeft}
+            nextPeriodStart={cyclePrompt.nextPeriodStart}
+            onDismiss={dismissTodayCyclePrompt}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -456,6 +474,8 @@ function HomeHero({
   quoteRefreshing: boolean;
   onRefreshQuote: () => void;
 }) {
+  const reducedMotion = useReducedMotion();
+
   return (
     <section className="timeline-hero-panel mb-5 rounded-[2rem] px-5 py-6 sm:mb-6 sm:px-7 sm:py-7">
       <div className="min-w-0 space-y-5">
@@ -468,16 +488,56 @@ function HomeHero({
             在一起第 {relationshipDays} 天
           </span>
         </div>
-        <button
+        <motion.button
           type="button"
           onClick={onRefreshQuote}
           disabled={quoteRefreshing}
-          className="block w-full max-w-3xl rounded-[1.35rem] py-1 text-left font-display text-[1.55rem] font-semibold leading-snug text-ink transition hover:text-rose-deep focus-ring disabled:cursor-wait disabled:opacity-70 sm:text-[1.9rem]"
+          layout="size"
+          whileTap={reducedMotion ? undefined : { scale: 0.995 }}
+          transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.state}
+          className="relative block w-full max-w-3xl overflow-hidden rounded-[1.35rem] py-1 text-left font-display text-[1.55rem] font-semibold leading-snug text-ink transition-colors hover:text-rose-deep focus-ring disabled:cursor-wait sm:text-[1.9rem]"
           aria-label="刷新今日话语"
           aria-busy={quoteRefreshing}
         >
-          <span aria-live="polite" aria-atomic="true">{data.message}</span>
-        </button>
+          <span className="relative block min-h-[2.15rem] sm:min-h-[2.6rem]">
+            <AnimatePresence initial={false} mode="popLayout">
+              <motion.span
+                key={data.message}
+                aria-hidden="true"
+                className="block origin-left"
+                initial={
+                  reducedMotion
+                    ? { opacity: 0 }
+                    : { opacity: 0.2, y: 6, filter: "blur(2px)", clipPath: "inset(0 0 70% 0 round 8px)" }
+                }
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)", clipPath: "inset(0 0 0% 0 round 8px)" }}
+                exit={
+                  reducedMotion
+                    ? { opacity: 0 }
+                    : {
+                        opacity: 0,
+                        y: -4,
+                        filter: "blur(2px)",
+                        transition: { duration: MOTION_DURATION.press, ease: MOTION_EASE },
+                      }
+                }
+                transition={reducedMotion ? MOTION_TRANSITIONS.reduced : { ...MOTION_TRANSITIONS.state, duration: 0.24 }}
+              >
+                {data.message}
+              </motion.span>
+            </AnimatePresence>
+            {quoteRefreshing && (
+              <motion.span
+                aria-hidden="true"
+                className="absolute inset-x-0 bottom-0 h-0.5 origin-left rounded-full bg-rose/55"
+                initial={{ opacity: 0.35, scaleX: 0.24 }}
+                animate={reducedMotion ? { opacity: 0.7, scaleX: 1 } : { opacity: [0.35, 0.8, 0.35], scaleX: [0.24, 1, 0.24] }}
+                transition={reducedMotion ? MOTION_TRANSITIONS.reduced : { duration: 0.8, ease: MOTION_EASE, repeat: Infinity }}
+              />
+            )}
+          </span>
+          <span className="sr-only" aria-live="polite" aria-atomic="true">{data.message}</span>
+        </motion.button>
       </div>
     </section>
   );
@@ -682,6 +742,8 @@ function MonthEventGroup({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const reducedMotion = useReducedMotion();
+
   return (
     <section className="content-surface overflow-hidden">
       <button
@@ -699,20 +761,24 @@ function MonthEventGroup({
         </span>
       </button>
 
-      {expanded && (
+      <MotionCollapse open={expanded}>
         <ul className="divide-y divide-line/50 border-t border-line/55 bg-surface-raised/42">
           {events.map((event, index) => (
             <motion.li
               key={event.id}
-              initial={{ opacity: 0, y: 8 }}
+              initial={reducedMotion ? false : { opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: Math.min(index * 0.025, 0.14), duration: 0.22 }}
+              transition={
+                reducedMotion
+                  ? MOTION_TRANSITIONS.reduced
+                  : { ...MOTION_TRANSITIONS.state, delay: Math.min(index, 6) * 0.02 }
+              }
             >
               <EventRow event={event} />
             </motion.li>
           ))}
         </ul>
-      )}
+      </MotionCollapse>
     </section>
   );
 }
@@ -776,13 +842,18 @@ function CycleCheckInPrompt({
   nextPeriodStart: string;
   onDismiss: () => void;
 }) {
+  const reducedMotion = useReducedMotion();
   const title = daysLeft === 0 ? "预计今天来月经" : `预计还有 ${daysLeft} 天来月经`;
 
   return (
-    <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom,0px)+5.45rem)] z-40 mx-auto box-border w-full max-w-3xl px-4 sm:bottom-6 sm:px-6">
-      <motion.section
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
+    <motion.div
+      className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom,0px)+5.45rem)] z-40 mx-auto box-border w-full max-w-3xl px-4 sm:bottom-6 sm:px-6"
+      initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 9 }}
+      transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.state}
+    >
+      <section
         className="glass-card rounded-[1.8rem] p-4 shadow-glow sm:p-5"
         role="dialog"
         aria-label="周期记录提醒"
@@ -814,8 +885,8 @@ function CycleCheckInPrompt({
             </div>
           </div>
         </div>
-      </motion.section>
-    </div>
+      </section>
+    </motion.div>
   );
 }
 

@@ -1,11 +1,11 @@
 "use client";
 
-// Event detail screen with editable event and meeting metadata, avatar-aware comments, images, reactions, submission state, and a mobile-safe composer.
+// Event detail screen with restrained optimistic comment and reaction motion, editable metadata, private images, and a mobile-safe composer.
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   CheckCircle2,
   Circle,
@@ -34,6 +34,7 @@ import { VisibilityBadge } from "@/components/visibility-badge";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import { formatAbsolute, formatRelative, fromLocalInputValue, toLocalInputValue } from "@/lib/format";
+import { MOTION_TRANSITIONS } from "@/lib/motion";
 import type {
   CommentOut,
   CommentReactionSummary,
@@ -98,6 +99,7 @@ function EventDetailInner() {
   const [editVisibility, setEditVisibility] = useState<VisibilityMode>("public");
   const [lightbox, setLightbox] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const reducedMotion = useReducedMotion();
 
   const load = useCallback(async () => {
     try {
@@ -545,10 +547,14 @@ function EventDetailInner() {
                 <motion.div
                   key={itemKey}
                   layout
-                  initial={{ opacity: 0, y: 6 }}
+                  initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.22, delay: Math.min(idx * 0.02, 0.2) }}
+                  transition={
+                    reducedMotion
+                      ? MOTION_TRANSITIONS.reduced
+                      : { ...MOTION_TRANSITIONS.state, delay: Math.min(idx, 6) * 0.02 }
+                  }
                   className={cn(
                     "flex gap-3 items-end",
                     isMine ? "flex-row-reverse" : "flex-row",
@@ -680,6 +686,7 @@ function CommentBubble({
   pending?: boolean;
   onToggleReaction?: (comment: CommentOut, reactionType: CommentReactionType) => void | Promise<void>;
 }) {
+  const reducedMotion = useReducedMotion();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [reactionHoverOpen, setReactionHoverOpen] = useState(false);
   const longPressTimer = useRef<number | null>(null);
@@ -771,11 +778,14 @@ function CommentBubble({
             if (!config) return null;
             const Icon = config.Icon;
             return (
-              <button
+              <motion.button
                 key={reaction.reaction_type}
                 type="button"
                 onClick={() => toggleReaction(reaction.reaction_type)}
                 disabled={!canReact}
+                layout
+                whileTap={reducedMotion || !canReact ? undefined : { scale: 0.96 }}
+                transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.fast}
                 className={cn(
                   "inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 text-xs font-medium transition-colors focus-ring",
                   reaction.reacted_by_me
@@ -786,15 +796,30 @@ function CommentBubble({
                 aria-pressed={reaction.reacted_by_me}
                 aria-label={`${config.label} ${reaction.count}`}
               >
-                <Icon className="h-3.5 w-3.5" />
-                <span>{reaction.count}</span>
-              </button>
+                <motion.span
+                  animate={reaction.reacted_by_me && !reducedMotion ? { scale: [1, 1.14, 1] } : { scale: 1 }}
+                  transition={MOTION_TRANSITIONS.state}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </motion.span>
+                <AnimatePresence initial={false} mode="popLayout">
+                  <motion.span
+                    key={reaction.count}
+                    initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                    transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.fast}
+                  >
+                    {reaction.count}
+                  </motion.span>
+                </AnimatePresence>
+              </motion.button>
             );
           })}
         </div>
       )}
 
-      <AnimatePresence>
+      <AnimatePresence initial={false}>
         {pickerOpen && canReact && (
           <motion.div
             className="fixed inset-0 z-50 md:hidden"
@@ -804,6 +829,7 @@ function CommentBubble({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.overlay}
           >
             <button
               type="button"
@@ -812,10 +838,10 @@ function CommentBubble({
               onClick={() => setPickerOpen(false)}
             />
             <motion.div
-              initial={{ y: 32 }}
-              animate={{ y: 0 }}
-              exit={{ y: 24 }}
-              transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+              initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 32 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 24 }}
+              transition={reducedMotion ? MOTION_TRANSITIONS.reduced : { ...MOTION_TRANSITIONS.state, duration: 0.24 }}
               className="absolute inset-x-0 bottom-0 rounded-t-3xl bg-surface-raised p-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] shadow-glow hairline"
             >
               <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-line" />
@@ -849,11 +875,14 @@ function ReactionIconButton({
   onClick: () => void;
   large?: boolean;
 }) {
+  const reducedMotion = useReducedMotion();
   const Icon = reaction.Icon;
   return (
-    <button
+    <motion.button
       type="button"
       onClick={onClick}
+      whileTap={reducedMotion ? undefined : { scale: 0.94 }}
+      transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.fast}
       className={cn(
         "grid place-items-center rounded-full transition-colors focus-ring",
         large ? "h-14 w-14" : "h-9 w-9",
@@ -863,8 +892,13 @@ function ReactionIconButton({
       aria-pressed={selected}
       title={reaction.label}
     >
-      <Icon className={cn(large ? "h-6 w-6" : "h-4 w-4")} />
-    </button>
+      <motion.span
+        animate={selected && !reducedMotion ? { scale: [1, 1.14, 1] } : { scale: 1 }}
+        transition={MOTION_TRANSITIONS.state}
+      >
+        <Icon className={cn(large ? "h-6 w-6" : "h-4 w-4")} />
+      </motion.span>
+    </motion.button>
   );
 }
 

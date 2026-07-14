@@ -1,4 +1,4 @@
-/* Global Love Book visual system: OKLCH Liquid Glass controls, solid content and login surfaces, procedural scene tokens, aligned timelines, warm day/night themes, mobile viewport guards, and accessible motion fallbacks. */
+/* Global Love Book visual system: OKLCH Liquid Glass controls, solid content surfaces, unified restrained motion, warm day/night themes, mobile viewport guards, and accessible fallbacks. */
 
 @tailwind base;
 @tailwind components;
@@ -34,8 +34,12 @@
     --lb-blur: 22px;
     --lb-radius-control: 14px;
     --lb-radius-panel: 20px;
+    --lb-motion-press: 100ms;
     --lb-motion-fast: 160ms;
     --lb-motion-base: 220ms;
+    --lb-motion-layout: 280ms;
+    --lb-motion-emphasis: 360ms;
+    --lb-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
     --lb-scene-paper: 0.985 0.014 48;
     --lb-scene-paper-shade: 0.93 0.028 42;
     --lb-scene-cover: 0.63 0.13 12;

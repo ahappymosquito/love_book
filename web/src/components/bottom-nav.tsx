@@ -1,6 +1,6 @@
 "use client";
 
-// Authenticated five-slot Liquid Glass bottom navigation with a shared morphing selection lens, mobile-safe width, habit destination, and prominent center create action.
+// Authenticated five-slot Liquid Glass navigation with unified shared-lens motion, mobile-safe width, and a prominent create action.
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -9,6 +9,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { BookHeart, CalendarCheck2, ListTodo, Moon } from "lucide-react";
 import { CreateNavAction } from "./create-nav-action";
 import { cn } from "@/lib/cn";
+import { MOTION_TRANSITIONS } from "@/lib/motion";
 import { useAppStore } from "@/lib/store";
 
 const USER_APP_PREFIXES = ["/timeline", "/create", "/cycle", "/todo", "/habits", "/me"];
@@ -90,7 +91,7 @@ function NavItem({
             initial={reducedMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={reducedMotion ? { duration: 0 } : { duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            transition={reducedMotion ? MOTION_TRANSITIONS.reduced : { ...MOTION_TRANSITIONS.state, duration: 0.25 }}
             aria-hidden="true"
           />
         )}

@@ -1,10 +1,11 @@
 "use client";
 
-// Compact rose create action that receives the shared liquid-glass navigation lens before opening the global create window.
+// Compact rose create action that receives the shared lens with unified press timing before opening the global create window.
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { MOTION_TRANSITIONS } from "@/lib/motion";
 
 export function CreateNavAction({
   active,
@@ -38,7 +39,7 @@ export function CreateNavAction({
             initial={reducedMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={reducedMotion ? { duration: 0 } : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.state}
             aria-hidden="true"
           />
         )}
@@ -47,7 +48,7 @@ export function CreateNavAction({
         className="relative z-10 grid h-[42px] w-[64px] place-items-center rounded-full bg-rose text-white shadow-soft"
         whileHover={reducedMotion ? undefined : { scale: 1.03 }}
         whileTap={reducedMotion ? undefined : { scale: 0.94 }}
-        transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+        transition={MOTION_TRANSITIONS.fast}
         aria-hidden="true"
       >
         <Plus className="h-7 w-7 stroke-[3.25]" />

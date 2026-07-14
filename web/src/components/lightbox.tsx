@@ -2,9 +2,10 @@
 
 // Fullscreen image preview that closes on backdrop/Escape while preserving caller-owned object URLs.
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
 import { useEffect } from "react";
+import { MOTION_TRANSITIONS } from "@/lib/motion";
 
 export function Lightbox({
   url,
@@ -13,6 +14,8 @@ export function Lightbox({
   url: string | null;
   onClose: () => void;
 }) {
+  const reducedMotion = useReducedMotion();
+
   useEffect(() => {
     if (!url) return;
     const handler = (e: KeyboardEvent) => {
@@ -30,6 +33,7 @@ export function Lightbox({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.overlay}
           onClick={onClose}
         >
           <button
@@ -42,9 +46,10 @@ export function Lightbox({
           <motion.img
             src={url}
             alt=""
-            initial={{ scale: 0.96, opacity: 0 }}
+            initial={reducedMotion ? { opacity: 0 } : { scale: 0.98, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.96, opacity: 0 }}
+            exit={reducedMotion ? { opacity: 0 } : { scale: 0.98, opacity: 0 }}
+            transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.state}
             className="max-h-[88dvh] max-w-[92vw] rounded-2xl object-contain shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           />

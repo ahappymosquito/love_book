@@ -1,7 +1,10 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+// Shared confirmation dialog with restrained overlay motion, keyboard dismissal, and reduced-motion fallbacks.
+
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect } from "react";
+import { MOTION_TRANSITIONS } from "@/lib/motion";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -26,6 +29,8 @@ export function ConfirmDialog({
   onCancel,
   loading,
 }: ConfirmDialogProps) {
+  const reducedMotion = useReducedMotion();
+
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
@@ -43,6 +48,7 @@ export function ConfirmDialog({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.overlay}
         >
           <motion.div
             className="absolute inset-0 bg-ink/45 backdrop-blur-sm"
@@ -52,10 +58,10 @@ export function ConfirmDialog({
             role="alertdialog"
             aria-label={title}
             className="relative w-full sm:max-w-sm glass-card rounded-t-3xl sm:rounded-3xl px-6 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] sm:pb-7 pt-7"
-            initial={{ y: 60, opacity: 0, scale: 0.96 }}
+            initial={reducedMotion ? { opacity: 0 } : { y: 48, opacity: 0, scale: 0.98 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: 60, opacity: 0, scale: 0.96 }}
-            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+            exit={reducedMotion ? { opacity: 0 } : { y: 32, opacity: 0, scale: 0.98 }}
+            transition={reducedMotion ? MOTION_TRANSITIONS.reduced : { ...MOTION_TRANSITIONS.state, duration: 0.24 }}
           >
             <div className="mx-auto h-1.5 w-10 rounded-full bg-line/60 mb-5 sm:hidden" />
             <h3 className="font-display text-xl text-ink mb-2">{title}</h3>

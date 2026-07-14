@@ -7,6 +7,7 @@ import type React from "react";
 import { X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/cn";
+import { MOTION_TRANSITIONS } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 
 export const Sheet = Dialog.Root;
@@ -37,7 +38,7 @@ export function SheetContent({
           initial={reducedMotion ? false : { opacity: 0, y: side === "bottom" ? bottomOffset : 0, x: side === "right" ? 32 : 0 }}
           animate={{ opacity: 1, y: 0, x: 0 }}
           exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: side === "bottom" ? bottomOffset : 0, x: side === "right" ? 24 : 0 }}
-          transition={reducedMotion ? { duration: 0 } : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+          transition={reducedMotion ? MOTION_TRANSITIONS.reduced : { ...MOTION_TRANSITIONS.state, duration: 0.24 }}
           className={cn(
             "content-surface fixed z-50 box-border max-w-full text-ink outline-none",
             side === "bottom"

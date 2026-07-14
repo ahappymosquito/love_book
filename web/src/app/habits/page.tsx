@@ -1,6 +1,6 @@
 "use client";
 
-// Habit page presents pair progress on a solid calendar canvas with Liquid Glass date controls, vertical personal lists, editable colors, and reduced-motion feedback.
+// Habit page presents pair progress with directional calendar continuity, user-triggered completion feedback, shared disclosures, and reduced-motion fallbacks.
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
@@ -21,9 +21,11 @@ import { Avatar } from "@/components/avatar";
 import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { MotionCollapse } from "@/components/ui/motion-collapse";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { MOTION_TRANSITIONS } from "@/lib/motion";
 import { useAppStore } from "@/lib/store";
 import type { HabitDashboardOut, HabitDayOut, HabitTaskOut, HabitUserDayOut, UserOut } from "@/lib/types";
 
@@ -151,6 +153,9 @@ function HabitsInner() {
   const [newColor, setNewColor] = useState("rose");
   const [ownOpen, setOwnOpen] = useState(true);
   const [otherOpen, setOtherOpen] = useState(false);
+  const [calendarDirection, setCalendarDirection] = useState<-1 | 0 | 1>(0);
+  const [recentToggle, setRecentToggle] = useState<{ taskId: number; date: string } | null>(null);
+  const [pairCelebrationDate, setPairCelebrationDate] = useState<string | null>(null);
   const reducedMotion = useReducedMotion();
 
   useEffect(() => {
@@ -161,6 +166,18 @@ function HabitsInner() {
     setSelectedDate(queryDate);
     setViewDate(parsed);
   }, []);
+
+  useEffect(() => {
+    if (!recentToggle) return;
+    const timer = window.setTimeout(() => setRecentToggle(null), 600);
+    return () => window.clearTimeout(timer);
+  }, [recentToggle]);
+
+  useEffect(() => {
+    if (!pairCelebrationDate) return;
+    const timer = window.setTimeout(() => setPairCelebrationDate(null), 520);
+    return () => window.clearTimeout(timer);
+  }, [pairCelebrationDate]);
 
   const range = useMemo(() => {
     const { start, end } = calendarRange(viewDate, calendarMode);
@@ -231,8 +248,14 @@ function HabitsInner() {
   }
 
   async function toggleTask(task: HabitTaskOut) {
+    const wasPairDone = Boolean(daysByDate.get(selectedDate)?.pair_all_completed);
     const result = await api.toggleHabitTask(task.id, { target_date: selectedDate, ...range });
     setDashboard(result.dashboard);
+    setRecentToggle({ taskId: task.id, date: selectedDate });
+    const nextDay = result.dashboard.days.find((day) => day.date === selectedDate);
+    if (result.checked && !wasPairDone && nextDay?.pair_all_completed) {
+      setPairCelebrationDate(selectedDate);
+    }
   }
 
   function selectDate(date: Date, isoDate: string) {
@@ -259,24 +282,30 @@ function HabitsInner() {
               <CalendarToolbar
                 viewDate={viewDate}
                 mode={calendarMode}
-                onMode={setCalendarMode}
-                onPrev={() =>
+                onMode={(mode) => {
+                  setCalendarDirection(0);
+                  setCalendarMode(mode);
+                }}
+                onPrev={() => {
+                  setCalendarDirection(-1);
                   setViewDate((current) => {
                     const next = new Date(current);
                     next.setDate(next.getDate() + (calendarMode === "week" ? -7 : 0));
                     if (calendarMode === "month") return new Date(current.getFullYear(), current.getMonth() - 1, 1);
                     return next;
-                  })
-                }
-                onNext={() =>
+                  });
+                }}
+                onNext={() => {
+                  setCalendarDirection(1);
                   setViewDate((current) => {
                     const next = new Date(current);
                     next.setDate(next.getDate() + (calendarMode === "week" ? 7 : 0));
                     if (calendarMode === "month") return new Date(current.getFullYear(), current.getMonth() + 1, 1);
                     return next;
-                  })
-                }
+                  });
+                }}
                 onToday={() => {
+                  setCalendarDirection(0);
                   const today = new Date();
                   setViewDate(today);
                   setSelectedDate(toISODate(today));
@@ -292,26 +321,38 @@ function HabitsInner() {
                   </div>
                 ))}
               </div>
-              <div className="liquid-calendar-grid grid grid-cols-7 gap-y-1 overflow-hidden p-1">
-                {calendarDays.map((day) => {
-                  const key = toISODate(day);
-                  return (
-                    <DayCell
-                      key={key}
-                      date={day}
-                      isoDate={key}
-                      currentMonth={calendarMode === "week" || day.getMonth() === viewDate.getMonth()}
-                      today={key === toISODate(new Date())}
-                      selected={key === selectedDate}
-                      day={daysByDate.get(key)}
-                      tasks={dashboard?.tasks ?? []}
-                      users={[me.user, me.counterpart] as [UserOut, UserOut]}
-                      reducedMotion={reducedMotion}
-                      onSelect={() => selectDate(day, key)}
-                    />
-                  );
-                })}
-              </div>
+              <motion.div layout transition={MOTION_TRANSITIONS.layout} className="liquid-calendar-grid overflow-hidden p-1">
+                <AnimatePresence initial={false} mode="popLayout">
+                  <motion.div
+                    key={`${calendarMode}-${range.start}`}
+                    initial={reducedMotion ? { opacity: 0 } : { opacity: 0, x: calendarDirection * 12 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={reducedMotion ? { opacity: 0 } : { opacity: 0, x: calendarDirection * -12 }}
+                    transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.state}
+                    className="grid grid-cols-7 gap-y-1"
+                  >
+                    {calendarDays.map((day) => {
+                      const key = toISODate(day);
+                      return (
+                        <DayCell
+                          key={key}
+                          date={day}
+                          isoDate={key}
+                          currentMonth={calendarMode === "week" || day.getMonth() === viewDate.getMonth()}
+                          today={key === toISODate(new Date())}
+                          selected={key === selectedDate}
+                          celebrate={pairCelebrationDate === key}
+                          day={daysByDate.get(key)}
+                          tasks={dashboard?.tasks ?? []}
+                          users={[me.user, me.counterpart] as [UserOut, UserOut]}
+                          reducedMotion={reducedMotion}
+                          onSelect={() => selectDate(day, key)}
+                        />
+                      );
+                    })}
+                  </motion.div>
+                </AnimatePresence>
+              </motion.div>
             </CardContent>
           </Card>
 
@@ -336,6 +377,7 @@ function HabitsInner() {
               saving={saving}
               newTitle={newTitle}
               newColor={newColor}
+              recentlyToggledTaskId={recentToggle?.date === selectedDate ? recentToggle.taskId : null}
               onToggleOpen={() => setOwnOpen((value) => !value)}
               onNewTitle={setNewTitle}
               onNewColor={setNewColor}
@@ -355,6 +397,7 @@ function HabitsInner() {
               saving={false}
               newTitle=""
               newColor="rose"
+              recentlyToggledTaskId={null}
               onToggleOpen={() => setOtherOpen((value) => !value)}
               onNewTitle={() => undefined}
               onNewColor={() => undefined}
@@ -476,6 +519,7 @@ function DayCell({
   currentMonth,
   today,
   selected,
+  celebrate,
   day,
   tasks,
   users,
@@ -487,6 +531,7 @@ function DayCell({
   currentMonth: boolean;
   today: boolean;
   selected: boolean;
+  celebrate: boolean;
   day?: HabitDayOut;
   tasks: HabitTaskOut[];
   users: [UserOut, UserOut];
@@ -500,12 +545,19 @@ function DayCell({
       onClick={onSelect}
       className={cn(
         "liquid-day-cell group relative min-h-[74px] rounded-2xl p-1 text-left transition focus-ring sm:min-h-[96px]",
-        selected && "liquid-day-cell-selected",
         !selected && "hover:-translate-y-0.5",
         !currentMonth && "opacity-45",
       )}
       aria-label={`${isoDate} 习惯记录`}
     >
+      {selected && (
+        <motion.span
+          layoutId="habit-selected-day-lens"
+          className="liquid-day-cell-selected pointer-events-none absolute inset-0 rounded-2xl"
+          transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.state}
+          aria-hidden="true"
+        />
+      )}
       <span className="relative z-10 flex h-full min-h-[66px] flex-col justify-between rounded-2xl p-2 sm:min-h-[88px]">
         <span className="flex items-center justify-between gap-1">
           <span className={cn("font-sc text-sm font-semibold text-ink", today && "text-rose-deep")}>{date.getDate()}</span>
@@ -541,14 +593,20 @@ function DayCell({
         </span>
       </span>
 
-      <AnimatePresence>
-        {pairDone && (
+      {pairDone && (
+        <span
+          className="pointer-events-none absolute inset-1 rounded-2xl bg-sage/8 ring-1 ring-sage/30"
+          aria-hidden="true"
+        />
+      )}
+      <AnimatePresence initial={false}>
+        {pairDone && celebrate && (
           <motion.span
-            className="pointer-events-none absolute inset-1 rounded-2xl bg-sage/10 ring-2 ring-sage/35"
+            className="pointer-events-none absolute inset-1 rounded-2xl bg-sage/14 ring-2 ring-sage/40"
             initial={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
-            animate={reducedMotion ? { opacity: 1 } : { opacity: [0, 1, 0.7], scale: [0.98, 1.02, 1] }}
+            animate={reducedMotion ? { opacity: 0.6 } : { opacity: [0, 1, 0], scale: [0.98, 1.015, 1] }}
             exit={{ opacity: 0 }}
-            transition={reducedMotion ? { duration: 0.01 } : { duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+            transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.emphasis}
             aria-hidden="true"
           />
         )}
@@ -568,6 +626,7 @@ function HabitPanel({
   saving,
   newTitle,
   newColor,
+  recentlyToggledTaskId,
   onToggleOpen,
   onNewTitle,
   onNewColor,
@@ -586,6 +645,7 @@ function HabitPanel({
   saving: boolean;
   newTitle: string;
   newColor: string;
+  recentlyToggledTaskId: number | null;
   onToggleOpen: () => void;
   onNewTitle: (value: string) => void;
   onNewColor: (value: string) => void;
@@ -622,15 +682,7 @@ function HabitPanel({
         </span>
       </button>
 
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-            className="border-t border-line/60"
-          >
+      <MotionCollapse open={open} className="border-t border-line/60">
             <div className="space-y-4 p-4 sm:p-5">
               {editable && (
                 <form onSubmit={onCreate} className="liquid-subpanel p-3">
@@ -663,6 +715,7 @@ function HabitPanel({
                       task={task}
                       checked={completed.has(task.id)}
                       editable={editable}
+                      recentlyToggled={task.id === recentlyToggledTaskId}
                       onToggle={() => onToggleTask(task)}
                       onUpdate={(payload) => onUpdateTask(task, payload)}
                       onDelete={() => onDeleteTask(task)}
@@ -671,9 +724,7 @@ function HabitPanel({
                 )}
               </div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </MotionCollapse>
     </Card>
   );
 }
@@ -782,6 +833,7 @@ function HabitTaskRow({
   task,
   checked,
   editable,
+  recentlyToggled,
   onToggle,
   onUpdate,
   onDelete,
@@ -789,10 +841,12 @@ function HabitTaskRow({
   task: HabitTaskOut;
   checked: boolean;
   editable: boolean;
+  recentlyToggled: boolean;
   onToggle: () => void;
   onUpdate: (payload: { title?: string; color?: string }) => void;
   onDelete: () => void;
 }) {
+  const reducedMotion = useReducedMotion();
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(task.title);
   const [color, setColor] = useState(task.color);
@@ -819,9 +873,10 @@ function HabitTaskRow({
   return (
     <motion.div
       layout
+      initial={false}
       className={cn("liquid-habit-row relative flex min-w-0 items-center gap-3 overflow-hidden px-3 py-2.5", checked && "liquid-habit-row-done")}
-      animate={checked ? { scale: [1, 1.008, 1] } : { scale: 1 }}
-      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+      animate={recentlyToggled && !reducedMotion ? { scale: [1, 1.006, 1] } : { scale: 1 }}
+      transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.layout}
     >
       <span
         className={cn("h-8 w-1.5 flex-none rounded-full shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]", checked ? "bg-sage" : colorClass(task.color))}
@@ -873,14 +928,14 @@ function HabitTaskRow({
           </Button>
         </>
       )}
-      <AnimatePresence>
+      <AnimatePresence initial={false}>
         {checked && (
           <motion.span
             className="pointer-events-none grid h-9 w-9 flex-none place-items-center rounded-full bg-sage text-white shadow-[0_10px_22px_-14px_rgb(var(--sage)/0.82),inset_0_1px_0_rgba(255,255,255,0.5)]"
-            initial={{ opacity: 0, scale: 0.72, rotate: -18 }}
+            initial={reducedMotion || !recentlyToggled ? { opacity: 0 } : { opacity: 0, scale: 0.82, rotate: -8 }}
             animate={{ opacity: 1, scale: 1, rotate: 0 }}
-            exit={{ opacity: 0, scale: 0.72, rotate: 12 }}
-            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+            exit={reducedMotion || !recentlyToggled ? { opacity: 0 } : { opacity: 0, scale: 0.82, rotate: 6 }}
+            transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.state}
             aria-hidden="true"
           >
             <Check className="h-4 w-4" />
