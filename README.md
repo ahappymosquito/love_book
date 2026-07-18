@@ -820,6 +820,7 @@ python -m pytest tests -q
 ## 爱的回执
 
 - The `love_receipts.message` empty-string default is applied by SQLAlchemy rather than emitted as a MySQL/MariaDB `TEXT` server default, so first-run table creation remains portable.
+- Love-receipt list ordering uses a portable `IS NULL` expression instead of `NULLS LAST`, keeping queries compatible with MySQL and MariaDB.
 
 - 登录后的 `/love-receipts` 提供情侣心意记录、手动送达状态、确认收到、照片回执和历史查看；Timeline 标题栏信封入口只在当前用户有待回应记录时显示数量角标。
 - 创建心意不记录价格，也不伪造订单或物流能力。发送方可推进“正在送去/已经送达”，接收方可直接确认收到；需要回执时必须提交 1–3 张照片和 1–100 字回应，可选心情。

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.schema import CreateTable
 
 import app.api.routes.admin as admin_routes
+import app.api.routes.love_receipts as love_receipt_routes
 import app.api.routes.quotes as quote_routes
 import app.core.database as database
 import app.cycles as cycles
@@ -187,6 +188,11 @@ def test_love_receipt_table_uses_mysql_compatible_text_columns() -> None:
 
     assert "message TEXT NOT NULL" in ddl
     assert "message TEXT NOT NULL DEFAULT" not in ddl
+    query_sql = str(
+        love_receipt_routes._love_receipt_list_query([LoveReceipt.pair_id == 1]).compile(dialect=mysql.dialect())
+    )
+    assert "NULLS LAST" not in query_sql
+    assert "love_receipts.completed_at IS NULL" in query_sql
 
 
 def test_todo_category_enum_migration_sql_targets_mysql_only() -> None:

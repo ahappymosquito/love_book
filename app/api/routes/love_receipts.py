@@ -6,6 +6,7 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import ColumnElement, Select
 
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.config import get_settings
@@ -163,6 +164,14 @@ def _create_timeline_memory(db: Session, receipt: LoveReceipt, actor: User) -> N
     receipt.timeline_event_id = event.id
 
 
+def _love_receipt_list_query(conditions: list[ColumnElement[bool]]) -> Select[tuple[LoveReceipt]]:
+    return select(LoveReceipt).where(*conditions).order_by(
+        LoveReceipt.completed_at.is_(None),
+        LoveReceipt.completed_at.desc(),
+        LoveReceipt.created_at.desc(),
+    )
+
+
 @router.get("", response_model=LoveReceiptListOut)
 def list_love_receipts(
     view: Literal["all", "pending", "active", "completed"] = "all",
@@ -197,9 +206,7 @@ def list_love_receipts(
     total = int(db.scalar(select(func.count()).select_from(LoveReceipt).where(*conditions)) or 0)
     items = (
         db.execute(
-            select(LoveReceipt)
-            .where(*conditions)
-            .order_by(LoveReceipt.completed_at.desc().nullslast(), LoveReceipt.created_at.desc())
+            _love_receipt_list_query(conditions)
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
