@@ -1,11 +1,26 @@
-"""Pydantic schemas for auth, editable profiles with location preferences, admin saved-model AMap-grounded food/play/stay AI tests with an enable switch, rich AMap restaurant evidence, habit check-ins, manual todo candidate queues, editable meeting date ranges, typed timeline events, sampled quote batches, media, cycle records with empty/predicted days, and todo APIs."""
+"""Pydantic contracts for authenticated pair features, including timelines, love receipts, media, plans, habits, profiles, and admin APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
-from app.models import AIProtocol, CervicalMucus, CycleFlow, CycleMood, CyclePhase, EventKind, TodoCandidateStatus, TodoCategory, TodoParseStatus, VisibilityMode
+from app.models import (
+    AIProtocol,
+    CervicalMucus,
+    CycleFlow,
+    CycleMood,
+    CyclePhase,
+    EventKind,
+    LoveReceiptImageKind,
+    LoveReceiptMood,
+    LoveReceiptStatus,
+    LoveReceiptType,
+    TodoCandidateStatus,
+    TodoCategory,
+    TodoParseStatus,
+    VisibilityMode,
+)
 
 
 class APIModel(BaseModel):
@@ -298,6 +313,66 @@ class ContentsOut(APIModel):
 
 class EventDetail(EventSummary):
     contents: ContentsOut
+
+
+class LoveReceiptImageOut(APIModel):
+    id: int
+    love_receipt_id: int
+    author_id: int
+    kind: LoveReceiptImageKind
+    sort_order: int
+    mime_type: str
+    size_bytes: int
+    width: int | None = None
+    height: int | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class LoveReceiptOut(APIModel):
+    id: int
+    pair_id: int
+    sender_id: int
+    receiver_id: int
+    sender: UserOut
+    receiver: UserOut
+    viewer_role: Literal["sender", "receiver"]
+    receipt_type: LoveReceiptType
+    title: str
+    message: str
+    expected_arrival_at: datetime | None = None
+    delivered_at: datetime | None = None
+    received_at: datetime | None = None
+    status: LoveReceiptStatus
+    require_receipt: bool
+    receipt_content: str | None = None
+    receipt_mood: LoveReceiptMood | None = None
+    completed_at: datetime | None = None
+    timeline_event_id: int | None = None
+    cover: LoveReceiptImageOut | None = None
+    receipt_images: list[LoveReceiptImageOut] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class LoveReceiptListOut(APIModel):
+    items: list[LoveReceiptOut]
+    page: int
+    page_size: int
+    total: int
+    pending_count: int
+    completed_count: int
+    month_count: int
+    latest_status: LoveReceiptStatus | None = None
+
+
+class LoveReceiptStatusUpdate(APIModel):
+    status: Literal[
+        LoveReceiptStatus.delivering,
+        LoveReceiptStatus.delivered,
+        LoveReceiptStatus.waiting_receipt,
+    ]
 
 
 class LoginRecordCreate(APIModel):

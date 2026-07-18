@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home with signature queued-quote motion, restrained view transitions, aligned meeting timelines, editable meeting ranges, and accessible reminders.
+// Timeline home with queued quotes, love-receipt entry, restrained view transitions, meeting ranges, and accessible reminders.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -12,6 +12,7 @@ import {
   ChevronDown,
   ChevronRight,
   Droplet,
+  Mail,
   Plus,
 } from "lucide-react";
 import { AuthGate } from "@/components/auth-gate";
@@ -134,6 +135,7 @@ function TimelineInner() {
   const [events, setEvents] = useState<EventSummary[] | null>(null);
   const [meetingSessions, setMeetingSessions] = useState<MeetingSessionOut[]>([]);
   const [anniversary, setAnniversary] = useState<AnniversaryOut | null>(null);
+  const [pendingReceiptCount, setPendingReceiptCount] = useState(0);
   const [quoteRefreshing, setQuoteRefreshing] = useState(false);
   const quoteQueueRef = useRef<string[]>([]);
   const quoteBatchPromiseRef = useRef<Promise<string[]> | null>(null);
@@ -313,12 +315,14 @@ function TimelineInner() {
 
   async function load() {
     try {
-      const [loadedEvents, loadedMeetingSessions] = await Promise.all([
+      const [loadedEvents, loadedMeetingSessions, receiptSummary] = await Promise.all([
         api.listEvents(),
         api.listMeetingSessions().catch(() => []),
+        api.listLoveReceipts({ view: "pending", pageSize: 1, silent: true }).catch(() => null),
       ]);
       setEvents(loadedEvents);
       setMeetingSessions(loadedMeetingSessions);
+      setPendingReceiptCount(receiptSummary?.pending_count ?? 0);
     } catch {
       setEvents([]);
       setMeetingSessions([]);
@@ -383,7 +387,15 @@ function TimelineInner() {
 
   return (
     <div className="viewport-guard min-h-dvh w-full">
-      <AppHeader mode="compact" />
+      <AppHeader
+        mode="compact"
+        rightSlot={
+          <Link href="/love-receipts" className="relative grid h-10 w-10 place-items-center rounded-full text-ink-soft transition hover:bg-rose/8 hover:text-rose-deep focus-ring" aria-label={pendingReceiptCount ? `爱的回执，有 ${pendingReceiptCount} 份待回应` : "进入爱的回执"}>
+            <Mail className="h-5 w-5" />
+            {pendingReceiptCount > 0 && <span className="absolute right-0 top-0 grid min-h-4 min-w-4 place-items-center rounded-full bg-rose px-1 font-sc text-[9px] font-semibold leading-none text-white">{pendingReceiptCount > 9 ? "9+" : pendingReceiptCount}</span>}
+          </Link>
+        }
+      />
 
       <main className="mx-auto w-full max-w-5xl min-w-0 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+7.6rem)] pt-5 sm:px-6 sm:pt-6">
         <HomeHero

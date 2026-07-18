@@ -10,13 +10,15 @@ Love Book is used by a fixed pair of partners who share private tokens and retur
 
 ## Product Purpose
 
-The product gives two people a private shared place to write events, exchange comments, upload image memories, collect multiple offline-meeting notes into named meetings, arrange food/play plans, track personal daily habits, track cycle records, and revisit milestones. Success means the interface feels trustworthy enough for long-term personal use while keeping common tasks quick and clear.
+The product gives two people a private shared place to write events, exchange comments, send and acknowledge thoughtful gestures through photo receipts, upload image memories, collect multiple offline-meeting notes into named meetings, arrange food/play plans, track personal daily habits, track cycle records, and revisit milestones. Success means the interface feels trustworthy enough for long-term personal use while keeping common tasks quick and clear.
 
 Meeting sessions remain an internal counting and grouping model rather than a visible form concept. Each meeting owns an inclusive Beijing-time date range; all pair events inside it are classified automatically, while marking an unmatched event creates a same-title single-day range. Either partner can click the meeting title to edit its title, start date, and end date in one responsive dialog. Overlapping ranges merge into the earliest-created meeting and keep that meeting's title, cancellation removes the whole range and reclassifies affected events, and event content permissions and independent event titles remain unchanged.
 
 The habits surface is a logged-in daily check-in dashboard: the bottom navigation opens `/habits`, settings remain available from the top avatar, the liquid-glass calendar shows both partners' progress with a Monday-start week view by default and an optional month view, and the personal/counterpart checklists stay as vertical collapsible panels on all viewport sizes. Habit colors are chosen from one color button during creation or explicit editing, while completed rows turn sage green with a short completion animation.
 
 Timeline's relationship quote keeps anniversary or festival copy on first load, then rotates ordinary pair/default quotes instantly from a five-item in-memory queue. The queue refills quietly when two items remain so repeated taps do not wait for network or holiday aggregation.
+
+Love receipts provide a private ritual around gifts, takeout, flowers, drinks, and other gestures without pretending to be an order or logistics product. The sender records and manually advances delivery state; the receiver confirms arrival and, when requested, leaves one to three photos, a short response, and an optional mood. Completion creates a readable memory summary in the shared Timeline, while private receipt photos stay in the dedicated history.
 
 ## Brand Personality
 

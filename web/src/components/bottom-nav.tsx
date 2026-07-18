@@ -12,7 +12,7 @@ import { cn } from "@/lib/cn";
 import { MOTION_TRANSITIONS } from "@/lib/motion";
 import { useAppStore } from "@/lib/store";
 
-const USER_APP_PREFIXES = ["/timeline", "/create", "/cycle", "/todo", "/habits", "/me"];
+const USER_APP_PREFIXES = ["/timeline", "/love-receipts", "/create", "/cycle", "/todo", "/habits", "/me"];
 
 function isUserAppPath(pathname: string): boolean {
   return USER_APP_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));

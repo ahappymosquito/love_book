@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authenticated profiles with optional silent login recovery, cross-device location preferences, private avatars, customizable admin AMap-grounded AI tests with an enable switch, habits, todo candidate queues with manual category fallback, scheduling, weather hints, editable meeting date ranges with automatic event classification, typed timeline events, quote libraries and sampled batches, live cycle dashboards, reactions, and media including todo image deletion.
+// Authenticated browser API client for profiles, timelines, love receipts, private media, plans, habits, cycles, quotes, and admin workflows.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -26,6 +26,11 @@ import type {
   ImageOut,
   LoginLogOut,
   LoginRecordCreate,
+  LoveReceiptListOut,
+  LoveReceiptMood,
+  LoveReceiptOut,
+  LoveReceiptStatus,
+  LoveReceiptType,
   MeetingSessionOut,
   MeOut,
   PairCreated,
@@ -379,6 +384,57 @@ export const api = {
       method: "POST",
       json: payload,
     }),
+
+  // Love receipts
+  listLoveReceipts: (params?: {
+    view?: "all" | "pending" | "active" | "completed";
+    status?: LoveReceiptStatus;
+    type?: LoveReceiptType;
+    page?: number;
+    pageSize?: number;
+    silent?: boolean;
+  }) => {
+    const search = new URLSearchParams();
+    if (params?.view) search.set("view", params.view);
+    if (params?.status) search.set("status", params.status);
+    if (params?.type) search.set("type", params.type);
+    if (params?.page) search.set("page", String(params.page));
+    if (params?.pageSize) search.set("page_size", String(params.pageSize));
+    const query = search.toString();
+    return apiRequest<LoveReceiptListOut>(`/love-receipts${query ? `?${query}` : ""}`, {
+      silent: params?.silent,
+    });
+  },
+  getLoveReceipt: (id: number) => apiRequest<LoveReceiptOut>(`/love-receipts/${id}`),
+  createLoveReceipt: (payload: {
+    type: LoveReceiptType;
+    title: string;
+    message: string;
+    expectedArrivalAt?: string | null;
+    requireReceipt: boolean;
+    cover?: File | null;
+  }) => {
+    const fd = new FormData();
+    fd.append("receipt_type", payload.type);
+    fd.append("title", payload.title);
+    fd.append("message", payload.message);
+    fd.append("require_receipt", String(payload.requireReceipt));
+    if (payload.expectedArrivalAt) fd.append("expected_arrival_at", payload.expectedArrivalAt);
+    if (payload.cover) fd.append("cover", payload.cover, payload.cover.name);
+    return apiRequest<LoveReceiptOut>("/love-receipts", { method: "POST", body: fd });
+  },
+  updateLoveReceiptStatus: (id: number, nextStatus: "delivering" | "delivered" | "waiting_receipt") =>
+    apiRequest<LoveReceiptOut>(`/love-receipts/${id}/status`, {
+      method: "PATCH",
+      json: { status: nextStatus },
+    }),
+  submitLoveReceipt: (id: number, payload: { content: string; mood?: LoveReceiptMood | null; files: File[] }) => {
+    const fd = new FormData();
+    fd.append("content", payload.content);
+    if (payload.mood) fd.append("mood", payload.mood);
+    payload.files.forEach((file) => fd.append("files", file, file.name));
+    return apiRequest<LoveReceiptOut>(`/love-receipts/${id}/receipt`, { method: "POST", body: fd });
+  },
   updateMeetingSession: (
     id: number,
     payload: { title?: string; started_on?: string; ended_on?: string },
@@ -460,6 +516,19 @@ export function avatarUrl(userId: number): string {
 
 export function todoImageUrl(kind: "file" | "thumb", id: number): string {
   return `${API_BASE}/todo-images/${id}/${kind}`;
+}
+
+export function loveReceiptImageUrl(kind: "file" | "thumb", id: number): string {
+  return `${API_BASE}/love-receipt-images/${id}/${kind}`;
+}
+
+export async function fetchLoveReceiptImageBlob(kind: "file" | "thumb", id: number): Promise<string> {
+  const token = useAppStore.getState().token;
+  const resp = await fetch(loveReceiptImageUrl(kind, id), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!resp.ok) throw new APIError(resp.status, await resp.text());
+  return URL.createObjectURL(await resp.blob());
 }
 
 export async function fetchTodoImageBlob(kind: "file" | "thumb", id: number): Promise<string> {

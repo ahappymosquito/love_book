@@ -9,7 +9,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import admin, admin_auth, auth, contents, cycles, events, habits, meeting_sessions, quotes, todos, users
+from app.api.routes import admin, admin_auth, auth, contents, cycles, events, habits, love_receipts, meeting_sessions, quotes, todos, users
 from app.core.database import SessionLocal, init_db
 from app.habits import reminder_target_date, scan_habit_reminders, seconds_until_next_reminder
 
@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Pair Events API", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="Pair Events API", version="0.2.1", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -55,6 +55,8 @@ def create_app() -> FastAPI:
     app.include_router(cycles.router)
     app.include_router(todos.router)
     app.include_router(todos.image_router)
+    app.include_router(love_receipts.router)
+    app.include_router(love_receipts.image_router)
     app.include_router(events.router)
     app.include_router(meeting_sessions.router)
     app.include_router(quotes.router)

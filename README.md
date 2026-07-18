@@ -816,3 +816,11 @@ python -m pytest tests -q
 - 后端新增 `/habits/dashboard?start=YYYY-MM-DD&end=YYYY-MM-DD`、`POST /habits/tasks`、`PATCH /habits/tasks/{id}`、`DELETE /habits/tasks/{id}`、`POST /habits/tasks/{id}/toggle`，全部复用 Bearer token 并按当前 pair 隔离。
 - 数据表包括 `habit_tasks`、`habit_checkins` 和 `habit_reminder_runs`；写接口返回前完成数据库提交。
 - FastAPI lifespan 内置轻量习惯提醒任务，每天服务器本地时间 00:01 检查昨天。用户昨天有启用习惯且未全部完成时发送邮件；全部完成、无邮箱、无启用习惯或习惯已停用时不发送。提醒邮件链接到 `/habits?date=YYYY-MM-DD`，可携带 token 免登录补记；只有邮件实际投递成功后才写入 `habit_reminder_runs` 去重记录，临时投递失败不会被误记为已发送，单次扫描异常也不会终止后续每日任务。
+
+## 爱的回执
+
+- 登录后的 `/love-receipts` 提供情侣心意记录、手动送达状态、确认收到、照片回执和历史查看；Timeline 标题栏信封入口只在当前用户有待回应记录时显示数量角标。
+- 创建心意不记录价格，也不伪造订单或物流能力。发送方可推进“正在送去/已经送达”，接收方可直接确认收到；需要回执时必须提交 1–3 张照片和 1–100 字回应，可选心情。
+- 回执图片写入 `MEDIA_ROOT/love-receipts/...`，数据库只保存私有原图和缩略图 storage key；`GET /love-receipt-images/{id}/file|thumb` 仅允许当前 pair 访问。
+- 核心接口为 `GET/POST /love-receipts`、`GET /love-receipts/{id}`、`PATCH /love-receipts/{id}/status` 和 `POST /love-receipts/{id}/receipt`。完成后自动创建 Timeline memory 摘要，完整照片仍在回执详情中查看。
+- 创建心意和完成回执会分别给接收方、发送方发送后台邮件；无邮箱、SMTP 未配置或投递失败不会回滚已提交的数据。

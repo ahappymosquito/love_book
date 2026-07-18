@@ -107,6 +107,60 @@ export interface EventDetail extends EventSummary {
   contents: ContentsOut;
 }
 
+export type LoveReceiptType = "gift" | "takeout" | "flower" | "drink" | "experience" | "custom";
+export type LoveReceiptStatus = "created" | "delivering" | "delivered" | "waiting_receipt" | "completed";
+export type LoveReceiptMood = "happy" | "surprised" | "touched" | "reassured" | "cherished" | "hug";
+
+export interface LoveReceiptImageOut {
+  id: number;
+  love_receipt_id: number;
+  author_id: number;
+  kind: "cover" | "receipt";
+  sort_order: number;
+  mime_type: string;
+  size_bytes: number;
+  width: number | null;
+  height: number | null;
+  created_at: string;
+}
+
+export interface LoveReceiptOut {
+  id: number;
+  pair_id: number;
+  sender_id: number;
+  receiver_id: number;
+  sender: UserOut;
+  receiver: UserOut;
+  viewer_role: "sender" | "receiver";
+  receipt_type: LoveReceiptType;
+  title: string;
+  message: string;
+  expected_arrival_at: string | null;
+  delivered_at: string | null;
+  received_at: string | null;
+  status: LoveReceiptStatus;
+  require_receipt: boolean;
+  receipt_content: string | null;
+  receipt_mood: LoveReceiptMood | null;
+  completed_at: string | null;
+  timeline_event_id: number | null;
+  cover: LoveReceiptImageOut | null;
+  receipt_images: LoveReceiptImageOut[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LoveReceiptListOut {
+  items: LoveReceiptOut[];
+  page: number;
+  page_size: number;
+  total: number;
+  pending_count: number;
+  completed_count: number;
+  month_count: number;
+  latest_status: LoveReceiptStatus | null;
+}
+
 export interface PairCreated {
   pair_id: number;
   user_a: UserOut;

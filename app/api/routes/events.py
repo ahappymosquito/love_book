@@ -1,16 +1,16 @@
-"""Event route handlers for creating, listing, updating, deleting, editable-range meeting classification, and notifying timeline events.
+"""Event routes for CRUD, meeting classification, notifications, and safe detachment of love-receipt memory links.
 
 Mutation endpoints commit before returning so the frontend can immediately reload the new or changed event.
 """
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.database import delete_legacy_voice_rows, get_db
 from app.emailer import notify_event_created
-from app.models import Event, EventKind, User, utc_now
+from app.models import Event, EventKind, LoveReceipt, User, utc_now
 from app.schemas import EventCreate, EventDetail, EventSummary, EventUpdate
 from app.services import active_token_for_user, counterpart, ensure_pair_event, ensure_pair_meeting_session, event_detail, event_summary, find_meeting_for_date, get_or_create_single_day_meeting, meeting_date_for_values
 
@@ -154,6 +154,11 @@ def delete_event(
     if event.creator_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the creator can delete this event")
     delete_legacy_voice_rows(db, event.id)
+    db.execute(
+        update(LoveReceipt)
+        .where(LoveReceipt.timeline_event_id == event.id)
+        .values(timeline_event_id=None)
+    )
     db.delete(event)
     db.flush()
     db.commit()

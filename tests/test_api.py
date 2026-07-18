@@ -1,4 +1,4 @@
-"""API regression tests for auth, profiles, resilient habit reminders, media, timeline, todo, cycles, AI, and fallbacks."""
+"""API regression tests for auth, profiles, love receipts, reminders, private media, timeline, todo, cycles, AI, and fallbacks."""
 
 import asyncio
 from datetime import date, datetime, timedelta, timezone
@@ -34,6 +34,150 @@ def sample_png_bytes() -> bytes:
     image = PILImage.new("RGB", (40, 28), color=(220, 80, 120))
     image.save(output, format="PNG")
     return output.getvalue()
+
+
+def test_love_receipt_photo_flow_is_pair_private_and_creates_timeline_memory(
+    client: TestClient, pair_tokens: dict[str, str | int]
+) -> None:
+    token_a = str(pair_tokens["user_a_token"])
+    token_b = str(pair_tokens["user_b_token"])
+    created = client.post(
+        "/love-receipts",
+        headers=auth(token_a),
+        data={
+            "receipt_type": "takeout",
+            "title": "忙完后的晚饭",
+            "message": "记得按时吃饭",
+            "require_receipt": "true",
+        },
+        files={"cover": ("cover.png", sample_png_bytes(), "image/png")},
+    )
+    assert created.status_code == 201
+    receipt = created.json()
+    assert receipt["viewer_role"] == "sender"
+    assert receipt["cover"]["kind"] == "cover"
+
+    pending = client.get("/love-receipts?view=pending&page_size=1", headers=auth(token_b)).json()
+    assert pending["pending_count"] == 1
+    assert pending["items"][0]["viewer_role"] == "receiver"
+
+    delivering = client.patch(
+        f"/love-receipts/{receipt['id']}/status",
+        headers=auth(token_a),
+        json={"status": "delivering"},
+    )
+    assert delivering.status_code == 200
+    assert delivering.json()["status"] == "delivering"
+    assert client.patch(
+        f"/love-receipts/{receipt['id']}/status",
+        headers=auth(token_b),
+        json={"status": "delivered"},
+    ).status_code == 403
+
+    confirmed = client.patch(
+        f"/love-receipts/{receipt['id']}/status",
+        headers=auth(token_b),
+        json={"status": "waiting_receipt"},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["status"] == "waiting_receipt"
+
+    too_many = client.post(
+        f"/love-receipts/{receipt['id']}/receipt",
+        headers=auth(token_b),
+        data={"content": "收到啦"},
+        files=[("files", (f"photo-{index}.png", sample_png_bytes(), "image/png")) for index in range(4)],
+    )
+    assert too_many.status_code == 422
+
+    completed = client.post(
+        f"/love-receipts/{receipt['id']}/receipt",
+        headers=auth(token_b),
+        data={"content": "今天也被你好好照顾了", "mood": "cherished"},
+        files=[("files", ("photo.png", sample_png_bytes(), "image/png"))],
+    )
+    assert completed.status_code == 200
+    result = completed.json()
+    assert result["status"] == "completed"
+    assert result["timeline_event_id"] is not None
+    assert len(result["receipt_images"]) == 1
+    image_id = result["receipt_images"][0]["id"]
+    assert client.get(f"/love-receipt-images/{image_id}/thumb", headers=auth(token_a)).status_code == 200
+    assert client.get(f"/love-receipt-images/{image_id}/file", headers=auth(token_b)).content == sample_png_bytes()
+    assert client.post(
+        f"/love-receipts/{receipt['id']}/receipt",
+        headers=auth(token_b),
+        data={"content": "重复"},
+        files=[("files", ("photo.png", sample_png_bytes(), "image/png"))],
+    ).status_code == 409
+    timeline = client.get(f"/events/{result['timeline_event_id']}", headers=auth(token_a)).json()
+    assert timeline["title"] == "爱的回执：忙完后的晚饭"
+    assert client.delete(f"/events/{result['timeline_event_id']}", headers=auth(token_b)).status_code == 204
+    assert client.get(f"/love-receipts/{receipt['id']}", headers=auth(token_a)).json()["timeline_event_id"] is None
+
+    other_pair = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={"user_a_display_name": "C", "user_b_display_name": "D"},
+    ).json()
+    other_headers = auth(other_pair["user_a_token"])
+    assert client.get(f"/love-receipts/{receipt['id']}", headers=other_headers).status_code == 404
+    assert client.get(f"/love-receipt-images/{image_id}/thumb", headers=other_headers).status_code == 404
+
+
+def test_love_receipt_without_photo_requirement_completes_on_confirmation(
+    client: TestClient, pair_tokens: dict[str, str | int]
+) -> None:
+    created = client.post(
+        "/love-receipts",
+        headers=auth(str(pair_tokens["user_a_token"])),
+        data={"receipt_type": "flower", "title": "一束花", "require_receipt": "false"},
+    ).json()
+    completed = client.patch(
+        f"/love-receipts/{created['id']}/status",
+        headers=auth(str(pair_tokens["user_b_token"])),
+        json={"status": "waiting_receipt"},
+    )
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "completed"
+    assert completed.json()["timeline_event_id"] is not None
+
+
+def test_love_receipt_notifications_run_after_committed_changes(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app.api.routes.love_receipts as love_receipt_routes
+
+    token_a = str(pair_tokens["user_a_token"])
+    token_b = str(pair_tokens["user_b_token"])
+    client.patch("/auth/me", headers=auth(token_a), json={"email": "sender@example.com"})
+    client.patch("/auth/me", headers=auth(token_b), json={"email": "receiver@example.com"})
+    notifications: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        love_receipt_routes,
+        "notify_love_receipt_created",
+        lambda **kwargs: notifications.append(("created", kwargs["recipient_email"])) or True,
+    )
+    monkeypatch.setattr(
+        love_receipt_routes,
+        "notify_love_receipt_completed",
+        lambda **kwargs: notifications.append(("completed", kwargs["recipient_email"])) or True,
+    )
+
+    created = client.post(
+        "/love-receipts",
+        headers=auth(token_a),
+        data={"receipt_type": "custom", "title": "一个拥抱", "require_receipt": "false"},
+    )
+    assert created.status_code == 201
+    assert notifications == [("created", "receiver@example.com")]
+    completed = client.patch(
+        f"/love-receipts/{created.json()['id']}/status",
+        headers=auth(token_b),
+        json={"status": "waiting_receipt"},
+    )
+    assert completed.status_code == 200
+    assert notifications[-1] == ("completed", "sender@example.com")
 
 
 def test_todo_category_enum_migration_sql_targets_mysql_only() -> None:
@@ -1199,7 +1343,8 @@ def test_meeting_sessions_are_pair_private_and_memory_events_auto_become_meeting
     client: TestClient, pair_tokens: dict[str, str | int]
 ) -> None:
     token = str(pair_tokens["user_a_token"])
-    session = client.post("/meeting-sessions", headers=auth(token), json={"title": "只属于第一对", "started_on": "2026-07-13", "ended_on": "2026-07-13"}).json()
+    today = date.today().isoformat()
+    session = client.post("/meeting-sessions", headers=auth(token), json={"title": "只属于第一对", "started_on": today, "ended_on": today}).json()
     other_pair = client.post(
         "/admin/pairs",
         headers={"X-Admin-Key": "test-admin-key"},
@@ -1209,7 +1354,7 @@ def test_meeting_sessions_are_pair_private_and_memory_events_auto_become_meeting
     other_session = client.post(
         "/meeting-sessions",
         headers=auth(other_pair["user_a_token"]),
-        json={"title": "另一对的见面", "started_on": "2026-07-13", "ended_on": "2026-07-13"},
+        json={"title": "另一对的见面", "started_on": today, "ended_on": today},
     ).json()
     own_event = client.post(
         "/events",
@@ -1262,7 +1407,8 @@ def test_counterpart_can_assign_existing_event_to_meeting_session_without_editin
         headers=auth(token_a),
         json={"title": "待整理的小事", "event_kind": "memory", "visibility_mode": "public"},
     ).json()
-    session = client.post("/meeting-sessions", headers=auth(token_b), json={"title": "周末见面", "started_on": "2026-07-13", "ended_on": "2026-07-13"}).json()
+    today = date.today().isoformat()
+    session = client.post("/meeting-sessions", headers=auth(token_b), json={"title": "周末见面", "started_on": today, "ended_on": today}).json()
 
     assigned = client.patch(
         f"/events/{event['id']}",

@@ -1,4 +1,4 @@
-"""Local media storage helpers for avatars, timeline images, and todo images under MEDIA_ROOT."""
+"""Safe local media storage helpers for avatars, timeline, todo, and love-receipt images."""
 
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
@@ -38,6 +38,18 @@ def build_todo_image_storage_keys(pair_id: int, item_id: int, mime_type: str | N
     return (
         f"todo/images/originals/{pair_id}/{item_id}/{stem}{ext}",
         f"todo/images/thumbs/{pair_id}/{item_id}/{stem}.jpg",
+    )
+
+
+def build_love_receipt_image_storage_keys(
+    pair_id: int, receipt_id: int, kind: str, mime_type: str | None
+) -> tuple[str, str]:
+    stem = uuid4().hex
+    ext = image_extension_for_mime(mime_type)
+    safe_kind = "cover" if kind == "cover" else "receipt"
+    return (
+        f"love-receipts/{safe_kind}/originals/{pair_id}/{receipt_id}/{stem}{ext}",
+        f"love-receipts/{safe_kind}/thumbs/{pair_id}/{receipt_id}/{stem}.jpg",
     )
 
 

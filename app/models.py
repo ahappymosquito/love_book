@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair timelines, safe restaurant links, habits, media, quotes, AI settings, and login logs."""
+"""SQLAlchemy models for pair timelines, love receipts, private media, plans, habits, profiles, and admin settings."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -35,6 +35,37 @@ class VisibilityMode(StrEnum):
 class EventKind(StrEnum):
     memory = "memory"
     offline_meeting = "offline_meeting"
+
+
+class LoveReceiptType(StrEnum):
+    gift = "gift"
+    takeout = "takeout"
+    flower = "flower"
+    drink = "drink"
+    experience = "experience"
+    custom = "custom"
+
+
+class LoveReceiptStatus(StrEnum):
+    created = "created"
+    delivering = "delivering"
+    delivered = "delivered"
+    waiting_receipt = "waiting_receipt"
+    completed = "completed"
+
+
+class LoveReceiptImageKind(StrEnum):
+    cover = "cover"
+    receipt = "receipt"
+
+
+class LoveReceiptMood(StrEnum):
+    happy = "happy"
+    surprised = "surprised"
+    touched = "touched"
+    reassured = "reassured"
+    cherished = "cherished"
+    hug = "hug"
 
 
 class CyclePhase(StrEnum):
@@ -183,6 +214,64 @@ class MeetingSession(Base):
     pair: Mapped[Pair] = relationship()
     created_by: Mapped[User] = relationship()
     events: Mapped[list[Event]] = relationship(back_populates="meeting_session")
+
+
+class LoveReceipt(Base):
+    __tablename__ = "love_receipts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pair_id: Mapped[int] = mapped_column(ForeignKey("pairs.id"), nullable=False, index=True)
+    sender_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    receiver_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    receipt_type: Mapped[LoveReceiptType] = mapped_column(Enum(LoveReceiptType), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    expected_arrival_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[LoveReceiptStatus] = mapped_column(
+        Enum(LoveReceiptStatus), default=LoveReceiptStatus.created, nullable=False, index=True
+    )
+    require_receipt: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default="1")
+    receipt_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    receipt_mood: Mapped[LoveReceiptMood | None] = mapped_column(Enum(LoveReceiptMood), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    timeline_event_id: Mapped[int | None] = mapped_column(
+        ForeignKey("events.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+    pair: Mapped[Pair] = relationship()
+    sender: Mapped[User] = relationship(foreign_keys=[sender_id])
+    receiver: Mapped[User] = relationship(foreign_keys=[receiver_id])
+    timeline_event: Mapped[Event | None] = relationship()
+    images: Mapped[list["LoveReceiptImage"]] = relationship(
+        cascade="all, delete-orphan", back_populates="love_receipt"
+    )
+
+
+class LoveReceiptImage(Base):
+    __tablename__ = "love_receipt_images"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    love_receipt_id: Mapped[int] = mapped_column(ForeignKey("love_receipts.id"), nullable=False, index=True)
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    kind: Mapped[LoveReceiptImageKind] = mapped_column(Enum(LoveReceiptImageKind), nullable=False, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    storage_key: Mapped[str] = mapped_column(String(500), nullable=False)
+    thumb_storage_key: Mapped[str] = mapped_column(String(500), nullable=False)
+    storage_backend: Mapped[str] = mapped_column(String(50), nullable=False, default="local", server_default="local")
+    mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    thumb_mime_type: Mapped[str] = mapped_column(String(100), nullable=False, default="image/jpeg")
+    thumb_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    love_receipt: Mapped[LoveReceipt] = relationship(back_populates="images")
+    author: Mapped[User] = relationship()
 
 
 class Quote(Base):

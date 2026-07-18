@@ -15,7 +15,7 @@ import { useAppStore } from "@/lib/store";
 export interface AppHeaderProps {
   title?: string;
   subtitle?: string;
-  back?: { href: string; label?: string };
+  back?: { href: string; label?: string; onClick?: () => boolean | void };
   rightSlot?: ReactNode;
   mode?: "default" | "compact";
   maxWidth?: "5xl" | "7xl";
@@ -51,6 +51,9 @@ export function AppHeader({
         {back ? (
           <Link
             href={back.href}
+            onClick={(event) => {
+              if (back.onClick?.() === false) event.preventDefault();
+            }}
             className="grid h-10 w-10 flex-none place-items-center rounded-full text-ink transition hover:bg-ink/5 focus-ring"
             aria-label={back.label || "返回"}
           >
