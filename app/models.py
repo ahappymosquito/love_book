@@ -225,7 +225,7 @@ class LoveReceipt(Base):
     receiver_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     receipt_type: Mapped[LoveReceiptType] = mapped_column(Enum(LoveReceiptType), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
-    message: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    message: Mapped[str] = mapped_column(Text, nullable=False, default="")
     expected_arrival_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

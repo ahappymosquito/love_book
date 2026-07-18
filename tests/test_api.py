@@ -8,7 +8,9 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image as PILImage
 from sqlalchemy import select, text
+from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import Session
+from sqlalchemy.schema import CreateTable
 
 import app.api.routes.admin as admin_routes
 import app.api.routes.quotes as quote_routes
@@ -18,7 +20,7 @@ import app.habits as habits
 import app.main as main_app
 import app.services as services
 from app.core.config import get_settings
-from app.models import AISetting, CycleDailyLog, CyclePhase, DefaultQuote, DeviceToken, Event, HabitReminderRun, HabitTask, Image as DBImage, MeetingSession, TodoImage
+from app.models import AISetting, CycleDailyLog, CyclePhase, DefaultQuote, DeviceToken, Event, HabitReminderRun, HabitTask, Image as DBImage, LoveReceipt, MeetingSession, TodoImage
 from app.storage import media_path
 from tests.conftest import auth
 
@@ -178,6 +180,13 @@ def test_love_receipt_notifications_run_after_committed_changes(
     )
     assert completed.status_code == 200
     assert notifications[-1] == ("completed", "sender@example.com")
+
+
+def test_love_receipt_table_uses_mysql_compatible_text_columns() -> None:
+    ddl = str(CreateTable(LoveReceipt.__table__).compile(dialect=mysql.dialect()))
+
+    assert "message TEXT NOT NULL" in ddl
+    assert "message TEXT NOT NULL DEFAULT" not in ddl
 
 
 def test_todo_category_enum_migration_sql_targets_mysql_only() -> None:
