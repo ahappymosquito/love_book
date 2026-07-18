@@ -6,6 +6,7 @@
 > 🚀 **服务器一键部署**：使用预构建 GHCR 镜像时，可用 [`deploy_server.sh`](deploy_server.sh) 在服务器生成 `.env` / `Caddyfile` / `docker-compose.yml` 并启动服务，真实密码通过服务器 env 文件传入。
 >
 > 🗄️ **媒体存储**：图片原图和缩略图写入 `MEDIA_ROOT`，数据库只保存相对 `storage_key`；旧 `images.data` / `images.thumb_data` 记录仍可回退读取。升级前已有的 `voices` 表和媒体文件会原样保留为不可达备份，不再通过产品接口读取。
+> 🏷️ **版本与镜像**：本项目独立维护语义化版本；当前从 `0.2.3` 继续迭代，只有推送完整 `vX.Y.Z` 标签才触发 GHCR 镜像构建。
 
 ## 功能概览
 

@@ -9,6 +9,21 @@
 - **管理员复制入口链接**：前端运行时读取浏览器当前 `window.location.origin`，访问 HTTP 就复制 HTTP，访问 HTTPS 就复制 HTTPS
 - **邮件通知链接**：后端仍使用 `.env` 的 `APP_WEB_URL`，生产环境应设置为 `https://qrqto.club`
 
+## 镜像构建与版本标签
+
+本项目在自己的 Git 仓库内独立维护语义化版本，`0.2.3` 是当前确认的迭代基线。GitHub Actions 只接受完整稳定版标签 `vX.Y.Z`，例如 `v0.2.3`。
+
+- 普通分支 push、pull request 和手动 dispatch 都不会构建或推送镜像。
+- 本地创建标签不会触发远程构建；只有显式推送匹配标签时才会触发。
+- 标签应指向已经通过测试、且应用清单版本与标签一致的提交。
+
+```powershell
+git tag -a v0.2.3 -m "love_book 0.2.3"
+git push origin v0.2.3
+```
+
+未经当次明确授权，不推送标签或镜像。
+
 ## 1. 目录结构
 
 ```text
