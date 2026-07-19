@@ -1,4 +1,4 @@
-"""API regression tests for auth, profiles, love receipts, reminders, private media, timeline, todo, cycles, AI, and fallbacks."""
+"""API regression tests for auth, rated love receipts, reminders, private media, timeline, todo, cycles, AI, and fallbacks."""
 
 import asyncio
 from datetime import date, datetime, timedelta, timezone
@@ -93,16 +93,26 @@ def test_love_receipt_photo_flow_is_pair_private_and_creates_timeline_memory(
     )
     assert too_many.status_code == 422
 
+    invalid_rating = client.post(
+        f"/love-receipts/{receipt['id']}/receipt",
+        headers=auth(token_b),
+        data={"content": "收到啦", "rating": "6"},
+        files=[("files", ("photo.png", sample_png_bytes(), "image/png"))],
+    )
+    assert invalid_rating.status_code == 422
+
     completed = client.post(
         f"/love-receipts/{receipt['id']}/receipt",
         headers=auth(token_b),
-        data={"content": "今天也被你好好照顾了", "mood": "cherished"},
+        data={"content": "谢谢你，但这次不太合心意", "mood": "not_my_style", "rating": "2"},
         files=[("files", ("photo.png", sample_png_bytes(), "image/png"))],
     )
     assert completed.status_code == 200
     result = completed.json()
     assert result["status"] == "completed"
     assert result["timeline_event_id"] is not None
+    assert result["receipt_mood"] == "not_my_style"
+    assert result["receipt_rating"] == 2
     assert len(result["receipt_images"]) == 1
     image_id = result["receipt_images"][0]["id"]
     assert client.get(f"/love-receipt-images/{image_id}/thumb", headers=auth(token_a)).status_code == 200
@@ -115,6 +125,7 @@ def test_love_receipt_photo_flow_is_pair_private_and_creates_timeline_memory(
     ).status_code == 409
     timeline = client.get(f"/events/{result['timeline_event_id']}", headers=auth(token_a)).json()
     assert timeline["title"] == "爱的回执：忙完后的晚饭"
+    assert "2 颗星" in timeline["description"]
     assert client.delete(f"/events/{result['timeline_event_id']}", headers=auth(token_b)).status_code == 204
     assert client.get(f"/love-receipts/{receipt['id']}", headers=auth(token_a)).json()["timeline_event_id"] is None
 
@@ -204,6 +215,21 @@ def test_todo_category_enum_migration_sql_targets_mysql_only() -> None:
     assert database._todo_category_enum_migration_sql("mysql") == expected
     assert database._todo_category_enum_migration_sql("mariadb") == expected
     assert database._todo_category_enum_migration_sql("sqlite") == []
+
+
+def test_love_receipt_mood_enum_migration_and_rating_column_are_registered() -> None:
+    expected = [
+        "ALTER TABLE love_receipts MODIFY receipt_mood ENUM('happy','surprised','touched','reassured','cherished','hug','disappointed','wronged','pressured','not_my_style','upset','complicated') NULL"
+    ]
+
+    assert database._love_receipt_mood_enum_migration_sql("mysql") == expected
+    assert database._love_receipt_mood_enum_migration_sql("mariadb") == expected
+    assert database._love_receipt_mood_enum_migration_sql("sqlite") == []
+    assert (
+        "love_receipts",
+        "receipt_rating",
+        {"default": "INTEGER NULL", "mysql": "TINYINT NULL", "mariadb": "TINYINT NULL"},
+    ) in database._LIGHTWEIGHT_COLUMNS
 
 
 def test_event_kind_lightweight_migration_column_is_registered() -> None:

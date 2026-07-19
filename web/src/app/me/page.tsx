@@ -1,8 +1,9 @@
 "use client";
 
-// Grouped iOS-style settings surface with inline identity editing, private avatar, geocoded location, and continuous shared/default quote rows.
+// Grouped settings surface for identity, location, shared quotes, and the app's sole visible logout action.
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Check,
@@ -10,6 +11,7 @@ import {
   ChevronRight,
   LocateFixed,
   Loader2,
+  LogOut,
   Mail,
   MapPin,
   Pencil,
@@ -49,8 +51,10 @@ export default function MePage() {
 }
 
 function MeInner() {
+  const router = useRouter();
   const me = useAppStore((s) => s.me)!;
   const setMe = useAppStore((s) => s.setMe);
+  const logout = useAppStore((s) => s.logout);
   const [displayName, setDisplayName] = useState(me.user.display_name);
   const [email, setEmail] = useState(me.user.email ?? "");
   const [savingProfile, setSavingProfile] = useState(false);
@@ -239,6 +243,12 @@ function MeInner() {
     await api.deleteQuote(id);
     toast.success("语录已删除");
     await loadQuotes();
+  }
+
+  function handleLogout() {
+    logout();
+    toast.success("已退出，期待再见");
+    router.replace("/");
   }
 
   return (
@@ -463,6 +473,19 @@ function MeInner() {
               </div>
             </div>
           )}
+        </section>
+
+        <section className="settings-group mt-5 p-5 sm:p-6">
+          <h2 className="font-display text-lg font-semibold text-ink">登录与账号</h2>
+          <p className="mt-1 font-sc text-sm text-ink-muted">退出后，需要再次使用你们的专属入口登录。</p>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="btn-ghost mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl px-4 font-sc text-sm text-rose-deep focus-ring"
+          >
+            <LogOut className="h-4 w-4" />
+            退出登录
+          </button>
         </section>
       </main>
 

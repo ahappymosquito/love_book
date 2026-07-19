@@ -1,12 +1,10 @@
 "use client";
 
-// Unified authenticated Liquid Glass app header with mobile-safe width, avatar navigation, predictable action placement, safe-area spacing, and logout.
+// Unified authenticated Liquid Glass app header with mobile-safe width, avatar navigation, and predictable action placement.
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { ArrowLeft, LogOut } from "lucide-react";
-import { toast } from "sonner";
+import { ArrowLeft } from "lucide-react";
 import { Avatar } from "./avatar";
 import { GlassSurface } from "@/components/ui/glass-surface";
 import { cn } from "@/lib/cn";
@@ -29,9 +27,7 @@ export function AppHeader({
   mode = "default",
   maxWidth = "7xl",
 }: AppHeaderProps) {
-  const router = useRouter();
   const me = useAppStore((s) => s.me);
-  const logout = useAppStore((s) => s.logout);
 
   if (!me) return null;
 
@@ -98,21 +94,6 @@ export function AppHeader({
 
         <div className={cn("flex flex-none items-center", compact ? "gap-1.5" : "gap-2")}>
           {rightSlot}
-          <button
-            type="button"
-            onClick={() => {
-              logout();
-              toast.success("已退出，期待再见");
-              router.replace("/");
-            }}
-            className={cn(
-              "grid place-items-center rounded-full text-ink-soft transition hover:bg-ink/5 focus-ring",
-              compact ? "h-9 w-9 sm:h-10 sm:w-10" : "h-10 w-10",
-            )}
-            aria-label="退出"
-          >
-            <LogOut className={compact ? "h-4 w-4 sm:h-5 sm:w-5" : "h-5 w-5"} />
-          </button>
         </div>
       </GlassSurface>
     </header>

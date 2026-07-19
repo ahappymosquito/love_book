@@ -428,10 +428,11 @@ export const api = {
       method: "PATCH",
       json: { status: nextStatus },
     }),
-  submitLoveReceipt: (id: number, payload: { content: string; mood?: LoveReceiptMood | null; files: File[] }) => {
+  submitLoveReceipt: (id: number, payload: { content: string; mood?: LoveReceiptMood | null; rating?: number | null; files: File[] }) => {
     const fd = new FormData();
     fd.append("content", payload.content);
     if (payload.mood) fd.append("mood", payload.mood);
+    if (payload.rating) fd.append("rating", String(payload.rating));
     payload.files.forEach((file) => fd.append("files", file, file.name));
     return apiRequest<LoveReceiptOut>(`/love-receipts/${id}/receipt`, { method: "POST", body: fd });
   },

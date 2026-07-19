@@ -823,8 +823,9 @@ python -m pytest tests -q
 - The `love_receipts.message` empty-string default is applied by SQLAlchemy rather than emitted as a MySQL/MariaDB `TEXT` server default, so first-run table creation remains portable.
 - Love-receipt list ordering uses a portable `IS NULL` expression instead of `NULLS LAST`, keeping queries compatible with MySQL and MariaDB.
 
-- 登录后的 `/love-receipts` 提供情侣心意记录、手动送达状态、确认收到、照片回执和历史查看；Timeline 标题栏信封入口只在当前用户有待回应记录时显示数量角标。
-- 创建心意不记录价格，也不伪造订单或物流能力。发送方可推进“正在送去/已经送达”，接收方可直接确认收到；需要回执时必须提交 1–3 张照片和 1–100 字回应，可选心情。
+- 登录后的 `/love-receipts` 提供情侣心意记录、手动送达状态、确认收到、照片回执和历史查看；Timeline 标题栏使用礼物入口，并在当前用户有待回应记录时显示数量角标。
+- 创建心意不记录价格，也不伪造订单或物流能力。发送方可推进“正在送去/已经送达”，接收方可直接确认收到；需要回执时必须提交 1–3 张照片和 1–100 字回应，可选一至五星评分，并可从正向或负面情绪中如实选择当下感受。
+- 普通登录页面的公共标题栏不显示退出；唯一的用户退出入口位于 `/me` 设置页。管理端继续保留独立的管理员退出操作。
 - 回执图片写入 `MEDIA_ROOT/love-receipts/...`，数据库只保存私有原图和缩略图 storage key；`GET /love-receipt-images/{id}/file|thumb` 仅允许当前 pair 访问。
 - 核心接口为 `GET/POST /love-receipts`、`GET /love-receipts/{id}`、`PATCH /love-receipts/{id}/status` 和 `POST /love-receipts/{id}/receipt`。完成后自动创建 Timeline memory 摘要，完整照片仍在回执详情中查看。
 - 创建心意和完成回执会分别给接收方、发送方发送后台邮件；无邮箱、SMTP 未配置或投递失败不会回滚已提交的数据。

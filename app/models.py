@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair timelines, love receipts, private media, plans, habits, profiles, and admin settings."""
+"""SQLAlchemy models for pair timelines, rated love receipts, private media, plans, habits, profiles, and admin settings."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -66,6 +66,12 @@ class LoveReceiptMood(StrEnum):
     reassured = "reassured"
     cherished = "cherished"
     hug = "hug"
+    disappointed = "disappointed"
+    wronged = "wronged"
+    pressured = "pressured"
+    not_my_style = "not_my_style"
+    upset = "upset"
+    complicated = "complicated"
 
 
 class CyclePhase(StrEnum):
@@ -235,6 +241,7 @@ class LoveReceipt(Base):
     require_receipt: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default="1")
     receipt_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     receipt_mood: Mapped[LoveReceiptMood | None] = mapped_column(Enum(LoveReceiptMood), nullable=True)
+    receipt_rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     timeline_event_id: Mapped[int | None] = mapped_column(
         ForeignKey("events.id", ondelete="SET NULL"), nullable=True, index=True

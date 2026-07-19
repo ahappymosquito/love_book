@@ -1,4 +1,4 @@
-"""Pair-private love-receipt CRUD, forward-only state transitions, atomic receipt media, and timeline completion."""
+"""Pair-private love-receipt CRUD with honest moods, optional ratings, atomic media, and timeline completion."""
 
 from datetime import date, datetime, time, timezone
 from typing import Literal
@@ -70,6 +70,7 @@ def _receipt_out(receipt: LoveReceipt, current_user: User) -> LoveReceiptOut:
         require_receipt=receipt.require_receipt,
         receipt_content=receipt.receipt_content,
         receipt_mood=receipt.receipt_mood,
+        receipt_rating=receipt.receipt_rating,
         completed_at=receipt.completed_at,
         timeline_event_id=receipt.timeline_event_id,
         cover=LoveReceiptImageOut.model_validate(cover) if cover else None,
@@ -149,7 +150,8 @@ def _create_timeline_memory(db: Session, receipt: LoveReceipt, actor: User) -> N
     if receipt.timeline_event_id is not None:
         return
     response = receipt.receipt_content.strip() if receipt.receipt_content else "已经认真收到这份心意。"
-    description = f"{receipt.sender.display_name} 送来的心意，被 {receipt.receiver.display_name} 好好接住了。\n\n{response}"
+    rating = f"\n\n这份心意得到了 {receipt.receipt_rating} 颗星。" if receipt.receipt_rating else ""
+    description = f"{receipt.sender.display_name} 送来的心意，被 {receipt.receiver.display_name} 好好接住了。\n\n{response}{rating}"
     event = Event(
         pair_id=receipt.pair_id,
         creator_id=actor.id,
@@ -391,6 +393,7 @@ def submit_love_receipt(
     background: BackgroundTasks,
     content: str = Form(...),
     mood: LoveReceiptMood | None = Form(default=None),
+    rating: int | None = Form(default=None, ge=1, le=5),
     files: list[UploadFile] = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -424,6 +427,7 @@ def submit_love_receipt(
         now = utc_now()
         receipt.receipt_content = clean_content
         receipt.receipt_mood = mood
+        receipt.receipt_rating = rating
         receipt.received_at = receipt.received_at or now
         receipt.delivered_at = receipt.delivered_at or now
         receipt.completed_at = now

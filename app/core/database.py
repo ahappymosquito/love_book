@@ -46,7 +46,7 @@ def delete_legacy_voice_rows(db: Session, event_id: int) -> None:
         db.execute(text("DELETE FROM voices WHERE event_id = :event_id"), {"event_id": event_id})
 
 
-# Lightweight column-existence migration for environments without Alembic, including rich AMap restaurant evidence columns.
+# Lightweight column-existence migration for environments without Alembic, including love-receipt ratings and rich AMap evidence.
 # Each entry: (table, column_name, {dialect_name: "<DDL fragment>"}).
 # "default" is used as a fallback when the dialect-specific fragment is missing.
 _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
@@ -121,6 +121,11 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
             "mysql": "DATETIME NULL",
             "mariadb": "DATETIME NULL",
         },
+    ),
+    (
+        "love_receipts",
+        "receipt_rating",
+        {"default": "INTEGER NULL", "mysql": "TINYINT NULL", "mariadb": "TINYINT NULL"},
     ),
     (
         "pairs",
@@ -241,6 +246,16 @@ def _todo_category_enum_migration_sql(dialect_name: str) -> list[str]:
     ]
 
 
+def _love_receipt_mood_enum_migration_sql(dialect_name: str) -> list[str]:
+    if dialect_name not in {"mysql", "mariadb"}:
+        return []
+    values = (
+        "'happy','surprised','touched','reassured','cherished','hug',"
+        "'disappointed','wronged','pressured','not_my_style','upset','complicated'"
+    )
+    return [f"ALTER TABLE love_receipts MODIFY receipt_mood ENUM({values}) NULL"]
+
+
 def _ensure_columns(target_engine: Engine) -> None:
     inspector = inspect(target_engine)
     existing_tables = set(inspector.get_table_names())
@@ -268,6 +283,15 @@ def _ensure_todo_category_enum(target_engine: Engine) -> None:
     inspector = inspect(target_engine)
     existing_tables = set(inspector.get_table_names())
     if not {"todo_items", "todo_candidates"}.issubset(existing_tables):
+        return
+    with target_engine.begin() as connection:
+        for ddl_statement in ddl_statements:
+            connection.execute(text(ddl_statement))
+
+
+def _ensure_love_receipt_mood_enum(target_engine: Engine) -> None:
+    ddl_statements = _love_receipt_mood_enum_migration_sql(target_engine.dialect.name)
+    if not ddl_statements or "love_receipts" not in set(inspect(target_engine).get_table_names()):
         return
     with target_engine.begin() as connection:
         for ddl_statement in ddl_statements:
@@ -328,6 +352,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _ensure_columns(engine)
     _ensure_todo_category_enum(engine)
+    _ensure_love_receipt_mood_enum(engine)
     _ensure_legacy_meeting_sessions(engine)
     with SessionLocal() as db:
         normalize_meeting_ranges(db)

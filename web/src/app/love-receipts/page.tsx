@@ -1,11 +1,11 @@
 "use client";
 
-// Authenticated love-receipt dashboard with pair-level overview, action-first filtering, creation, and paginated history.
+// Authenticated love-receipt dashboard with honest mood and rating summaries, creation, and paginated history.
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, ChevronRight, HeartHandshake, Loader2, Mail, Plus, Send } from "lucide-react";
+import { Camera, ChevronRight, Gift, HeartHandshake, Loader2, Plus, Send, Star } from "lucide-react";
 import { AppHeader } from "@/components/app-header";
 import { AuthGate } from "@/components/auth-gate";
 import { Avatar } from "@/components/avatar";
@@ -132,6 +132,7 @@ function ReceiptCard({ receipt }: { receipt: LoveReceiptOut }) {
             <span className="inline-flex items-center gap-1.5"><Avatar user={receipt.sender} size="sm" />{receipt.sender.display_name} 送出</span>
             <span title={formatAbsolute(receipt.created_at)}>{formatRelative(receipt.created_at)}</span>
             {mood && <span>{mood.emoji} {mood.label}</span>}
+            {receipt.receipt_rating && <span className="inline-flex items-center gap-1" aria-label={`${receipt.receipt_rating} 星`}><Star className="h-3.5 w-3.5 fill-peach-deep text-peach-deep" />{receipt.receipt_rating}</span>}
           </div>
         </div>
       </div>
@@ -150,7 +151,7 @@ function ReceiptCard({ receipt }: { receipt: LoveReceiptOut }) {
 
 function ReceiptEmpty({ view, onCreate }: { view: ReceiptView; onCreate: () => void }) {
   const complete = view === "completed";
-  return <section className="content-surface px-5 py-10 text-center sm:px-8"><Mail className="mx-auto h-9 w-9 text-rose-deep" /><h2 className="mt-4 font-display text-xl font-semibold text-ink">{complete ? "还没有爱的回执" : "所有心意都已认真回应"}</h2><p className="mx-auto mt-2 max-w-md font-sc text-sm leading-relaxed text-ink-soft">{complete ? "从第一次认真回应开始，收藏你们被爱和表达爱的瞬间。" : "下一份惊喜到来时，记得留下属于你们的回忆。"}</p><button type="button" onClick={onCreate} className="btn-primary mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl px-5 font-sc text-sm focus-ring"><Send className="h-4 w-4" />送一份心意</button></section>;
+  return <section className="content-surface px-5 py-10 text-center sm:px-8"><Gift className="mx-auto h-9 w-9 text-rose-deep" /><h2 className="mt-4 font-display text-xl font-semibold text-ink">{complete ? "还没有爱的回执" : "所有心意都已认真回应"}</h2><p className="mx-auto mt-2 max-w-md font-sc text-sm leading-relaxed text-ink-soft">{complete ? "从第一次认真回应开始，收藏你们被爱和表达爱的瞬间。" : "下一份惊喜到来时，记得留下属于你们的回忆。"}</p><button type="button" onClick={onCreate} className="btn-primary mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl px-5 font-sc text-sm focus-ring"><Send className="h-4 w-4" />送一份心意</button></section>;
 }
 
 function ReceiptSkeleton() {

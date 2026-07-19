@@ -1,11 +1,11 @@
 "use client";
 
-// Role-aware love-receipt detail, delivery progress, private response gallery, and guarded photo-receipt composer.
+// Role-aware love-receipt detail with honest moods, optional star ratings, private photos, and guarded response composer.
 
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Camera, Check, Gift, ImagePlus, Loader2, PackageCheck, Send, Trash2, Truck } from "lucide-react";
+import { Camera, Check, Gift, ImagePlus, Loader2, PackageCheck, Send, Star, Trash2, Truck } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { toast } from "sonner";
 import { AppHeader } from "@/components/app-header";
@@ -40,13 +40,14 @@ function LoveReceiptDetailInner() {
   const [updating, setUpdating] = useState(false);
   const [content, setContent] = useState(search.get("quick") === "thanks" ? QUICK_RECEIPT_MESSAGES[0] : "");
   const [mood, setMood] = useState<LoveReceiptMood | null>(null);
+  const [rating, setRating] = useState<number | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
 
   const previews = useMemo(() => files.map((file) => ({ file, url: URL.createObjectURL(file) })), [files]);
   useEffect(() => () => previews.forEach((preview) => URL.revokeObjectURL(preview.url)), [previews]);
-  const dirty = Boolean(content.trim() || mood || files.length);
+  const dirty = Boolean(content.trim() || mood || rating || files.length);
 
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
@@ -104,10 +105,11 @@ function LoveReceiptDetailInner() {
     if (!receipt || submitting || !content.trim() || files.length < 1) return;
     setSubmitting(true);
     try {
-      const updated = await api.submitLoveReceipt(receipt.id, { content: content.trim(), mood, files });
+      const updated = await api.submitLoveReceipt(receipt.id, { content: content.trim(), mood, rating, files });
       setReceipt(updated);
       setContent("");
       setMood(null);
+      setRating(null);
       setFiles([]);
       setSuccess(true);
       toast.success("回执已送达 TA");
@@ -176,13 +178,14 @@ function LoveReceiptDetailInner() {
           </section>
         )}
 
-        {canCompose && <ReceiptComposer content={content} setContent={setContent} mood={mood} setMood={setMood} previews={previews} removeFile={(index) => setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))} selectFiles={selectFiles} submitting={submitting} submit={submit} />}
+        {canCompose && <ReceiptComposer content={content} setContent={setContent} mood={mood} setMood={setMood} rating={rating} setRating={setRating} previews={previews} removeFile={(index) => setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))} selectFiles={selectFiles} submitting={submitting} submit={submit} />}
 
         {receipt.status === "completed" && (
           <section className="content-surface mt-5 p-5 sm:p-7">
             <div className="flex items-start gap-3"><Avatar user={receipt.receiver} size="md" /><div><p className="font-display font-semibold text-ink">{receipt.receiver.display_name} 已经收到</p><p className="mt-1 font-sc text-xs text-ink-muted">{receipt.completed_at ? formatAbsolute(receipt.completed_at) : "刚刚完成"}</p></div></div>
             {receipt.receipt_images.length > 0 && <div className={`mt-5 grid gap-2 ${receipt.receipt_images.length === 1 ? "grid-cols-1" : "grid-cols-2 sm:grid-cols-3"}`}>{receipt.receipt_images.map((image) => <LoveReceiptImage key={image.id} imageId={image.id} alt="回执照片" full className="aspect-square w-full rounded-xl" />)}</div>}
             {receipt.receipt_content && <blockquote className="mt-5 rounded-2xl bg-peach/14 px-4 py-4 font-sc text-sm leading-7 text-ink">“{receipt.receipt_content}”</blockquote>}
+            {receipt.receipt_rating && <StarRating value={receipt.receipt_rating} readOnly className="mt-4" />}
             {moodMeta && <p className="mt-3 font-sc text-sm text-ink-soft">{moodMeta.emoji} {moodMeta.label}</p>}
             {receipt.timeline_event_id && <Link href={`/timeline/${receipt.timeline_event_id}`} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-sage/14 px-4 font-sc text-sm text-ink transition hover:bg-sage/22 focus-ring">去共同时间线看看 <Send className="h-4 w-4" /></Link>}
           </section>
@@ -198,8 +201,12 @@ function ReceiptProgress({ receipt }: { receipt: LoveReceiptOut }) {
   return <section className="content-surface mt-5 p-4 sm:p-5" aria-label="心意进度"><ol className="grid grid-cols-4">{steps.map((step, index) => { const Icon = step.icon; const done = index <= current; return <li key={step.label} className="relative flex min-w-0 flex-col items-center text-center">{index > 0 && <span className={`absolute right-1/2 top-5 h-px w-full ${index <= current ? "bg-sage" : "bg-line"}`} aria-hidden="true" />}<span className={`relative z-10 grid h-10 w-10 place-items-center rounded-full ${done ? "bg-sage/22 text-ink" : "bg-cream-deep text-ink-muted"}`}><Icon className="h-4 w-4" /></span><span className={`mt-2 font-sc text-[11px] ${done ? "text-ink-soft" : "text-ink-muted"}`}>{step.label}</span></li>; })}</ol></section>;
 }
 
-function ReceiptComposer({ content, setContent, mood, setMood, previews, removeFile, selectFiles, submitting, submit }: { content: string; setContent: (value: string) => void; mood: LoveReceiptMood | null; setMood: (value: LoveReceiptMood | null) => void; previews: Array<{ file: File; url: string }>; removeFile: (index: number) => void; selectFiles: (event: ChangeEvent<HTMLInputElement>) => void; submitting: boolean; submit: (event: FormEvent) => void }) {
-  return <form id="receipt" onSubmit={submit} className="form-section mt-5 scroll-mt-24 p-5 sm:p-6"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-rose/10 text-rose-deep"><Camera className="h-5 w-5" /></span><div><h2 className="font-display text-xl font-semibold text-ink">留下爱的回执</h2><p className="mt-0.5 font-sc text-xs text-ink-muted">1–3 张照片，再写一句真心回应</p></div></div><div className="mt-5 grid grid-cols-3 gap-2">{previews.map((preview, index) => <div key={`${preview.file.name}-${index}`} className="relative"><img src={preview.url} alt={`待发送照片 ${index + 1}`} className="aspect-square w-full rounded-xl object-cover" /><button type="button" onClick={() => removeFile(index)} className="absolute right-1.5 top-1.5 grid h-9 w-9 place-items-center rounded-full bg-surface/95 text-ink focus-ring" aria-label={`移除第 ${index + 1} 张照片`}><Trash2 className="h-4 w-4" /></button></div>)}{previews.length < 3 && <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-rose/35 bg-rose/5 font-sc text-xs text-rose-deep focus-within:ring-2 focus-within:ring-rose/40"><ImagePlus className="mb-1 h-5 w-5" />选择照片<input type="file" accept="image/*" multiple className="sr-only" onChange={selectFiles} /></label>}</div>{previews.length === 0 && <p className="mt-2 font-sc text-xs text-ink-muted">至少选择一张收到心意后的照片。</p>}<div className="mt-5"><label htmlFor="receipt-content" className="font-sc text-sm font-medium text-ink">想对 TA 说</label><textarea id="receipt-content" value={content} onChange={(event) => setContent(event.target.value)} maxLength={100} required className="input-field mt-2 min-h-28 resize-y py-3" placeholder="写下收到这份心意时的感受吧" /><div className="mt-1 text-right font-sc text-xs text-ink-muted">{content.length}/100</div></div><div className="mt-3 flex gap-2 overflow-x-auto pb-1 local-x-scroll" aria-label="快捷回应">{QUICK_RECEIPT_MESSAGES.map((message) => <button key={message} type="button" onClick={() => setContent(message)} className="min-h-10 flex-none rounded-full bg-peach/16 px-3 font-sc text-xs text-ink-soft transition hover:bg-peach/26 focus-ring">{message}</button>)}</div><fieldset className="mt-5"><legend className="font-sc text-sm font-medium text-ink">现在的心情（可选）</legend><div className="mt-2 flex flex-wrap gap-2">{LOVE_RECEIPT_MOOD_OPTIONS.map((option) => <button key={option.value} type="button" onClick={() => setMood(mood === option.value ? null : option.value)} aria-pressed={mood === option.value} className={`min-h-10 rounded-full px-3 font-sc text-xs transition focus-ring ${mood === option.value ? "bg-rose/14 text-rose-deep ring-1 ring-rose/30" : "bg-cream-deep/55 text-ink-soft"}`}>{option.emoji} {option.label}</button>)}</div></fieldset><button type="submit" disabled={submitting || previews.length < 1 || !content.trim()} className="btn-primary mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-5 font-sc text-sm font-semibold focus-ring disabled:opacity-50">{submitting ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Send className="h-4 w-4" />}{submitting ? "正在发送回执" : "发送回执"}</button></form>;
+function ReceiptComposer({ content, setContent, mood, setMood, rating, setRating, previews, removeFile, selectFiles, submitting, submit }: { content: string; setContent: (value: string) => void; mood: LoveReceiptMood | null; setMood: (value: LoveReceiptMood | null) => void; rating: number | null; setRating: (value: number | null) => void; previews: Array<{ file: File; url: string }>; removeFile: (index: number) => void; selectFiles: (event: ChangeEvent<HTMLInputElement>) => void; submitting: boolean; submit: (event: FormEvent) => void }) {
+  return <form id="receipt" onSubmit={submit} className="form-section mt-5 scroll-mt-24 p-5 sm:p-6"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-rose/10 text-rose-deep"><Camera className="h-5 w-5" /></span><div><h2 className="font-display text-xl font-semibold text-ink">留下爱的回执</h2><p className="mt-0.5 font-sc text-xs text-ink-muted">1–3 张照片，再写一句真实回应</p></div></div><div className="mt-5 grid grid-cols-3 gap-2">{previews.map((preview, index) => <div key={`${preview.file.name}-${index}`} className="relative"><img src={preview.url} alt={`待发送照片 ${index + 1}`} className="aspect-square w-full rounded-xl object-cover" /><button type="button" onClick={() => removeFile(index)} className="absolute right-1.5 top-1.5 grid h-9 w-9 place-items-center rounded-full bg-surface/95 text-ink focus-ring" aria-label={`移除第 ${index + 1} 张照片`}><Trash2 className="h-4 w-4" /></button></div>)}{previews.length < 3 && <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-rose/35 bg-rose/5 font-sc text-xs text-rose-deep focus-within:ring-2 focus-within:ring-rose/40"><ImagePlus className="mb-1 h-5 w-5" />选择照片<input type="file" accept="image/*" multiple className="sr-only" onChange={selectFiles} /></label>}</div>{previews.length === 0 && <p className="mt-2 font-sc text-xs text-ink-muted">至少选择一张收到心意后的照片。</p>}<div className="mt-5"><label htmlFor="receipt-content" className="font-sc text-sm font-medium text-ink">想对 TA 说</label><textarea id="receipt-content" value={content} onChange={(event) => setContent(event.target.value)} maxLength={100} required className="input-field mt-2 min-h-28 resize-y py-3" placeholder="喜欢或不喜欢，都可以认真说出来" /><div className="mt-1 text-right font-sc text-xs text-ink-muted">{content.length}/100</div></div><div className="mt-3 flex gap-2 overflow-x-auto pb-1 local-x-scroll" aria-label="快捷回应">{QUICK_RECEIPT_MESSAGES.map((message) => <button key={message} type="button" onClick={() => setContent(message)} className="min-h-10 flex-none rounded-full bg-peach/16 px-3 font-sc text-xs text-ink-soft transition hover:bg-peach/26 focus-ring">{message}</button>)}</div><StarRating value={rating} onChange={setRating} className="mt-5" /><fieldset className="mt-5"><legend className="font-sc text-sm font-medium text-ink">收到时的心情（可选）</legend><p className="mt-1 font-sc text-xs text-ink-muted">不必只选开心，真实感受也值得被听见。</p><div className="mt-2 flex flex-wrap gap-2">{LOVE_RECEIPT_MOOD_OPTIONS.map((option) => <button key={option.value} type="button" onClick={() => setMood(mood === option.value ? null : option.value)} aria-pressed={mood === option.value} className={`min-h-10 rounded-full px-3 font-sc text-xs transition focus-ring ${mood === option.value ? "bg-rose/14 text-rose-deep ring-1 ring-rose/30" : "bg-cream-deep/55 text-ink-soft"}`}>{option.emoji} {option.label}</button>)}</div></fieldset><button type="submit" disabled={submitting || previews.length < 1 || !content.trim()} className="btn-primary mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-5 font-sc text-sm font-semibold focus-ring disabled:opacity-50">{submitting ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Send className="h-4 w-4" />}{submitting ? "正在发送回执" : "发送回执"}</button></form>;
+}
+
+function StarRating({ value, onChange, readOnly = false, className = "" }: { value: number | null; onChange?: (value: number | null) => void; readOnly?: boolean; className?: string }) {
+  return <fieldset className={className}><legend className="font-sc text-sm font-medium text-ink">{readOnly ? "这份心意的评分" : "给这份心意打分（可选）"}</legend><div className="mt-2 flex items-center gap-1" aria-label={value ? `${value} 星` : "尚未评分"}>{[1, 2, 3, 4, 5].map((star) => readOnly ? <Star key={star} className={`h-5 w-5 ${star <= (value ?? 0) ? "fill-peach-deep text-peach-deep" : "text-line"}`} aria-hidden="true" /> : <button key={star} type="button" onClick={() => onChange?.(value === star ? null : star)} aria-label={`${star} 星`} aria-pressed={value === star} className="grid h-11 w-11 place-items-center rounded-full text-peach-deep transition hover:bg-peach/18 focus-ring"><Star className={`h-6 w-6 ${star <= (value ?? 0) ? "fill-current" : ""}`} /></button>)}</div></fieldset>;
 }
 
 function DetailSkeleton() {

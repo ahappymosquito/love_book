@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home with queued quotes, love-receipt entry, restrained view transitions, meeting ranges, and accessible reminders.
+// Timeline home with queued quotes, gift-shaped love-receipt entry, restrained transitions, meeting ranges, and reminders.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -12,7 +12,7 @@ import {
   ChevronDown,
   ChevronRight,
   Droplet,
-  Mail,
+  Gift,
   Plus,
 } from "lucide-react";
 import { AuthGate } from "@/components/auth-gate";
@@ -391,7 +391,7 @@ function TimelineInner() {
         mode="compact"
         rightSlot={
           <Link href="/love-receipts" className="relative grid h-10 w-10 place-items-center rounded-full text-ink-soft transition hover:bg-rose/8 hover:text-rose-deep focus-ring" aria-label={pendingReceiptCount ? `爱的回执，有 ${pendingReceiptCount} 份待回应` : "进入爱的回执"}>
-            <Mail className="h-5 w-5" />
+            <Gift className="h-5 w-5" />
             {pendingReceiptCount > 0 && <span className="absolute right-0 top-0 grid min-h-4 min-w-4 place-items-center rounded-full bg-rose px-1 font-sc text-[9px] font-semibold leading-none text-white">{pendingReceiptCount > 9 ? "9+" : pendingReceiptCount}</span>}
           </Link>
         }

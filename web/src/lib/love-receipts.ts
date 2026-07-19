@@ -1,4 +1,4 @@
-// Shared labels and progress helpers for the love-receipt list, forms, detail page, and Timeline entry.
+// Shared positive and honest mood labels plus progress helpers for love-receipt surfaces.
 
 import type { LoveReceiptMood, LoveReceiptStatus, LoveReceiptType } from "./types";
 
@@ -18,6 +18,12 @@ export const LOVE_RECEIPT_MOOD_OPTIONS: Array<{ value: LoveReceiptMood; label: s
   { value: "reassured", label: "安心", emoji: "🌿" },
   { value: "cherished", label: "被宠爱", emoji: "💕" },
   { value: "hug", label: "想抱抱", emoji: "🫂" },
+  { value: "disappointed", label: "有点失望", emoji: "😕" },
+  { value: "wronged", label: "有点委屈", emoji: "🥺" },
+  { value: "pressured", label: "有压力", emoji: "😮‍💨" },
+  { value: "not_my_style", label: "不太合心意", emoji: "🙈" },
+  { value: "upset", label: "有点生气", emoji: "😣" },
+  { value: "complicated", label: "心情复杂", emoji: "🫤" },
 ];
 
 export const LOVE_RECEIPT_STATUS_LABELS: Record<LoveReceiptStatus, string> = {

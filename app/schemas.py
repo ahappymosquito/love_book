@@ -1,4 +1,4 @@
-"""Pydantic contracts for authenticated pair features, including timelines, love receipts, media, plans, habits, profiles, and admin APIs."""
+"""Pydantic contracts for authenticated pair features, including rated love receipts, media, plans, habits, profiles, and admin APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -348,6 +348,7 @@ class LoveReceiptOut(APIModel):
     require_receipt: bool
     receipt_content: str | None = None
     receipt_mood: LoveReceiptMood | None = None
+    receipt_rating: int | None = Field(default=None, ge=1, le=5)
     completed_at: datetime | None = None
     timeline_event_id: int | None = None
     cover: LoveReceiptImageOut | None = None

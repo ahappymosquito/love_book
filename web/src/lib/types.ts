@@ -109,7 +109,19 @@ export interface EventDetail extends EventSummary {
 
 export type LoveReceiptType = "gift" | "takeout" | "flower" | "drink" | "experience" | "custom";
 export type LoveReceiptStatus = "created" | "delivering" | "delivered" | "waiting_receipt" | "completed";
-export type LoveReceiptMood = "happy" | "surprised" | "touched" | "reassured" | "cherished" | "hug";
+export type LoveReceiptMood =
+  | "happy"
+  | "surprised"
+  | "touched"
+  | "reassured"
+  | "cherished"
+  | "hug"
+  | "disappointed"
+  | "wronged"
+  | "pressured"
+  | "not_my_style"
+  | "upset"
+  | "complicated";
 
 export interface LoveReceiptImageOut {
   id: number;
@@ -142,6 +154,7 @@ export interface LoveReceiptOut {
   require_receipt: boolean;
   receipt_content: string | null;
   receipt_mood: LoveReceiptMood | null;
+  receipt_rating: number | null;
   completed_at: string | null;
   timeline_event_id: number | null;
   cover: LoveReceiptImageOut | null;
