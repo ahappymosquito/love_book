@@ -40,5 +40,5 @@ def test_release_notes_come_from_the_matching_changelog_section() -> None:
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.startswith(f"# Love Book {APP_VERSION} (")
-    assert "### Added" in result.stdout
+    assert "### " in result.stdout
     assert "## [Unreleased]" not in result.stdout

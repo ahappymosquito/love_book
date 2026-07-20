@@ -20,37 +20,37 @@
 
 ## 准备发布
 
-以下示例把本次版本准备为 `0.4.0`：
+以下示例把本次版本准备为 `0.4.1`：
 
 ```powershell
 # 1. 只编辑根 VERSION，并整理 CHANGELOG.md 的 Unreleased
 python scripts/version.py sync
-python scripts/version.py check --tag v0.4.0
+python scripts/version.py check --tag v0.4.1
 
 # 2. 使用锁文件验证
 poetry sync --no-root
-poetry run python -m pytest -q --basetemp=.pytest-tmp/release-local
+poetry run python -m pytest -q --basetemp=.pytest-tmp-release-local
 cmd /c "cd web && npm ci --no-audit --no-fund && npm run build"
 
 # 3. 在干净容器上下文中构建候选镜像并做 HTTP 冒烟
-docker build --build-arg APP_GIT_SHA=release-candidate -t love-book-backend:0.4.0-rc .
-docker build --build-arg NEXT_PUBLIC_API_BASE=/api -t love-book-frontend:0.4.0-rc web
+docker build --build-arg APP_GIT_SHA=release-candidate -t love-book-backend:0.4.1-rc .
+docker build --build-arg NEXT_PUBLIC_API_BASE=/api -t love-book-frontend:0.4.1-rc web
 
 # 4. 只有候选镜像通过后，才创建发布提交与 annotated tag
 git add VERSION CHANGELOG.md web/package.json web/package-lock.json
-git commit -m "chore: release 0.4.0"
-git tag -a v0.4.0 -m "Love Book 0.4.0"
+git commit -m "chore: release 0.4.1"
+git tag -a v0.4.1 -m "Love Book 0.4.1"
 ```
 
-候选镜像必须实际启动：后端 `/health` 需要返回候选版本和构建标识，前端首页需要返回 HTTP 200。只有明确推送 `vX.Y.Z` 标签才会发布 GHCR 镜像。发布工作流会拒绝与 `VERSION` 不一致的标签，并为前后端同时生成 `0.4.0` 与 `sha-xxxxxxx` 两类标签；两套镜像都成功后才会创建 GitHub Release。
+候选镜像必须实际启动：后端 `/health` 需要返回候选版本和构建标识，前端首页需要返回 HTTP 200。只有明确推送 `vX.Y.Z` 标签才会发布 GHCR 镜像。发布工作流会拒绝与 `VERSION` 不一致的标签，并为前后端同时生成 `0.4.1` 与 `sha-xxxxxxx` 两类标签；两套镜像都成功后才会创建 GitHub Release。
 
 ## 生产部署与验证
 
 生产部署必须让前后端使用同一个版本：
 
 ```bash
-LOVE_BOOK_VERSION=0.4.0 ./deploy_server.sh up
-LOVE_BOOK_VERSION=0.4.0 ./deploy_server.sh status
+LOVE_BOOK_VERSION=0.4.1 ./deploy_server.sh up
+LOVE_BOOK_VERSION=0.4.1 ./deploy_server.sh status
 curl -fsS https://qrqto.club/api/health
 ```
 
@@ -63,13 +63,13 @@ curl -fsS https://qrqto.club/api/health
 ```bash
 # MySQL 示例，连接参数从服务器安全配置读取，不把密码写入命令历史
 mysqldump --single-transaction --routines --triggers \
-  -h DB_HOST -u DB_USER -p DB_NAME > backups/love_book-before-0.4.0.sql
+  -h DB_HOST -u DB_USER -p DB_NAME > backups/love_book-before-0.4.1.sql
 
 # named volume 媒体备份
 docker run --rm \
   -v love_book_media:/source:ro \
   -v "$PWD/backups:/backup" \
-  alpine:3.22 tar -czf /backup/love_book_media-before-0.4.0.tar.gz -C /source .
+  alpine:3.22 tar -czf /backup/love_book_media-before-0.4.1.tar.gz -C /source .
 ```
 
 确认两个备份非空并可读取后再部署。当前启动迁移只允许向前兼容地增加或扩展结构，不在启动时删除业务表、旧媒体或旧字段。

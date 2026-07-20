@@ -38,7 +38,7 @@ jobs:
       - name: Install and test locked backend
         run: |
           poetry sync --no-root --no-interaction
-          poetry run python -m pytest -q --basetemp=.pytest-tmp/release
+          poetry run python -m pytest -q --basetemp=.pytest-tmp-release
 
       - uses: actions/setup-node@v4
         with:

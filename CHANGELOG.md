@@ -16,6 +16,16 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 - No pending schema changes.
 
+## [0.4.1] - 2026-07-20
+
+### Fixed
+
+- Made clean-checkout CI test temporary directories self-contained so release gates do not depend on a pre-existing ignored parent directory.
+
+### Database
+
+- No schema changes.
+
 ## [0.4.0] - 2026-07-20
 
 ### Added
@@ -42,6 +52,7 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 - Kept Love Receipt table creation and list ordering compatible with MySQL and MariaDB.
 
-[Unreleased]: https://github.com/ahappymosquito/love_book/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/ahappymosquito/love_book/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/ahappymosquito/love_book/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/ahappymosquito/love_book/compare/v0.2.3...v0.4.0
 [0.2.3]: https://github.com/ahappymosquito/love_book/releases/tag/v0.2.3

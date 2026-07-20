@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .pytest-tmp/
+.pytest-tmp-*/
 .pytest_tmp/
 pair_events.db
 media/

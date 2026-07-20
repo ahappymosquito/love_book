@@ -51,7 +51,7 @@ fail() { printf "%s[FAIL]%s %s\n" "${RED}" "${RESET}" "$*" >&2; exit 1; }
 usage() {
     cat <<'EOF'
 Usage:
-  LOVE_BOOK_VERSION=0.4.0 ADMIN_KEY=... DATABASE_URL=... ./deploy_server.sh up
+  LOVE_BOOK_VERSION=0.4.1 ADMIN_KEY=... DATABASE_URL=... ./deploy_server.sh up
   ./deploy_server.sh --env-file ./server.env up
   ./deploy_server.sh status
   ./deploy_server.sh logs [service]
