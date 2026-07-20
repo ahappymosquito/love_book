@@ -44,12 +44,17 @@ RUN set -eux; \
 
 WORKDIR /app
 
-RUN pip install --break-system-packages --no-cache-dir poetry==2.2.1 \
-    && poetry config virtualenvs.create false
+RUN python3 -m venv /opt/poetry \
+    && /opt/poetry/bin/pip install --no-cache-dir poetry==2.2.1 \
+    && python3 -m venv /app/.venv
+
+ENV VIRTUAL_ENV=/app/.venv \
+    PATH="/app/.venv/bin:/opt/poetry/bin:${PATH}" \
+    POETRY_VIRTUALENVS_CREATE=false
 
 COPY pyproject.toml poetry.lock ./
 RUN poetry sync --only main --no-root --no-interaction \
-    && pip uninstall --break-system-packages -y poetry poetry-core \
+    && rm -rf /opt/poetry \
     && rm -rf /root/.cache/pypoetry
 
 COPY VERSION ./VERSION
@@ -61,6 +66,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl -fsS http://127.0.0.1:8000/health >/dev/null || exit 1
 
-CMD ["python3", "-m", "uvicorn", "app.main:app", \
+CMD ["python", "-m", "uvicorn", "app.main:app", \
      "--host", "0.0.0.0", "--port", "8000", \
      "--proxy-headers", "--forwarded-allow-ips=*"]

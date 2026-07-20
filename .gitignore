@@ -13,6 +13,7 @@ pytest-cache-files-*/
 .codegraph/
 .playwright-cli/
 output/
+release/
 
 # web/ frontend
 web/node_modules/

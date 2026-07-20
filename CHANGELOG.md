@@ -16,7 +16,7 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 - No pending schema changes.
 
-## [0.3.0] - 2026-07-20
+## [0.4.0] - 2026-07-20
 
 ### Added
 
@@ -28,6 +28,10 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 - Replaced the Timeline receipt envelope with a gift icon and kept logout only in Settings.
 - Production deployment now pins matching frontend and backend image versions instead of `latest`.
 
+### Fixed
+
+- Isolated locked backend dependencies in a container virtual environment and included the runtime HTTP client required by admin routes.
+
 ### Database
 
 - Added Love Receipt tables, private media metadata, expanded receipt moods, and the nullable `receipt_rating` column through forward-compatible startup migrations.
@@ -38,6 +42,6 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 - Kept Love Receipt table creation and list ordering compatible with MySQL and MariaDB.
 
-[Unreleased]: https://github.com/ahappymosquito/love_book/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/ahappymosquito/love_book/compare/v0.2.3...v0.3.0
+[Unreleased]: https://github.com/ahappymosquito/love_book/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/ahappymosquito/love_book/compare/v0.2.3...v0.4.0
 [0.2.3]: https://github.com/ahappymosquito/love_book/releases/tag/v0.2.3

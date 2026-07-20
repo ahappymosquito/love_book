@@ -13,10 +13,15 @@ env:
   REGISTRY: ghcr.io
   DEFAULT_API_BASE: /api
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   verify:
     name: release gate
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -50,6 +55,7 @@ jobs:
   prep:
     name: image metadata
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     needs: verify
     outputs:
       image_owner: ${{ steps.names.outputs.owner }}
@@ -72,8 +78,9 @@ jobs:
           echo "repo=${repo,,}" >> "$GITHUB_OUTPUT"
 
   backend:
-    name: publish · backend
+    name: publish backend
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     needs: prep
     steps:
       - uses: actions/checkout@v4
@@ -114,8 +121,9 @@ jobs:
           cache-to: type=gha,scope=backend,mode=max
 
   frontend:
-    name: publish · frontend
+    name: publish frontend
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     needs: prep
     steps:
       - uses: actions/checkout@v4
@@ -153,3 +161,32 @@ jobs:
           build-args: NEXT_PUBLIC_API_BASE=${{ env.DEFAULT_API_BASE }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,scope=frontend,mode=max
+
+  release:
+    name: publish GitHub Release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    needs: [prep, backend, frontend]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Render release notes from Changelog
+        run: python scripts/version.py notes --tag "$GITHUB_REF_NAME" > release-notes.md
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prep.outputs.version }}
+        shell: bash
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --title "Love Book ${VERSION}" --notes-file release-notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" --verify-tag --title "Love Book ${VERSION}" --notes-file release-notes.md
+          fi
