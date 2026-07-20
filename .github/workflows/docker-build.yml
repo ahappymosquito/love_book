@@ -1,203 +1,155 @@
-name: docker-build
+name: release-images
 
-# Release builds run only for stable semantic-version tags such as v0.2.3.
-# Branch pushes, pull requests, and manual dispatches do not build or publish images.
+# Stable semantic-version tags are the only event allowed to publish images.
 on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+"]
 
-
 permissions:
   contents: read
-  packages: write          # 推送到 GHCR 需要
-  id-token: write          # 预留：未来如果切到 OIDC 登录 Docker Hub / AWS ECR
+  packages: write
 
 env:
   REGISTRY: ghcr.io
-  # GHCR 要求镜像 namespace 全小写，这里通过下面的 prep 步骤统一转换
-  # 前端 build args 默认值；仓库变量可覆盖
-  DEFAULT_API_BASE: "/api"
-  DEFAULT_APP_URL: "https://db.example.com"
+  DEFAULT_API_BASE: /api
 
 jobs:
-  # ─────────────────────────────────────────────────────────────────────────
-  # 公共预处理：把 owner / repo 转小写，并标记版本发布推送
-  prep:
-    name: prep
+  verify:
+    name: release gate
     runs-on: ubuntu-24.04
-    outputs:
-      image_owner: ${{ steps.lower.outputs.owner }}
-      image_repo:  ${{ steps.lower.outputs.repo }}
-      push:        ${{ steps.gate.outputs.push }}
     steps:
-      - name: 小写化 owner / repo
-        id: lower
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Poetry
+        run: pipx install poetry==2.2.1
+
+      - name: Match tag to the canonical version
+        run: python scripts/version.py check --tag "$GITHUB_REF_NAME"
+
+      - name: Install and test locked backend
+        run: |
+          poetry sync --no-root --no-interaction
+          poetry run python -m pytest -q --basetemp=.pytest-tmp/release
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install and build locked frontend
+        working-directory: web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+  prep:
+    name: image metadata
+    runs-on: ubuntu-24.04
+    needs: verify
+    outputs:
+      image_owner: ${{ steps.names.outputs.owner }}
+      image_repo: ${{ steps.names.outputs.repo }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read canonical version
+        id: version
+        shell: bash
+        run: echo "version=$(tr -d '\r\n' < VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Normalize image names
+        id: names
+        shell: bash
         run: |
           echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
-          REPO="${GITHUB_REPOSITORY##*/}"
-          echo "repo=${REPO,,}" >> "$GITHUB_OUTPUT"
+          repo="${GITHUB_REPOSITORY##*/}"
+          echo "repo=${repo,,}" >> "$GITHUB_OUTPUT"
 
-      - name: 标记版本发布
-        id: gate
-        run: |
-          echo "push=true" >> "$GITHUB_OUTPUT"
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # 后端镜像
   backend:
-    name: build · backend
+    name: publish · backend
     runs-on: ubuntu-24.04
     needs: prep
     steps:
       - uses: actions/checkout@v4
-
-      - name: 设置 QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: 设置 Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: 登录 GHCR
-        if: needs.prep.outputs.push == 'true'
-        uses: docker/login-action@v3
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 计算镜像标签
+      - name: Compute immutable tags and labels
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ needs.prep.outputs.image_owner }}/${{ needs.prep.outputs.image_repo }}-backend
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=short
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ needs.prep.outputs.version }}
+            type=sha,prefix=sha-,format=short
           labels: |
             org.opencontainers.image.title=love-book-backend
-            org.opencontainers.image.description=FastAPI 后端（我们之间的小事）
-            org.opencontainers.image.vendor=db.example.com
+            org.opencontainers.image.description=FastAPI backend for Love Book
+            org.opencontainers.image.version=${{ needs.prep.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: 构建并推送后端镜像
+      - name: Build and publish backend
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64
-          push: ${{ needs.prep.outputs.push == 'true' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_GIT_SHA=${{ github.sha }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=max
 
-      - name: 摘要
-        if: always()
-        run: |
-          {
-            echo "### backend"
-            echo ""
-            echo "- push: \`${{ needs.prep.outputs.push }}\`"
-            echo "- tags:"
-            echo '```'
-            echo "${{ steps.meta.outputs.tags }}"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # 前端镜像（NEXT_PUBLIC_* 在 build 阶段被烘焙）
   frontend:
-    name: build · frontend
+    name: publish · frontend
     runs-on: ubuntu-24.04
     needs: prep
     steps:
       - uses: actions/checkout@v4
-
-      - name: 整理 build args
-        id: vars
-        # 优先级：仓库变量 vars.* > 默认值
-        env:
-          VARS_API_BASE: ${{ vars.NEXT_PUBLIC_API_BASE }}
-          VARS_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
-        run: |
-          set -e
-          if [[ -n "$VARS_API_BASE" ]]; then
-            API_BASE="$VARS_API_BASE"
-          else
-            API_BASE="${{ env.DEFAULT_API_BASE }}"
-          fi
-
-          if [[ -n "$VARS_APP_URL" ]]; then
-            APP_URL="$VARS_APP_URL"
-          else
-            APP_URL="${{ env.DEFAULT_APP_URL }}"
-          fi
-
-          echo "api_base=${API_BASE}" >> "$GITHUB_OUTPUT"
-          echo "app_url=${APP_URL}"   >> "$GITHUB_OUTPUT"
-          echo "::notice ::frontend build args -> NEXT_PUBLIC_API_BASE=${API_BASE}, NEXT_PUBLIC_APP_URL=${APP_URL}"
-
-      - name: 设置 QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: 设置 Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: 登录 GHCR
-        if: needs.prep.outputs.push == 'true'
-        uses: docker/login-action@v3
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 计算镜像标签
+      - name: Compute immutable tags and labels
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ needs.prep.outputs.image_owner }}/${{ needs.prep.outputs.image_repo }}-frontend
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=short
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ needs.prep.outputs.version }}
+            type=sha,prefix=sha-,format=short
           labels: |
             org.opencontainers.image.title=love-book-frontend
-            org.opencontainers.image.description=Next.js 前端（我们之间的小事）
-            org.opencontainers.image.vendor=db.example.com
+            org.opencontainers.image.description=Next.js frontend for Love Book
+            org.opencontainers.image.version=${{ needs.prep.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: 构建并推送前端镜像
+      - name: Build and publish frontend
         uses: docker/build-push-action@v6
         with:
           context: ./web
           file: ./web/Dockerfile
           platforms: linux/amd64
-          push: ${{ needs.prep.outputs.push == 'true' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            NEXT_PUBLIC_API_BASE=${{ steps.vars.outputs.api_base }}
-            NEXT_PUBLIC_APP_URL=${{ steps.vars.outputs.app_url }}
+          build-args: NEXT_PUBLIC_API_BASE=${{ env.DEFAULT_API_BASE }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,scope=frontend,mode=max
-
-      - name: 摘要
-        if: always()
-        run: |
-          {
-            echo "### frontend"
-            echo ""
-            echo "- push: \`${{ needs.prep.outputs.push }}\`"
-            echo "- build args:"
-            echo "  - NEXT_PUBLIC_API_BASE=\`${{ steps.vars.outputs.api_base }}\`"
-            echo "  - NEXT_PUBLIC_APP_URL=\`${{ steps.vars.outputs.app_url }}\`"
-            echo "- tags:"
-            echo '```'
-            echo "${{ steps.meta.outputs.tags }}"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"

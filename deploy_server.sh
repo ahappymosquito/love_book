@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Server one-click deployment script for the prebuilt GHCR images.
-# It renders .env, Caddyfile, and docker-compose.yml on the target server,
-# then pulls images and starts backend, frontend, and Caddy.
+# Version-pinned server deployment for matching prebuilt frontend/backend GHCR images.
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 PROJECT_DIR="${PROJECT_DIR:-/opt/love_book}"
 PROJECT_NAME="${PROJECT_NAME:-love-book}"
 
-BACKEND_IMAGE="${BACKEND_IMAGE:-ghcr.io/ahappymosquito/love_book-backend:latest}"
-FRONTEND_IMAGE="${FRONTEND_IMAGE:-ghcr.io/ahappymosquito/love_book-frontend:latest}"
+LOVE_BOOK_VERSION="${LOVE_BOOK_VERSION:-}"
+BACKEND_IMAGE="${BACKEND_IMAGE:-}"
+FRONTEND_IMAGE="${FRONTEND_IMAGE:-}"
 CADDY_IMAGE="${CADDY_IMAGE:-caddy:2-alpine}"
 
 APP_DOMAIN="${APP_DOMAIN:-qrqto.club}"
@@ -51,7 +51,7 @@ fail() { printf "%s[FAIL]%s %s\n" "${RED}" "${RESET}" "$*" >&2; exit 1; }
 usage() {
     cat <<'EOF'
 Usage:
-  ADMIN_KEY=... DATABASE_URL=... MYSQL_PASSWORD=... SMTP_PASS=... ./deploy_server.sh up
+  LOVE_BOOK_VERSION=0.3.0 ADMIN_KEY=... DATABASE_URL=... ./deploy_server.sh up
   ./deploy_server.sh --env-file ./server.env up
   ./deploy_server.sh status
   ./deploy_server.sh logs [service]
@@ -65,7 +65,20 @@ Commands:
   status    Show service status
   logs      Follow logs, optionally for a service name
   config    Render and print the merged Compose config
+
+The frontend and backend default to the same immutable LOVE_BOOK_VERSION.
+BACKEND_IMAGE / FRONTEND_IMAGE may override them with an explicit tag or digest.
 EOF
+}
+
+resolve_release_images() {
+    if [[ -z "${LOVE_BOOK_VERSION}" && -f "${SCRIPT_DIR}/VERSION" ]]; then
+        LOVE_BOOK_VERSION="$(tr -d '\r\n' < "${SCRIPT_DIR}/VERSION")"
+    fi
+    [[ "${LOVE_BOOK_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+        || fail "LOVE_BOOK_VERSION must be X.Y.Z or readable from ${SCRIPT_DIR}/VERSION"
+    BACKEND_IMAGE="${BACKEND_IMAGE:-ghcr.io/ahappymosquito/love_book-backend:${LOVE_BOOK_VERSION}}"
+    FRONTEND_IMAGE="${FRONTEND_IMAGE:-ghcr.io/ahappymosquito/love_book-frontend:${LOVE_BOOK_VERSION}}"
 }
 
 load_optional_env_file() {
@@ -273,7 +286,10 @@ cmd_up() {
     compose pull
     compose up -d --remove-orphans
     compose ps
-    ok "Deployment started: ${APP_WEB_URL}"
+    compose images
+    ok "Deployment ${LOVE_BOOK_VERSION} started: ${APP_WEB_URL}"
+    compose exec -T backend curl -fsS http://127.0.0.1:8000/health || warn "Backend health identity is not ready yet"
+    printf "\n"
 }
 
 cmd_init() {
@@ -300,6 +316,9 @@ cmd_down() {
 cmd_status() {
     require_commands
     compose ps
+    compose images
+    compose exec -T backend curl -fsS http://127.0.0.1:8000/health || warn "Backend health identity is unavailable"
+    printf "\n"
 }
 
 cmd_logs() {
@@ -314,6 +333,7 @@ cmd_config() {
 }
 
 load_optional_env_file "$@"
+resolve_release_images
 
 case "${COMMAND}" in
     init) cmd_init ;;

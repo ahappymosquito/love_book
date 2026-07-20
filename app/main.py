@@ -1,4 +1,4 @@
-"""FastAPI application factory registering product routes and a resilient daily habit-reminder loop."""
+"""FastAPI factory exposing build identity, product routes, and a resilient habit-reminder loop."""
 
 from collections.abc import AsyncGenerator
 import asyncio
@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import admin, admin_auth, auth, contents, cycles, events, habits, love_receipts, meeting_sessions, quotes, todos, users
 from app.core.database import SessionLocal, init_db
 from app.habits import reminder_target_date, scan_habit_reminders, seconds_until_next_reminder
+from app.version import APP_GIT_SHA, APP_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Pair Events API", version="0.2.4", lifespan=lifespan)
+    app = FastAPI(title="Pair Events API", version=APP_VERSION, lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -47,6 +48,11 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.get("/health", tags=["system"])
+    def health() -> dict[str, str]:
+        """Expose the exact application version and immutable source revision."""
+        return {"status": "ok", "version": APP_VERSION, "git_sha": APP_GIT_SHA}
 
     app.include_router(admin_auth.router)
     app.include_router(admin.router)

@@ -18,7 +18,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: love-book/backend:latest
+    image: love-book/backend:dev
     container_name: love-book-backend
     restart: unless-stopped
     env_file:
@@ -45,7 +45,7 @@ services:
       args:
         # 生产环境通过 Caddy 同源反代 /api，管理端入口链接运行时读取浏览器 origin。
         NEXT_PUBLIC_API_BASE: /api
-    image: love-book/frontend:latest
+    image: love-book/frontend:dev
     container_name: love-book-frontend
     restart: unless-stopped
     environment:

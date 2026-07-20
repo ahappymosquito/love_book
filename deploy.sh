@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# love-book 一键部署脚本（适用于 Ubuntu 24.04 等 Linux）
+# Love Book local source-build deployment with locked dependencies and version checks.
 # 用法：
 #   ./deploy.sh check     仅做打包前检查，不部署
 #   ./deploy.sh build     构建镜像
@@ -44,8 +44,12 @@ preflight() {
     info "===== 打包前检查 ====="
 
     command -v docker >/dev/null 2>&1 || fail "未安装 docker"
+    command -v python3 >/dev/null 2>&1 || fail "未安装 python3，无法校验应用版本"
     ok "docker: $(docker --version)"
     ok "compose 命令: ${COMPOSE}"
+
+    python3 scripts/version.py check || fail "应用版本不一致，请先运行 python scripts/version.py sync"
+    ok "应用版本：$(tr -d '\r\n' < VERSION)"
 
     [[ -f .env ]] || fail "缺少 .env，请复制 .env.example 修改后再部署"
     ok ".env 存在"
@@ -89,7 +93,9 @@ preflight() {
         web/Dockerfile
         docker-compose.yml
         deploy/caddy/Caddyfile
-        requirements.txt
+        VERSION
+        pyproject.toml
+        poetry.lock
         web/package.json
     )
     for f in "${files[@]}"; do

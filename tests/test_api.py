@@ -21,6 +21,7 @@ import app.habits as habits
 import app.main as main_app
 import app.services as services
 from app.core.config import get_settings
+from app.version import APP_VERSION
 from app.models import AISetting, CycleDailyLog, CyclePhase, DefaultQuote, DeviceToken, Event, HabitReminderRun, HabitTask, Image as DBImage, LoveReceipt, MeetingSession, TodoImage
 from app.storage import media_path
 from tests.conftest import auth
@@ -37,6 +38,13 @@ def sample_png_bytes() -> bytes:
     image = PILImage.new("RGB", (40, 28), color=(220, 80, 120))
     image.save(output, format="PNG")
     return output.getvalue()
+
+
+def test_health_exposes_version_and_source_revision(client: TestClient) -> None:
+    health = client.get("/health")
+
+    assert health.status_code == 200
+    assert health.json() == {"status": "ok", "version": APP_VERSION, "git_sha": "development"}
 
 
 def test_love_receipt_photo_flow_is_pair_private_and_creates_timeline_memory(

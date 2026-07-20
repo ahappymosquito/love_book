@@ -1,4 +1,4 @@
-# Backend runtime image for the FastAPI API; Node/npx runs the AMap MCP server.
+# Backend runtime image using Poetry's lock file; Node/npx runs the AMap MCP server.
 
 FROM ubuntu:24.04
 
@@ -11,6 +11,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Shanghai \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
+
+ARG APP_GIT_SHA=development
+ENV APP_GIT_SHA=${APP_GIT_SHA}
 
 RUN set -eux; \
     apt-get update; \
@@ -41,16 +44,22 @@ RUN set -eux; \
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --break-system-packages --no-cache-dir -r requirements.txt
+RUN pip install --break-system-packages --no-cache-dir poetry==2.2.1 \
+    && poetry config virtualenvs.create false
 
+COPY pyproject.toml poetry.lock ./
+RUN poetry sync --only main --no-root --no-interaction \
+    && pip uninstall --break-system-packages -y poetry poetry-core \
+    && rm -rf /root/.cache/pypoetry
+
+COPY VERSION ./VERSION
 COPY app ./app
 COPY scripts ./scripts
 
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:8000/docs >/dev/null || exit 1
+    CMD curl -fsS http://127.0.0.1:8000/health >/dev/null || exit 1
 
 CMD ["python3", "-m", "uvicorn", "app.main:app", \
      "--host", "0.0.0.0", "--port", "8000", \

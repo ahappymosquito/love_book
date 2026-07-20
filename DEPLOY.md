@@ -11,15 +11,16 @@
 
 ## 镜像构建与版本标签
 
-本项目在自己的 Git 仓库内独立维护语义化版本，`0.2.3` 是当前确认的迭代基线。GitHub Actions 只接受完整稳定版标签 `vX.Y.Z`，例如 `v0.2.3`。
+本项目由根目录 `VERSION` 统一维护前后端语义化版本。GitHub Actions 只接受与该文件一致的完整稳定版标签 `vX.Y.Z`，例如 `v0.3.0`。
 
 - 普通分支 push、pull request 和手动 dispatch 都不会构建或推送镜像。
 - 本地创建标签不会触发远程构建；只有显式推送匹配标签时才会触发。
-- 标签应指向已经通过测试、且应用清单版本与标签一致的提交。
+- 标签应指向已经通过测试、且 `VERSION`、前端清单和 Changelog 均一致的提交。
 
 ```powershell
-git tag -a v0.2.3 -m "love_book 0.2.3"
-git push origin v0.2.3
+python scripts/version.py check --tag v0.3.0
+git tag -a v0.3.0 -m "love_book 0.3.0"
+git push origin v0.3.0
 ```
 
 未经当次明确授权，不推送标签或镜像。
@@ -44,7 +45,7 @@ git push origin v0.2.3
 
 当前生产入口以 `deploy/caddy/Caddyfile` 和 `docker-compose.yml` 中的 `caddy` 服务为准。
 
-如果服务器不在本机构建镜像，而是直接使用 `ghcr.io/ahappymosquito/love_book-backend:latest` 和 `ghcr.io/ahappymosquito/love_book-frontend:latest`，使用根目录的 `deploy_server.sh`。它会在服务器部署目录生成 `.env`、`Caddyfile`、`docker-compose.yml`，并拉取镜像启动服务。
+服务器直接使用预构建镜像时，通过 `LOVE_BOOK_VERSION=0.3.0 ./deploy_server.sh up` 固定拉取同版本前后端。脚本会在服务器部署目录生成 `.env`、`Caddyfile`、`docker-compose.yml`；不得使用 `latest`。备份、验证与回滚步骤见 [`VERSIONING.md`](VERSIONING.md)。
 
 ## 2. 前置条件
 

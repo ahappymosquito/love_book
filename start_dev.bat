@@ -2,11 +2,10 @@
 REM File overview:
 REM This script is the local one-click development entrypoint for Love Book.
 REM Default behavior starts the backend and frontend directly.
-REM Pass --install to install backend and frontend dependencies before startup.
+REM Pass --install to install locked Poetry and npm dependencies before startup.
 
 setlocal EnableExtensions
 set "ROOT=%~dp0"
-set "PYTHON_CMD=python"
 set "INSTALL_DEPS=0"
 
 if /I "%~1"=="--install" (
@@ -19,14 +18,10 @@ if /I "%~1"=="--install" (
     goto :help
 )
 
-where python >nul 2>nul
+where poetry >nul 2>nul
 if errorlevel 1 (
-    where py >nul 2>nul
-    if errorlevel 1 (
-        echo [ERROR] Python was not found in PATH.
-        exit /b 1
-    )
-    set "PYTHON_CMD=py"
+    echo [ERROR] Poetry was not found in PATH. Install Poetry 2.2 or newer first.
+    exit /b 1
 )
 
 where npm >nul 2>nul
@@ -37,15 +32,18 @@ if errorlevel 1 (
 
 if "%INSTALL_DEPS%"=="1" (
     echo Installing backend dependencies...
-    call "%PYTHON_CMD%" -m pip install -r "%ROOT%requirements.txt"
+    pushd "%ROOT%" >nul
+    call poetry sync --no-root --no-interaction
     if errorlevel 1 (
+        popd >nul
         echo [ERROR] Backend dependency installation failed.
         exit /b 1
     )
+    popd >nul
 
     echo Installing frontend dependencies...
     pushd "%ROOT%web" >nul
-    call npm install
+    call npm ci --no-audit --no-fund
     if errorlevel 1 (
         popd >nul
         echo [ERROR] Frontend dependency installation failed.
@@ -59,7 +57,7 @@ echo Backend:  http://127.0.0.1:8000
 echo Frontend: http://localhost:3000
 echo.
 
-start "Love Book Backend" /D "%ROOT%" cmd /k "%PYTHON_CMD% -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload"
+start "Love Book Backend" /D "%ROOT%" cmd /k "poetry run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload"
 start "Love Book Frontend" /D "%ROOT%web" cmd /k "npm run dev"
 exit /b 0
 
