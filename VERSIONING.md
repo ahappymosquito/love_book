@@ -58,21 +58,13 @@ curl -fsS https://qrqto.club/api/health
 
 ## 发布前备份
 
-每次包含数据库变化的发布都要先备份数据库和 `love_book_media`。备份文件放在服务器受保护目录，不提交仓库。
+每次包含数据库变化的发布都要先备份数据库和 `love_book_media`。生产统一使用 [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md) 中的已校验恢复点格式，备份文件放在服务器受保护目录，不提交仓库。
 
 ```bash
-# MySQL 示例，连接参数从服务器安全配置读取，不把密码写入命令历史
-mysqldump --single-transaction --routines --triggers \
-  -h DB_HOST -u DB_USER -p DB_NAME > backups/love_book-before-0.4.1.sql
-
-# named volume 媒体备份
-docker run --rm \
-  -v love_book_media:/source:ro \
-  -v "$PWD/backups:/backup" \
-  alpine:3.22 tar -czf /backup/love_book_media-before-0.4.1.tar.gz -C /source .
+/home/ts3/bin/love-book-backup pre-release
 ```
 
-确认两个备份非空并可读取后再部署。当前启动迁移只允许向前兼容地增加或扩展结构，不在启动时删除业务表、旧媒体或旧字段。
+脚本会动态解析后端 `/app/media` 的真实 volume 名，打包 MySQL、媒体和生产 `.env`，并验证 gzip、tar、MySQL 完成标记和 SHA-256。确认恢复点包含 `SUCCESS` 后再部署。当前启动迁移只允许向前兼容地增加或扩展结构，不在启动时删除业务表、旧媒体或旧字段。
 
 ## 回滚
 
@@ -82,7 +74,7 @@ docker run --rm \
 LOVE_BOOK_VERSION=0.2.3 ./deploy_server.sh up
 ```
 
-先回滚镜像并验证 `/api/health`。只有旧应用确实无法读取新数据库时，才在停服后恢复对应发布前的数据库和媒体备份，避免把新数据静默覆盖。
+先回滚镜像并验证 `/api/health`。只有旧应用确实无法读取新数据库时，才按 [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md) 在临时数据库和临时 volume 演练成功后恢复生产，避免把新数据静默覆盖。
 
 ## 依赖更新
 

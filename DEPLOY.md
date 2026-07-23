@@ -186,7 +186,7 @@ python scripts/migrate_images_to_media.py
 python scripts/migrate_images_to_media.py --clear-blobs --compact
 ```
 
-迁移服务器时必须同时备份数据库和 `love_book_media` volume，否则新图片文件会丢失。
+迁移服务器时必须同时备份数据库和 `love_book_media` volume，否则新图片文件会丢失。生产每周备份、Windows 手工拉取、季度恢复演练和正式恢复步骤统一见 [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md)。
 
 语音能力已经移除。已有部署中的 `voices` 表和 `MEDIA_ROOT/voices` 文件会作为不可达备份保留，升级过程不会自动删除；如需清理，必须先备份数据库和 `love_book_media` volume，再由运维显式处理。
 
@@ -209,6 +209,9 @@ python scripts/migrate_images_to_media.py --clear-blobs --compact
 | --- | --- |
 | Docker 编排 | `docker-compose.yml` |
 | 图片媒体与旧媒体备份 volume | `docker-compose.yml` 的 `love_book_media:/app/media` |
+| 备份与恢复手册 | `BACKUP_RESTORE.md` |
+| 服务器备份工具 | `scripts/love_book_backup.sh` / `scripts/setup_love_book_backup.sh` |
+| Windows 拉取与恢复校验 | `scripts/pull_love_book_backup.ps1` / `scripts/verify_backup_restore.py` |
 | 历史图片迁移 | `scripts/migrate_images_to_media.py` |
 | Caddy HTTPS 与反代 | `deploy/caddy/Caddyfile` |
 | 本机构建部署脚本 | `deploy.sh` / `deploy.bat` |
