@@ -95,7 +95,7 @@ tail -n 100 /home/ts3/backups/love_book/backup.log
 /home/ts3/bin/love-book-backup emergency
 ```
 
-脚本通过 `love-book-backend` 的 `/app/media` 挂载动态获取真实 volume 名，也从 Compose label 获取生产 `.env`，不会假设 volume 的项目名前缀。
+脚本通过 Compose 的 `project=love-book`、`service=backend` 标签自动发现 backend，再从其 `/app/media` 挂载动态获取真实 volume 名，并从 Compose label 获取生产 `.env`；不会依赖 `love-book-backend` 或 `love-book-backend-1` 等易变化的容器名，也不会假设 volume 的项目名前缀。特殊部署可通过 `LOVE_BOOK_BACKEND_CONTAINER` 显式覆盖。
 
 每个成功恢复点包含：
 

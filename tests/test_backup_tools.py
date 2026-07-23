@@ -10,6 +10,17 @@ from app.models import Image, LoveReceiptImage, LoveReceiptImageKind, TodoImage,
 from scripts.verify_backup_restore import resolve_media_path, verify_restore
 
 
+def test_backup_script_discovers_backend_by_compose_labels() -> None:
+    script = (Path(__file__).resolve().parents[1] / "scripts" / "love_book_backup.sh").read_text(encoding="utf-8")
+
+    assert 'COMPOSE_PROJECT="${LOVE_BOOK_COMPOSE_PROJECT:-love-book}"' in script
+    assert 'COMPOSE_SERVICE="${LOVE_BOOK_COMPOSE_SERVICE:-backend}"' in script
+    assert '--filter "label=com.docker.compose.project=${COMPOSE_PROJECT}"' in script
+    assert '--filter "label=com.docker.compose.service=${COMPOSE_SERVICE}"' in script
+    assert "docker ps -a" in script
+    assert "LOVE_BOOK_BACKEND_CONTAINER:-love-book-backend" not in script
+
+
 def test_resolve_media_path_rejects_escape(tmp_path: Path) -> None:
     media_root = tmp_path / "media"
     media_root.mkdir()

@@ -13,7 +13,9 @@ case "${BACKUP_KIND}" in
 esac
 
 BACKUP_ROOT="${LOVE_BOOK_BACKUP_ROOT:-${HOME}/backups/love_book}"
-BACKEND_CONTAINER="${LOVE_BOOK_BACKEND_CONTAINER:-love-book-backend}"
+BACKEND_CONTAINER="${LOVE_BOOK_BACKEND_CONTAINER:-}"
+COMPOSE_PROJECT="${LOVE_BOOK_COMPOSE_PROJECT:-love-book}"
+COMPOSE_SERVICE="${LOVE_BOOK_COMPOSE_SERVICE:-backend}"
 MYSQL_DEFAULTS_FILE="${LOVE_BOOK_MYSQL_DEFAULTS_FILE:-${HOME}/.my.cnf}"
 MYSQL_DATABASE="${LOVE_BOOK_MYSQL_DATABASE:-love_book}"
 ARCHIVE_IMAGE="${LOVE_BOOK_ARCHIVE_IMAGE:-alpine:3.22}"
@@ -62,6 +64,18 @@ chmod 700 -- "${BACKUP_ROOT}"
 
 exec 9>"${BACKUP_ROOT}/.backup.lock"
 flock -n 9 || fail "Another Love Book backup is already running"
+
+if [[ -z "${BACKEND_CONTAINER}" ]]; then
+    mapfile -t backend_candidates < <(
+        docker ps -a \
+            --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" \
+            --filter "label=com.docker.compose.service=${COMPOSE_SERVICE}" \
+            --format '{{.Names}}'
+    )
+    (( ${#backend_candidates[@]} == 1 )) \
+        || fail "Expected one ${COMPOSE_PROJECT}/${COMPOSE_SERVICE} container, found ${#backend_candidates[@]}; set LOVE_BOOK_BACKEND_CONTAINER explicitly"
+    BACKEND_CONTAINER="${backend_candidates[0]}"
+fi
 
 docker inspect "${BACKEND_CONTAINER}" >/dev/null 2>&1 \
     || fail "Backend container not found: ${BACKEND_CONTAINER}"
