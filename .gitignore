@@ -12,6 +12,7 @@ pytest-cache-files-*/
 .idea
 .qoder
 .codegraph/
+.codex/
 .playwright-cli/
 output/
 release/
