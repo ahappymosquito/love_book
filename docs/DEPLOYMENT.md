@@ -1,4 +1,4 @@
-# 我们之间的小事 · 部署文档
+# Love Book 部署
 
 本仓库支持 Docker Compose 一键部署：后端、前端和 Caddy 三个容器共同运行。公网入口由 Caddy 暴露 80/443，并为 `qrqto.club`、`www.qrqto.club` 自动申请和续期 HTTPS 证书。
 
@@ -11,16 +11,16 @@
 
 ## 镜像构建与版本标签
 
-本项目由根目录 `VERSION` 统一维护前后端语义化版本。GitHub Actions 只接受与该文件一致的完整稳定版标签 `vX.Y.Z`，例如 `v0.4.1`。
+本项目由根目录 `VERSION` 统一维护前后端语义化版本。GitHub Actions 只接受与该文件一致的完整稳定版标签 `vX.Y.Z`，例如 `v0.5.0`。
 
 - 普通分支 push、pull request 和手动 dispatch 都不会构建或推送镜像。
 - 本地创建标签不会触发远程构建；只有显式推送匹配标签时才会触发。
 - 标签应指向已经通过测试、且 `VERSION`、前端清单和 Changelog 均一致的提交。
 
 ```powershell
-python scripts/version.py check --tag v0.4.1
-git tag -a v0.4.1 -m "Love Book 0.4.1"
-git push origin v0.4.1
+python scripts/version.py check --tag v0.5.0
+git tag -a v0.5.0 -m "Love Book 0.5.0"
+git push origin v0.5.0
 ```
 
 未经当次明确授权，不推送标签或镜像。
@@ -45,7 +45,7 @@ git push origin v0.4.1
 
 当前生产入口以 `deploy/caddy/Caddyfile` 和 `docker-compose.yml` 中的 `caddy` 服务为准。
 
-服务器直接使用预构建镜像时，通过 `LOVE_BOOK_VERSION=0.4.1 ./deploy_server.sh up` 固定拉取同版本前后端。脚本会在服务器部署目录生成 `.env`、`Caddyfile`、`docker-compose.yml`；不得使用 `latest`。备份、验证与回滚步骤见 [`VERSIONING.md`](VERSIONING.md)。
+服务器直接使用预构建镜像时，通过 `LOVE_BOOK_VERSION=0.5.0 ./deploy_server.sh up` 固定拉取同版本前后端。脚本会在服务器部署目录生成 `.env`、`Caddyfile`、`docker-compose.yml`；不得使用 `latest`。备份、验证与回滚步骤见 [`VERSIONING.md`](VERSIONING.md)。
 
 ## 2. 前置条件
 

@@ -93,7 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("show", help="print the canonical version")
     subparsers.add_parser("sync", help="write VERSION into frontend manifests")
     check = subparsers.add_parser("check", help="verify all manifests and an optional release tag")
-    check.add_argument("--tag", help="release tag to compare with VERSION, for example v0.4.1")
+    check.add_argument("--tag", help="release tag to compare with VERSION, for example v0.5.0")
     notes = subparsers.add_parser("notes", help="print release notes from the matching Changelog section")
     notes.add_argument("--tag", required=True, help="release tag to compare with VERSION")
     return parser

@@ -16,6 +16,26 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 - No pending schema changes.
 
+## [0.5.0] - 2026-07-27
+
+### Added
+
+- Added a validated production backup and recovery workflow covering MySQL, media, environment configuration, Windows retrieval, integrity checks, and quarterly restore drills.
+
+### Changed
+
+- Reorganized development, deployment, API, product, design, and audit documentation under `docs/`.
+- Rewrote the root README as a human-oriented product, setup, documentation, and release-history entry point.
+- Removed obsolete empty notes and regenerated local test, build, log, and QA artifacts from the working directory.
+
+### Fixed
+
+- Made the production backup script discover the backend container through Docker Compose labels instead of relying on a fixed project-generated container name.
+
+### Database
+
+- No schema changes.
+
 ## [0.4.1] - 2026-07-20
 
 ### Fixed
@@ -52,7 +72,8 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 - Kept Love Receipt table creation and list ordering compatible with MySQL and MariaDB.
 
-[Unreleased]: https://github.com/ahappymosquito/love_book/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/ahappymosquito/love_book/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/ahappymosquito/love_book/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/ahappymosquito/love_book/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/ahappymosquito/love_book/compare/v0.2.3...v0.4.0
 [0.2.3]: https://github.com/ahappymosquito/love_book/releases/tag/v0.2.3
