@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home with queued quotes, gift-shaped love-receipt entry, restrained transitions, meeting ranges, and reminders.
+// Timeline home with queued quotes, received-gift styling, restrained transitions, meeting ranges, and reminders.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -14,6 +14,7 @@ import {
   Droplet,
   Gift,
   Plus,
+  Star,
 } from "lucide-react";
 import { AuthGate } from "@/components/auth-gate";
 import { Avatar } from "@/components/avatar";
@@ -135,7 +136,6 @@ function TimelineInner() {
   const [events, setEvents] = useState<EventSummary[] | null>(null);
   const [meetingSessions, setMeetingSessions] = useState<MeetingSessionOut[]>([]);
   const [anniversary, setAnniversary] = useState<AnniversaryOut | null>(null);
-  const [pendingReceiptCount, setPendingReceiptCount] = useState(0);
   const [quoteRefreshing, setQuoteRefreshing] = useState(false);
   const quoteQueueRef = useRef<string[]>([]);
   const quoteBatchPromiseRef = useRef<Promise<string[]> | null>(null);
@@ -255,7 +255,7 @@ function TimelineInner() {
   }, [events]);
 
   const meetingEvents = useMemo(
-    () => (events ?? []).filter((event) => event.event_kind === "offline_meeting"),
+    () => (events ?? []).filter((event) => event.meeting_session_id !== null || event.event_kind === "offline_meeting"),
     [events],
   );
 
@@ -315,14 +315,12 @@ function TimelineInner() {
 
   async function load() {
     try {
-      const [loadedEvents, loadedMeetingSessions, receiptSummary] = await Promise.all([
+      const [loadedEvents, loadedMeetingSessions] = await Promise.all([
         api.listEvents(),
         api.listMeetingSessions().catch(() => []),
-        api.listLoveReceipts({ view: "pending", pageSize: 1, silent: true }).catch(() => null),
       ]);
       setEvents(loadedEvents);
       setMeetingSessions(loadedMeetingSessions);
-      setPendingReceiptCount(receiptSummary?.pending_count ?? 0);
     } catch {
       setEvents([]);
       setMeetingSessions([]);
@@ -387,15 +385,7 @@ function TimelineInner() {
 
   return (
     <div className="viewport-guard min-h-dvh w-full">
-      <AppHeader
-        mode="compact"
-        rightSlot={
-          <Link href="/love-receipts" className="relative grid h-10 w-10 place-items-center rounded-full text-ink-soft transition hover:bg-rose/8 hover:text-rose-deep focus-ring" aria-label={pendingReceiptCount ? `爱的回执，有 ${pendingReceiptCount} 份待回应` : "进入爱的回执"}>
-            <Gift className="h-5 w-5" />
-            {pendingReceiptCount > 0 && <span className="absolute right-0 top-0 grid min-h-4 min-w-4 place-items-center rounded-full bg-rose px-1 font-sc text-[9px] font-semibold leading-none text-white">{pendingReceiptCount > 9 ? "9+" : pendingReceiptCount}</span>}
-          </Link>
-        }
-      />
+      <AppHeader mode="compact" />
 
       <main className="mx-auto w-full max-w-5xl min-w-0 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+7.6rem)] pt-5 sm:px-6 sm:pt-6">
         <HomeHero
@@ -675,10 +665,11 @@ function MeetingRiverEvent({ event }: { event: EventSummary }) {
   const me = useAppStore((state) => state.me)!;
   const author = event.creator_id === me.user.id ? me.user : me.counterpart;
   const eventTime = event.occurred_at ?? event.created_at;
+  const isGift = event.event_kind === "gift_received";
 
   return (
     <Link href={`/timeline/${event.id}`} className="group block rounded-2xl focus-ring">
-      <article className="meeting-river-event px-4 py-4 sm:px-5">
+      <article className={cn("meeting-river-event px-4 py-4 sm:px-5", isGift && "meeting-river-event-gift")}>
         <div className="flex items-start gap-3">
           <Avatar user={author} size="md" />
           <div className="min-w-0 flex-1">
@@ -697,6 +688,7 @@ function MeetingRiverEvent({ event }: { event: EventSummary }) {
             )}
             <div className="mt-3 flex flex-wrap gap-2">
               <MeetingBadge />
+              {isGift && <GiftBadge rating={event.gift_rating} />}
               <VisibilityBadge mode={event.visibility_mode} />
               <SubmissionBadge state={event.submission_state} mode={event.visibility_mode} />
             </div>
@@ -739,6 +731,16 @@ function MeetingBadge() {
     <span className="pill inline-flex items-center gap-1 bg-rose/10 text-rose-deep">
       <CalendarHeart className="h-3.5 w-3.5" />
       线下见面
+    </span>
+  );
+}
+
+function GiftBadge({ rating }: { rating: number | null }) {
+  return (
+    <span className="pill inline-flex items-center gap-1 bg-peach/24 text-ink">
+      <Gift className="h-3.5 w-3.5 text-peach-deep" />
+      收礼
+      {rating && <><Star className="ml-0.5 h-3 w-3 fill-peach-deep text-peach-deep" />{rating}</>}
     </span>
   );
 }
@@ -798,11 +800,12 @@ function MonthEventGroup({
 function EventRow({ event }: { event: EventSummary }) {
   const me = useAppStore((state) => state.me)!;
   const author = event.creator_id === me.user.id ? me.user : me.counterpart;
-  const isMeeting = event.event_kind === "offline_meeting";
+  const isMeeting = event.meeting_session_id !== null || event.event_kind === "offline_meeting";
+  const isGift = event.event_kind === "gift_received";
 
   return (
     <Link href={`/timeline/${event.id}`} className="group block rounded-2xl focus-ring">
-      <article className={cn("timeline-event-row px-5 py-4 sm:px-6", isMeeting && "timeline-event-row-meeting")}>
+      <article className={cn("timeline-event-row px-5 py-4 sm:px-6", isMeeting && "timeline-event-row-meeting", isGift && "timeline-event-row-gift")}>
         <div className="flex items-start gap-3">
           <Avatar user={author} size="md" />
           <div className="min-w-0 flex-1">
@@ -824,6 +827,7 @@ function EventRow({ event }: { event: EventSummary }) {
 
             <div className="mt-3 flex flex-wrap gap-2">
               {isMeeting && <MeetingBadge />}
+              {isGift && <GiftBadge rating={event.gift_rating} />}
               {isMeeting && event.meeting_session && (
                 <span className="pill inline-flex items-center gap-1 bg-peach/22 text-ink-soft">
                   {event.meeting_session.title}

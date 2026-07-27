@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair timelines, rated love receipts, private media, plans, habits, profiles, and admin settings."""
+"""SQLAlchemy models for pair timelines, received gifts, legacy receipts, private media, plans, habits, profiles, and admin settings."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -35,6 +35,7 @@ class VisibilityMode(StrEnum):
 class EventKind(StrEnum):
     memory = "memory"
     offline_meeting = "offline_meeting"
+    gift_received = "gift_received"
 
 
 class LoveReceiptType(StrEnum):
@@ -193,6 +194,7 @@ class Event(Base):
     event_kind: Mapped[EventKind] = mapped_column(
         Enum(EventKind), default=EventKind.memory, nullable=False, server_default=EventKind.memory.value, index=True
     )
+    gift_rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     visibility_mode: Mapped[VisibilityMode] = mapped_column(
         Enum(VisibilityMode), default=VisibilityMode.public, nullable=False
     )
@@ -246,6 +248,7 @@ class LoveReceipt(Base):
     timeline_event_id: Mapped[int | None] = mapped_column(
         ForeignKey("events.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    timeline_migrated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
@@ -575,6 +578,7 @@ class Image(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), nullable=False, index=True)
     author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    legacy_love_receipt_image_id: Mapped[int | None] = mapped_column(Integer, nullable=True, unique=True)
     # Legacy disk-path column kept as an empty placeholder for old schemas and old rows.
     file_path: Mapped[str] = mapped_column(String(500), nullable=False, default="", server_default="")
     # New image uploads store bytes in MEDIA_ROOT and keep only relative keys in these columns.

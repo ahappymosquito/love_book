@@ -872,6 +872,18 @@
       rgb(255 255 255 / 0.36);
   }
 
+  .timeline-event-row-gift {
+    background:
+      linear-gradient(90deg, rgb(var(--peach) / 0.2), transparent 64%),
+      rgb(var(--surface-raised) / 0.42);
+  }
+
+  .timeline-event-row-gift:hover {
+    background:
+      linear-gradient(90deg, rgb(var(--peach) / 0.28), transparent 68%),
+      rgb(255 255 255 / 0.38);
+  }
+
   .meeting-river-shell {
     position: relative;
     background:
@@ -933,6 +945,13 @@
     box-shadow:
       0 1px 0 rgb(255 255 255 / 0.82) inset,
       0 16px 30px -24px rgb(var(--rose-deep) / 0.5);
+  }
+
+  .meeting-river-event-gift {
+    border-color: rgb(var(--peach-deep) / 0.24);
+    background:
+      radial-gradient(circle at 20% 0%, rgb(255 255 255 / 0.76), transparent 38%),
+      linear-gradient(135deg, rgb(var(--peach) / 0.24), rgb(var(--surface-raised) / 0.88) 58%, rgb(var(--sage) / 0.08));
   }
 
   .inline-puppy-shell {

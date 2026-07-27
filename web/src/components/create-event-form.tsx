@@ -1,6 +1,6 @@
 "use client";
 
-// Shared event form for the direct page and global Sheet, with automatic meeting creation, solid content sections, and a Liquid Glass action bar.
+// Shared form for a preselected ordinary memory or meeting, with solid content sections and a Liquid Glass action bar.
 
 import { useState } from "react";
 import { CalendarHeart, Eye, Loader2, Lock, Sparkles } from "lucide-react";
@@ -12,15 +12,16 @@ import { cn } from "@/lib/cn";
 
 export function CreateEventForm({
   onCreated,
+  eventKind,
   className,
 }: {
   onCreated: (event: EventDetail) => void;
+  eventKind: Extract<EventKind, "memory" | "offline_meeting">;
   className?: string;
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [occurredAt, setOccurredAt] = useState<string>(toLocalInputValue(new Date()));
-  const [eventKind, setEventKind] = useState<EventKind>("memory");
   const [visibility, setVisibility] = useState<VisibilityMode>("public");
   const [submitting, setSubmitting] = useState(false);
 
@@ -46,8 +47,12 @@ export function CreateEventForm({
   return (
     <form onSubmit={onSubmit} className={cn("space-y-4", className)}>
       <div className="pb-2">
-        <p className="mb-1 font-sc text-xs font-semibold text-rose-deep">写进今天的小贴纸</p>
-        <h1 className="font-display text-2xl font-bold leading-tight text-ink">记下这一笔</h1>
+        <p className="mb-1 font-sc text-xs font-semibold text-rose-deep">
+          {eventKind === "offline_meeting" ? "把见面的日子放进时间河流" : "写进今天的小贴纸"}
+        </p>
+        <h1 className="font-display text-2xl font-bold leading-tight text-ink">
+          {eventKind === "offline_meeting" ? "记一次见面" : "记一件小事"}
+        </h1>
         <p className="mt-2 font-sc text-sm leading-relaxed text-ink-soft">
           标题先写清楚，细节可以慢慢补，像在手账上贴一页。
         </p>
@@ -75,26 +80,6 @@ export function CreateEventForm({
           onChange={(e) => setDescription(e.target.value)}
           maxLength={2000}
         />
-      </div>
-
-      <div className="form-section space-y-2">
-        <Label>记录类型</Label>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <RecordKindCard
-            active={eventKind === "memory"}
-            onClick={() => setEventKind("memory")}
-            icon={<Sparkles className="h-4 w-4" />}
-            title="小事"
-            desc="日常、想法和照片都放在这里。"
-          />
-          <RecordKindCard
-            active={eventKind === "offline_meeting"}
-            onClick={() => setEventKind("offline_meeting")}
-            icon={<CalendarHeart className="h-4 w-4" />}
-            title="线下见面"
-            desc="保存后会自动收进一次同名见面，之后也能继续添加记录。"
-          />
-        </div>
       </div>
 
       <div className="form-section space-y-2">
@@ -148,40 +133,6 @@ function Label({ children, icon }: { children: React.ReactNode; icon?: React.Rea
       {icon}
       {children}
     </label>
-  );
-}
-
-function RecordKindCard({
-  active,
-  onClick,
-  icon,
-  title,
-  desc,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  title: string;
-  desc: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "rounded-2xl p-4 text-left transition focus-ring hairline",
-        active ? "bg-rose/10 ring-2 ring-rose/35" : "bg-surface-raised/85 hover:bg-peach/14",
-      )}
-    >
-      <div className="flex items-center gap-2 font-sc text-sm font-medium text-ink">
-        <span className={cn("grid h-7 w-7 place-items-center rounded-full", active ? "bg-rose text-white" : "bg-peach/24 text-rose-deep")}>
-          {icon}
-        </span>
-        {title}
-      </div>
-      <p className="mt-2 font-sc text-xs leading-relaxed text-ink-soft">{desc}</p>
-    </button>
   );
 }
 

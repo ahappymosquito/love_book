@@ -1,20 +1,47 @@
-"""Event routes for CRUD, meeting classification, notifications, and safe detachment of love-receipt memory links.
+"""Event routes for CRUD, atomic received-gift creation, meeting classification, notifications, and legacy receipt links.
 
 Mutation endpoints commit before returning so the frontend can immediately reload the new or changed event.
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
+from datetime import datetime
+
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Response, UploadFile, status
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_pair_for_user
+from app.core.config import get_settings
 from app.core.database import delete_legacy_voice_rows, get_db
 from app.emailer import notify_event_created
-from app.models import Event, EventKind, LoveReceipt, User, utc_now
+from app.media import MediaProcessingError, make_image_thumbnail
+from app.models import Event, EventKind, Image, LoveReceipt, User, VisibilityMode, utc_now
 from app.schemas import EventCreate, EventDetail, EventSummary, EventUpdate
 from app.services import active_token_for_user, counterpart, ensure_pair_event, ensure_pair_meeting_session, event_detail, event_summary, find_meeting_for_date, get_or_create_single_day_meeting, meeting_date_for_values
+from app.storage import MediaStorageError, build_image_storage_keys, delete_media_file, write_media_file
 
 router = APIRouter(prefix="/events", tags=["events"])
+
+
+def _queue_event_notification(
+    background: BackgroundTasks,
+    *,
+    db: Session,
+    event: Event,
+    current_user: User,
+    other: User,
+    content_unlocked: bool,
+) -> None:
+    background.add_task(
+        notify_event_created,
+        recipient_email=other.email,
+        recipient_name=other.display_name,
+        recipient_token=active_token_for_user(db, other.id),
+        actor_name=current_user.display_name,
+        event_id=event.id,
+        event_title=event.title,
+        event_description=event.description,
+        content_unlocked=content_unlocked,
+    )
 
 
 @router.post("", response_model=EventDetail, status_code=status.HTTP_201_CREATED)
@@ -25,6 +52,8 @@ def create_event(
     db: Session = Depends(get_db),
 ) -> EventDetail:
     pair = get_pair_for_user(db, current_user.id)
+    if payload.gift_rating is not None and payload.event_kind != EventKind.gift_received:
+        raise HTTPException(status_code=422, detail="Only received-gift events can have a rating")
     if payload.meeting_session_id is not None:
         ensure_pair_meeting_session(db, payload.meeting_session_id, pair)
     explicitly_offline = payload.event_kind == EventKind.offline_meeting or payload.meeting_session_id is not None
@@ -40,7 +69,11 @@ def create_event(
             event_date,
         )
     meeting_session_id = meeting_session.id if meeting_session is not None else None
-    event_kind = EventKind.offline_meeting if meeting_session is not None else EventKind.memory
+    event_kind = (
+        EventKind.gift_received
+        if payload.event_kind == EventKind.gift_received
+        else EventKind.offline_meeting if meeting_session is not None else EventKind.memory
+    )
     event = Event(
         pair_id=pair.id,
         creator_id=current_user.id,
@@ -49,6 +82,7 @@ def create_event(
         description=payload.description,
         occurred_at=payload.occurred_at,
         event_kind=event_kind,
+        gift_rating=payload.gift_rating,
         visibility_mode=payload.visibility_mode,
         created_at=created_at,
     )
@@ -56,20 +90,130 @@ def create_event(
     db.flush()
     db.refresh(event)
     other = counterpart(pair, current_user)
-    recipient_token = active_token_for_user(db, other.id)
     db.commit()
     db.refresh(event)
     detail = event_detail(db, event, current_user, pair)
-    background.add_task(
-        notify_event_created,
-        recipient_email=other.email,
-        recipient_name=other.display_name,
-        recipient_token=recipient_token,
-        actor_name=current_user.display_name,
-        event_id=event.id,
-        event_title=event.title,
-        event_description=event.description,
+    _queue_event_notification(
+        background,
+        db=db,
+        event=event,
+        current_user=current_user,
+        other=other,
         content_unlocked=detail.submission_state.unlocked,
+    )
+    return detail
+
+
+@router.post("/gifts", response_model=EventDetail, status_code=status.HTTP_201_CREATED)
+def create_received_gift(
+    background: BackgroundTasks,
+    title: str = Form(...),
+    feeling: str = Form(default=""),
+    occurred_at: datetime | None = Form(default=None),
+    rating: int | None = Form(default=None, ge=1, le=5),
+    files: list[UploadFile] = File(default=[]),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EventDetail:
+    """Create a received-gift event and up to six private images as one committed operation."""
+    clean_title = title.strip()
+    clean_feeling = feeling.strip()
+    if not clean_title or len(clean_title) > 200:
+        raise HTTPException(status_code=422, detail="Gift title must contain 1 to 200 characters")
+    if len(clean_feeling) > 2000:
+        raise HTTPException(status_code=422, detail="Gift feeling must be at most 2000 characters")
+    if len(files) > 6:
+        raise HTTPException(status_code=422, detail="A received gift supports at most 6 images")
+
+    pair = get_pair_for_user(db, current_user.id)
+    settings = get_settings()
+    created_at = utc_now()
+    event_date = meeting_date_for_values(occurred_at, created_at)
+    meeting = find_meeting_for_date(db, pair.id, event_date)
+    event = Event(
+        pair_id=pair.id,
+        creator_id=current_user.id,
+        meeting_session_id=meeting.id if meeting else None,
+        title=clean_title,
+        description=clean_feeling or None,
+        occurred_at=occurred_at,
+        event_kind=EventKind.gift_received,
+        gift_rating=rating,
+        visibility_mode=VisibilityMode.public,
+        created_at=created_at,
+    )
+    written_keys: list[str] = []
+    try:
+        db.add(event)
+        db.flush()
+        for upload in files:
+            content_type = (upload.content_type or "").split(";", 1)[0].strip().lower()
+            if content_type not in settings.allowed_image_mime_types:
+                raise HTTPException(status_code=415, detail="Unsupported image mime type")
+            body = upload.file.read(settings.max_image_bytes + 1)
+            if len(body) > settings.max_image_bytes:
+                raise HTTPException(status_code=413, detail="Image file is too large")
+            try:
+                thumb = make_image_thumbnail(body)
+            except MediaProcessingError as exc:
+                raise HTTPException(status_code=422, detail=f"Image thumbnail could not be generated: {exc}") from exc
+            storage_key, thumb_key = build_image_storage_keys(pair.id, event.id, content_type)
+            write_media_file(storage_key, body)
+            written_keys.append(storage_key)
+            write_media_file(thumb_key, thumb)
+            written_keys.append(thumb_key)
+            db.add(
+                Image(
+                    event_id=event.id,
+                    author_id=current_user.id,
+                    file_path="",
+                    storage_key=storage_key,
+                    thumb_storage_key=thumb_key,
+                    storage_backend=settings.media_storage,
+                    data=None,
+                    thumb_data=None,
+                    thumb_mime_type="image/jpeg",
+                    thumb_size_bytes=len(thumb),
+                    mime_type=content_type,
+                    size_bytes=len(body),
+                )
+            )
+        other = counterpart(pair, current_user)
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        for key in written_keys:
+            try:
+                delete_media_file(key)
+            except (MediaStorageError, OSError):
+                pass
+        raise
+    except (MediaStorageError, OSError) as exc:
+        db.rollback()
+        for key in written_keys:
+            try:
+                delete_media_file(key)
+            except (MediaStorageError, OSError):
+                pass
+        raise HTTPException(status_code=500, detail=f"Gift image could not be saved: {exc}") from exc
+    except Exception:
+        db.rollback()
+        for key in written_keys:
+            try:
+                delete_media_file(key)
+            except (MediaStorageError, OSError):
+                pass
+        raise
+
+    db.refresh(event)
+    detail = event_detail(db, event, current_user, pair)
+    _queue_event_notification(
+        background,
+        db=db,
+        event=event,
+        current_user=current_user,
+        other=other,
+        content_unlocked=True,
     )
     return detail
 
@@ -106,10 +250,16 @@ def update_event(
     if event.creator_id != current_user.id and not classification_update_only:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the creator can update this event")
 
+    is_gift = event.event_kind == EventKind.gift_received
+    if updates.get("event_kind") == EventKind.gift_received:
+        is_gift = True
+    if "gift_rating" in updates and updates["gift_rating"] is not None and not is_gift:
+        raise HTTPException(status_code=422, detail="Only received-gift events can have a rating")
+
     if "meeting_session_id" in updates:
         if updates["meeting_session_id"] is not None:
             ensure_pair_meeting_session(db, updates["meeting_session_id"], pair)
-            updates["event_kind"] = EventKind.offline_meeting
+            updates["event_kind"] = EventKind.gift_received if is_gift else EventKind.offline_meeting
 
     explicitly_offline = (
         updates.get("event_kind") == EventKind.offline_meeting
@@ -129,10 +279,10 @@ def update_event(
             event_date,
         )
     if meeting_session is not None:
-        updates["event_kind"] = EventKind.offline_meeting
+        updates["event_kind"] = EventKind.gift_received if is_gift else EventKind.offline_meeting
         updates["meeting_session_id"] = meeting_session.id
     else:
-        updates["event_kind"] = EventKind.memory
+        updates["event_kind"] = EventKind.gift_received if is_gift else EventKind.memory
         updates["meeting_session_id"] = None
 
     for field, value in updates.items():

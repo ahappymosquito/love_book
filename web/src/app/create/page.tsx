@@ -1,11 +1,11 @@
 "use client";
 
-// Direct-link event creation page reusing the shared grouped form inside a readable solid content surface and mobile-safe viewport.
+// Direct-link creation page reusing the shared three-type chooser and forms inside a readable solid surface.
 
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { AuthGate } from "@/components/auth-gate";
-import { CreateEventForm } from "@/components/create-event-form";
+import { CreateFlow } from "@/components/create-flow";
 import { TimelineHeader } from "@/components/timeline-header";
 
 export default function CreatePage() {
@@ -28,7 +28,7 @@ function CreateInner() {
           animate={{ opacity: 1, y: 0 }}
           className="content-surface p-5 sm:p-6"
         >
-          <CreateEventForm onCreated={(event) => router.replace(`/timeline/${event.id}`)} />
+          <CreateFlow onCreated={(event) => router.replace(`/timeline/${event.id}`)} />
         </motion.div>
       </div>
     </div>

@@ -1,8 +1,8 @@
-"""Database setup, lightweight schema migrations, and retired-voice-table compatibility cleanup."""
+"""Database setup, lightweight schema/data migrations, and retired-feature compatibility cleanup."""
 
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -46,7 +46,7 @@ def delete_legacy_voice_rows(db: Session, event_id: int) -> None:
         db.execute(text("DELETE FROM voices WHERE event_id = :event_id"), {"event_id": event_id})
 
 
-# Lightweight column-existence migration for environments without Alembic, including love-receipt ratings and rich AMap evidence.
+# Lightweight column-existence migration for environments without Alembic, including received-gift metadata and rich AMap evidence.
 # Each entry: (table, column_name, {dialect_name: "<DDL fragment>"}).
 # "default" is used as a fallback when the dialect-specific fragment is missing.
 _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
@@ -128,6 +128,15 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         {"default": "INTEGER NULL", "mysql": "TINYINT NULL", "mariadb": "TINYINT NULL"},
     ),
     (
+        "love_receipts",
+        "timeline_migrated_at",
+        {
+            "default": "TIMESTAMP WITH TIME ZONE NULL",
+            "mysql": "DATETIME NULL",
+            "mariadb": "DATETIME NULL",
+        },
+    ),
+    (
         "pairs",
         "love_started_on",
         {"default": "DATE NULL"},
@@ -141,6 +150,11 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         "events",
         "meeting_session_id",
         {"default": "INTEGER NULL", "mysql": "INT NULL", "mariadb": "INT NULL"},
+    ),
+    (
+        "events",
+        "gift_rating",
+        {"default": "INTEGER NULL", "mysql": "TINYINT NULL", "mariadb": "TINYINT NULL"},
     ),
     # Legacy image BLOB columns stay readable while new uploads use storage keys.
     (
@@ -185,6 +199,11 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         "images",
         "storage_backend",
         {"default": "VARCHAR(50) NOT NULL DEFAULT 'local'"},
+    ),
+    (
+        "images",
+        "legacy_love_receipt_image_id",
+        {"default": "INTEGER NULL", "mysql": "INT NULL", "mariadb": "INT NULL"},
     ),
     (
         "ai_settings",
@@ -256,6 +275,15 @@ def _love_receipt_mood_enum_migration_sql(dialect_name: str) -> list[str]:
     return [f"ALTER TABLE love_receipts MODIFY receipt_mood ENUM({values}) NULL"]
 
 
+def _event_kind_enum_migration_sql(dialect_name: str) -> list[str]:
+    if dialect_name not in {"mysql", "mariadb"}:
+        return []
+    return [
+        "ALTER TABLE events MODIFY event_kind "
+        "ENUM('memory','offline_meeting','gift_received') NOT NULL DEFAULT 'memory'"
+    ]
+
+
 def _ensure_columns(target_engine: Engine) -> None:
     inspector = inspect(target_engine)
     existing_tables = set(inspector.get_table_names())
@@ -296,6 +324,167 @@ def _ensure_love_receipt_mood_enum(target_engine: Engine) -> None:
     with target_engine.begin() as connection:
         for ddl_statement in ddl_statements:
             connection.execute(text(ddl_statement))
+
+
+def _ensure_received_gift_schema(target_engine: Engine) -> None:
+    existing_tables = set(inspect(target_engine).get_table_names())
+    if "events" not in existing_tables:
+        return
+    with target_engine.begin() as connection:
+        for ddl_statement in _event_kind_enum_migration_sql(target_engine.dialect.name):
+            connection.execute(text(ddl_statement))
+    if "images" not in existing_tables:
+        return
+    image_inspector = inspect(target_engine)
+    image_indexes = {index["name"] for index in image_inspector.get_indexes("images")}
+    image_unique_columns = {
+        tuple(constraint.get("column_names") or [])
+        for constraint in image_inspector.get_unique_constraints("images")
+    }
+    if (
+        "uq_images_legacy_love_receipt_image_id" not in image_indexes
+        and ("legacy_love_receipt_image_id",) not in image_unique_columns
+    ):
+        with target_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX uq_images_legacy_love_receipt_image_id "
+                    "ON images (legacy_love_receipt_image_id)"
+                )
+            )
+
+
+def _migrate_love_receipts_to_events(db: Session) -> None:
+    """Convert every legacy receipt and its media into an idempotent received-gift event."""
+    import logging
+
+    from app.media import MediaProcessingError, make_image_thumbnail
+    from app.models import Event, EventKind, Image, LoveReceipt, VisibilityMode, utc_now
+    from app.services import find_meeting_for_date, meeting_date_for_values
+    from app.storage import (
+        MediaStorageError,
+        build_image_storage_keys,
+        read_media_file,
+        write_media_file,
+    )
+
+    mood_labels = {
+        "happy": "开心",
+        "surprised": "惊喜",
+        "touched": "感动",
+        "reassured": "安心",
+        "cherished": "被珍惜",
+        "hug": "想抱抱",
+        "disappointed": "失望",
+        "wronged": "委屈",
+        "pressured": "有压力",
+        "not_my_style": "不太合心意",
+        "upset": "难过",
+        "complicated": "心情复杂",
+    }
+    logger = logging.getLogger(__name__)
+    receipts = db.execute(select(LoveReceipt).order_by(LoveReceipt.created_at, LoveReceipt.id)).scalars().all()
+    for receipt in receipts:
+        if receipt.timeline_event_id is None and receipt.timeline_migrated_at is not None:
+            continue
+        occurred_at = (
+            receipt.completed_at
+            or receipt.received_at
+            or receipt.delivered_at
+            or receipt.expected_arrival_at
+            or receipt.created_at
+        )
+        parts: list[str] = []
+        response = (receipt.receipt_content or "").strip()
+        message = (receipt.message or "").strip()
+        if response:
+            parts.append(response)
+        if message and message != response:
+            parts.append(f"送礼时的话：{message}")
+        if receipt.receipt_mood is not None:
+            mood_value = receipt.receipt_mood.value
+            parts.append(f"当时的感受：{mood_labels.get(mood_value, mood_value)}")
+        description = "\n\n".join(parts) or None
+
+        event = db.get(Event, receipt.timeline_event_id) if receipt.timeline_event_id else None
+        event_date = meeting_date_for_values(occurred_at, receipt.created_at)
+        meeting = find_meeting_for_date(db, receipt.pair_id, event_date)
+        if event is None:
+            event = Event(
+                pair_id=receipt.pair_id,
+                creator_id=receipt.receiver_id,
+                meeting_session_id=meeting.id if meeting else None,
+                title=receipt.title,
+                description=description,
+                occurred_at=occurred_at,
+                event_kind=EventKind.gift_received,
+                gift_rating=receipt.receipt_rating,
+                visibility_mode=VisibilityMode.public,
+                created_at=receipt.created_at,
+            )
+            db.add(event)
+            db.flush()
+            receipt.timeline_event_id = event.id
+        else:
+            event.creator_id = receipt.receiver_id
+            event.title = receipt.title
+            event.description = description
+            event.occurred_at = occurred_at
+            event.event_kind = EventKind.gift_received
+            event.gift_rating = receipt.receipt_rating
+            event.visibility_mode = VisibilityMode.public
+            event.meeting_session_id = meeting.id if meeting else None
+        receipt.timeline_migrated_at = receipt.timeline_migrated_at or utc_now()
+
+        for legacy_image in receipt.images:
+            copied = db.execute(
+                select(Image).where(Image.legacy_love_receipt_image_id == legacy_image.id)
+            ).scalar_one_or_none()
+            if copied is not None:
+                continue
+            try:
+                original = read_media_file(legacy_image.storage_key)
+                thumbnail = read_media_file(legacy_image.thumb_storage_key)
+            except MediaStorageError as exc:
+                logger.warning("Could not read legacy love-receipt image %s: %s", legacy_image.id, exc)
+                continue
+            if original is None:
+                logger.warning("Legacy love-receipt image %s is missing; event migration continues", legacy_image.id)
+                continue
+            if thumbnail is None:
+                try:
+                    thumbnail = make_image_thumbnail(original)
+                except MediaProcessingError as exc:
+                    logger.warning("Could not rebuild thumbnail for legacy love-receipt image %s: %s", legacy_image.id, exc)
+                    continue
+            storage_key, thumb_key = build_image_storage_keys(receipt.pair_id, event.id, legacy_image.mime_type)
+            try:
+                write_media_file(storage_key, original)
+                write_media_file(thumb_key, thumbnail)
+            except (MediaStorageError, OSError) as exc:
+                logger.warning("Could not copy legacy love-receipt image %s: %s", legacy_image.id, exc)
+                continue
+            db.add(
+                Image(
+                    event_id=event.id,
+                    author_id=legacy_image.author_id,
+                    legacy_love_receipt_image_id=legacy_image.id,
+                    file_path="",
+                    storage_key=storage_key,
+                    thumb_storage_key=thumb_key,
+                    storage_backend=legacy_image.storage_backend,
+                    data=None,
+                    thumb_data=None,
+                    thumb_mime_type=legacy_image.thumb_mime_type,
+                    thumb_size_bytes=legacy_image.thumb_size_bytes,
+                    mime_type=legacy_image.mime_type,
+                    size_bytes=legacy_image.size_bytes,
+                    width=legacy_image.width,
+                    height=legacy_image.height,
+                    created_at=legacy_image.created_at,
+                )
+            )
+        db.flush()
 
 
 def _ensure_legacy_meeting_sessions(target_engine: Engine) -> None:
@@ -353,8 +542,10 @@ def init_db() -> None:
     _ensure_columns(engine)
     _ensure_todo_category_enum(engine)
     _ensure_love_receipt_mood_enum(engine)
+    _ensure_received_gift_schema(engine)
     _ensure_legacy_meeting_sessions(engine)
     with SessionLocal() as db:
+        _migrate_love_receipts_to_events(db)
         normalize_meeting_ranges(db)
         ensure_default_quotes(db)
         db.commit()

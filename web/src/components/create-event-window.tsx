@@ -1,11 +1,11 @@
 "use client";
 
-// Global accessible create Sheet with a solid form canvas and Liquid Glass action layer that opens after the bottom navigation lens gathers into the center action.
+// Global create Sheet that opens a three-type chooser after the bottom navigation lens gathers into the center action.
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useReducedMotion } from "framer-motion";
-import { CreateEventForm } from "@/components/create-event-form";
+import { CreateFlow } from "@/components/create-flow";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { useAppStore } from "@/lib/store";
 
@@ -38,13 +38,15 @@ export function CreateEventWindow() {
           className="create-event-window overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1.35rem)] pt-6 sm:px-7 sm:pt-7"
         >
           <SheetTitle className="sr-only">记一笔</SheetTitle>
-          <SheetDescription className="sr-only">创建一条新的共同回忆。</SheetDescription>
-          <CreateEventForm
-            onCreated={(event) => {
-              close();
-              router.push(`/timeline/${event.id}`);
-            }}
-          />
+          <SheetDescription className="sr-only">选择并创建一条新的共同记录。</SheetDescription>
+          {open && (
+            <CreateFlow
+              onCreated={(event) => {
+                close();
+                router.push(`/timeline/${event.id}`);
+              }}
+            />
+          )}
         </SheetContent>
       </SheetBody>
     </Sheet>

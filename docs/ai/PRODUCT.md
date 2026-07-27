@@ -18,7 +18,7 @@ The habits surface is a logged-in daily check-in dashboard: the bottom navigatio
 
 Timeline's relationship quote keeps anniversary or festival copy on first load, then rotates ordinary pair/default quotes instantly from a five-item in-memory queue. The queue refills quietly when two items remain so repeated taps do not wait for network or holiday aggregation.
 
-Love receipts provide a private ritual around gifts, takeout, flowers, drinks, and other gestures without pretending to be an order or logistics product. The sender records and manually advances delivery state; the receiver confirms arrival and, when requested, leaves one to three photos, a short response, an optional one-to-five-star rating, and an honest positive or negative mood. Completion creates a readable memory summary in the shared Timeline, while private receipt photos stay in the dedicated history.
+Received gifts are recorded directly by the receiver as Timeline events. Only the gift name is required; a feeling, an optional one-to-five-star rating, and up to six private event photos can be added without a delivery state machine. A gift received during a meeting keeps its warm gift identity while also belonging to that meeting.
 
 ## Brand Personality
 

@@ -337,7 +337,7 @@ def reconcile_pair_meeting_ranges(db: Session, pair_id: int) -> list[MeetingSess
             db.execute(
                 Event.__table__.update()
                 .where(Event.meeting_session_id == merged.id)
-                .values(meeting_session_id=canonical.id, event_kind=EventKind.offline_meeting)
+                .values(meeting_session_id=canonical.id)
             )
             db.delete(merged)
         canonical_meetings.append(canonical)
@@ -352,10 +352,12 @@ def reconcile_pair_meeting_ranges(db: Session, pair_id: int) -> list[MeetingSess
             None,
         )
         if matching is None:
-            event.event_kind = EventKind.memory
+            if event.event_kind == EventKind.offline_meeting:
+                event.event_kind = EventKind.memory
             event.meeting_session_id = None
         else:
-            event.event_kind = EventKind.offline_meeting
+            if event.event_kind != EventKind.gift_received:
+                event.event_kind = EventKind.offline_meeting
             event.meeting_session_id = matching.id
     db.flush()
     return canonical_meetings
@@ -530,6 +532,7 @@ def event_summary(db: Session, event: Event, user: User, pair: Pair) -> EventSum
         description=event.description,
         occurred_at=event.occurred_at,
         event_kind=event.event_kind,
+        gift_rating=event.gift_rating,
         visibility_mode=event.visibility_mode,
         created_at=event.created_at,
         submission_state=submission_state(db, event, user, pair),

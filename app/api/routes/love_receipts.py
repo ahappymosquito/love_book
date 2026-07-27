@@ -273,6 +273,10 @@ def create_love_receipt(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> LoveReceiptOut:
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Love receipts have moved to received-gift timeline events",
+    )
     clean_title = title.strip()
     clean_message = message.strip()
     if not clean_title or len(clean_title) > 200:
@@ -341,6 +345,10 @@ def update_love_receipt_status(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> LoveReceiptOut:
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Love receipt status updates have been retired",
+    )
     pair = get_pair_for_user(db, current_user.id)
     receipt = _ensure_receipt(db, receipt_id, pair.id)
     if receipt.status == LoveReceiptStatus.completed:
@@ -398,6 +406,10 @@ def submit_love_receipt(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> LoveReceiptOut:
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Love receipt responses have moved to received-gift timeline events",
+    )
     pair = get_pair_for_user(db, current_user.id)
     receipt = _ensure_receipt(db, receipt_id, pair.id)
     if receipt.receiver_id != current_user.id:

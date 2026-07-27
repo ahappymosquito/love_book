@@ -1,4 +1,4 @@
-"""Pydantic contracts for authenticated pair features, including rated love receipts, media, plans, habits, profiles, and admin APIs."""
+"""Pydantic contracts for authenticated pair features, including received gifts, legacy receipts, media, plans, habits, profiles, and admin APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -176,6 +176,7 @@ class EventCreate(APIModel):
     event_kind: EventKind = EventKind.memory
     meeting_session_id: int | None = None
     visibility_mode: VisibilityMode = VisibilityMode.public
+    gift_rating: int | None = Field(default=None, ge=1, le=5)
 
 
 class EventUpdate(APIModel):
@@ -185,6 +186,7 @@ class EventUpdate(APIModel):
     event_kind: EventKind | None = None
     meeting_session_id: int | None = None
     visibility_mode: VisibilityMode | None = None
+    gift_rating: int | None = Field(default=None, ge=1, le=5)
 
 
 class SubmissionState(APIModel):
@@ -254,6 +256,7 @@ class EventSummary(APIModel):
     description: str | None
     occurred_at: datetime | None
     event_kind: EventKind
+    gift_rating: int | None = Field(default=None, ge=1, le=5)
     visibility_mode: VisibilityMode
     created_at: datetime
     submission_state: SubmissionState

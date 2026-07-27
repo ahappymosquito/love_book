@@ -1,6 +1,6 @@
 "use client";
 
-// Event detail screen with restrained optimistic comment and reaction motion, editable metadata, private images, and a mobile-safe composer.
+// Event detail screen for memories, meetings, and received gifts with editable metadata, private images, and a mobile-safe composer.
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -13,8 +13,10 @@ import {
   Trash2,
   CalendarHeart,
   Check,
+  Gift,
   Pencil,
   Sparkles,
+  Star,
   Lock,
   ThumbsDown,
   ThumbsUp,
@@ -97,6 +99,7 @@ function EventDetailInner() {
   const [editDescription, setEditDescription] = useState("");
   const [editOccurredAt, setEditOccurredAt] = useState("");
   const [editVisibility, setEditVisibility] = useState<VisibilityMode>("public");
+  const [editGiftRating, setEditGiftRating] = useState<number | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const reducedMotion = useReducedMotion();
@@ -251,13 +254,13 @@ function EventDetailInner() {
 
   async function handleToggleMeetingKind() {
     if (!event || updatingKind) return;
-    if (event.event_kind === "offline_meeting" && event.meeting_session) {
+    if (event.meeting_session) {
       setMeetingEditorOpen(true);
       return;
     }
     const previous = event;
     setUpdatingKind(true);
-    setEvent({ ...event, event_kind: "offline_meeting" });
+    setEvent({ ...event, event_kind: event.event_kind === "gift_received" ? "gift_received" : "offline_meeting" });
     try {
       const updated = await api.updateEvent(event.id, { event_kind: "offline_meeting" });
       setEvent(updated);
@@ -275,6 +278,7 @@ function EventDetailInner() {
     setEditDescription(event.description ?? "");
     setEditOccurredAt(event.occurred_at ? toLocalInputValue(new Date(event.occurred_at)) : "");
     setEditVisibility(event.visibility_mode);
+    setEditGiftRating(event.gift_rating);
     setEditing(true);
   }
 
@@ -286,7 +290,8 @@ function EventDetailInner() {
         title: editTitle.trim(),
         description: editDescription.trim() || null,
         occurred_at: editOccurredAt ? fromLocalInputValue(editOccurredAt) : null,
-        visibility_mode: editVisibility,
+        visibility_mode: event.event_kind === "gift_received" ? "public" : editVisibility,
+        gift_rating: event.event_kind === "gift_received" ? editGiftRating : undefined,
       });
       setEvent(updated);
       setEditing(false);
@@ -307,7 +312,8 @@ function EventDetailInner() {
 
   const creator = lookupAuthor(event.creator_id);
   const isMine = event.creator_id === me.user.id;
-  const isMeeting = event.event_kind === "offline_meeting";
+  const isMeeting = event.meeting_session_id !== null || event.event_kind === "offline_meeting";
+  const isGift = event.event_kind === "gift_received";
   const submission = event.submission_state;
   const locked = !submission.unlocked && event.visibility_mode === "mutual_submit";
 
@@ -315,7 +321,7 @@ function EventDetailInner() {
     <div className="viewport-guard relative z-[60] min-h-dvh w-full bg-[rgb(var(--cream)/1)] pb-[calc(env(safe-area-inset-bottom,0px)+5.5rem)]">
       <TimelineHeader
         back={{ href: "/timeline" }}
-        title="一笔小事"
+        title={isGift ? "一份收礼" : "一笔小事"}
         rightSlot={
           isMine ? (
             <>
@@ -360,13 +366,19 @@ function EventDetailInner() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.32 }}
-          className="glass-card rounded-3xl p-5 sm:p-6"
+          className={cn("glass-card rounded-3xl p-5 sm:p-6", isGift && "bg-peach/10")}
         >
           <div className="flex items-center gap-2 flex-wrap">
             {isMeeting && (
               <span className="pill inline-flex items-center gap-1.5 bg-rose/10 text-rose-deep">
                 <CalendarHeart className="h-3 w-3" />
                 {event.meeting_session?.title ?? "线下见面"}
+              </span>
+            )}
+            {isGift && (
+              <span className="pill inline-flex items-center gap-1.5 bg-peach/24 text-ink">
+                <Gift className="h-3.5 w-3.5 text-peach-deep" />
+                收礼
               </span>
             )}
             <VisibilityBadge mode={event.visibility_mode} />
@@ -415,6 +427,18 @@ function EventDetailInner() {
                     onChange={(inputEvent) => setEditOccurredAt(inputEvent.target.value)}
                   />
                 </div>
+                {isGift ? (
+                  <fieldset className="space-y-2">
+                    <legend className="font-sc text-xs font-medium text-ink-muted">礼物评分（可选）</legend>
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button key={star} type="button" disabled={savingEdit} onClick={() => setEditGiftRating(editGiftRating === star ? null : star)} aria-label={`${star} 星`} aria-pressed={editGiftRating === star} className="grid h-11 w-11 place-items-center rounded-full text-peach-deep transition hover:bg-peach/18 focus-ring">
+                          <Star className={`h-5 w-5 ${star <= (editGiftRating ?? 0) ? "fill-current" : ""}`} />
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+                ) : (
                 <fieldset className="space-y-2">
                   <legend className="font-sc text-xs font-medium text-ink-muted">可见方式</legend>
                   <div className="grid grid-cols-2 gap-2">
@@ -435,6 +459,7 @@ function EventDetailInner() {
                     ))}
                   </div>
                 </fieldset>
+                )}
               </div>
               <div className="flex flex-wrap justify-end gap-2 border-t border-line/55 pt-4">
                 <button
@@ -466,6 +491,13 @@ function EventDetailInner() {
                 <p className="mt-3 whitespace-pre-wrap font-sc text-[15px] leading-relaxed text-ink-soft">
                   {event.description}
                 </p>
+              )}
+              {isGift && event.gift_rating && (
+                <div className="mt-4 flex items-center gap-1" aria-label={`${event.gift_rating} 星`}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star key={star} className={`h-5 w-5 ${star <= event.gift_rating! ? "fill-peach-deep text-peach-deep" : "text-line"}`} aria-hidden="true" />
+                  ))}
+                </div>
               )}
             </>
           )}

@@ -1,4 +1,4 @@
-"""API regression tests for auth, rated love receipts, reminders, private media, timeline, todo, cycles, AI, and fallbacks."""
+"""API regression tests for auth, received gifts, legacy receipts, reminders, private media, timeline, todo, cycles, AI, and fallbacks."""
 
 import asyncio
 from datetime import date, datetime, timedelta, timezone
@@ -22,8 +22,8 @@ import app.main as main_app
 import app.services as services
 from app.core.config import get_settings
 from app.version import APP_VERSION
-from app.models import AISetting, CycleDailyLog, CyclePhase, DefaultQuote, DeviceToken, Event, HabitReminderRun, HabitTask, Image as DBImage, LoveReceipt, MeetingSession, TodoImage
-from app.storage import media_path
+from app.models import AISetting, CycleDailyLog, CyclePhase, DefaultQuote, DeviceToken, Event, EventKind, HabitReminderRun, HabitTask, Image as DBImage, LoveReceipt, LoveReceiptImage, LoveReceiptImageKind, LoveReceiptStatus, LoveReceiptType, MeetingSession, TodoImage
+from app.storage import media_path, write_media_file
 from tests.conftest import auth
 
 
@@ -47,95 +47,43 @@ def test_health_exposes_version_and_source_revision(client: TestClient) -> None:
     assert health.json() == {"status": "ok", "version": APP_VERSION, "git_sha": "development"}
 
 
-def test_love_receipt_photo_flow_is_pair_private_and_creates_timeline_memory(
+def test_received_gift_is_atomic_pair_private_and_supports_optional_fields(
     client: TestClient, pair_tokens: dict[str, str | int]
 ) -> None:
     token_a = str(pair_tokens["user_a_token"])
     token_b = str(pair_tokens["user_b_token"])
     created = client.post(
-        "/love-receipts",
+        "/events/gifts",
         headers=auth(token_a),
-        data={
-            "receipt_type": "takeout",
-            "title": "忙完后的晚饭",
-            "message": "记得按时吃饭",
-            "require_receipt": "true",
-        },
-        files={"cover": ("cover.png", sample_png_bytes(), "image/png")},
+        data={"title": "下班后收到的一束花", "feeling": "被惦记到了", "rating": "5"},
+        files=[
+            ("files", ("flower.png", sample_png_bytes(), "image/png")),
+            ("files", ("card.png", sample_png_bytes(), "image/png")),
+        ],
     )
     assert created.status_code == 201
-    receipt = created.json()
-    assert receipt["viewer_role"] == "sender"
-    assert receipt["cover"]["kind"] == "cover"
+    event = created.json()
+    assert event["event_kind"] == "gift_received"
+    assert event["gift_rating"] == 5
+    assert event["description"] == "被惦记到了"
+    assert event["visibility_mode"] == "public"
+    assert len(event["contents"]["images"]) == 2
+    image_id = event["contents"]["images"][0]["id"]
+    assert client.get(f"/images/{image_id}/thumb", headers=auth(token_b)).status_code == 200
+    assert client.get(f"/images/{image_id}/file", headers=auth(token_a)).content == sample_png_bytes()
 
-    pending = client.get("/love-receipts?view=pending&page_size=1", headers=auth(token_b)).json()
-    assert pending["pending_count"] == 1
-    assert pending["items"][0]["viewer_role"] == "receiver"
-
-    delivering = client.patch(
-        f"/love-receipts/{receipt['id']}/status",
+    edited = client.patch(
+        f"/events/{event['id']}",
         headers=auth(token_a),
-        json={"status": "delivering"},
+        json={"gift_rating": 4, "description": "很喜欢"},
     )
-    assert delivering.status_code == 200
-    assert delivering.json()["status"] == "delivering"
+    assert edited.status_code == 200
+    assert edited.json()["gift_rating"] == 4
     assert client.patch(
-        f"/love-receipts/{receipt['id']}/status",
+        f"/events/{event['id']}",
         headers=auth(token_b),
-        json={"status": "delivered"},
+        json={"gift_rating": 3},
     ).status_code == 403
-
-    confirmed = client.patch(
-        f"/love-receipts/{receipt['id']}/status",
-        headers=auth(token_b),
-        json={"status": "waiting_receipt"},
-    )
-    assert confirmed.status_code == 200
-    assert confirmed.json()["status"] == "waiting_receipt"
-
-    too_many = client.post(
-        f"/love-receipts/{receipt['id']}/receipt",
-        headers=auth(token_b),
-        data={"content": "收到啦"},
-        files=[("files", (f"photo-{index}.png", sample_png_bytes(), "image/png")) for index in range(4)],
-    )
-    assert too_many.status_code == 422
-
-    invalid_rating = client.post(
-        f"/love-receipts/{receipt['id']}/receipt",
-        headers=auth(token_b),
-        data={"content": "收到啦", "rating": "6"},
-        files=[("files", ("photo.png", sample_png_bytes(), "image/png"))],
-    )
-    assert invalid_rating.status_code == 422
-
-    completed = client.post(
-        f"/love-receipts/{receipt['id']}/receipt",
-        headers=auth(token_b),
-        data={"content": "谢谢你，但这次不太合心意", "mood": "not_my_style", "rating": "2"},
-        files=[("files", ("photo.png", sample_png_bytes(), "image/png"))],
-    )
-    assert completed.status_code == 200
-    result = completed.json()
-    assert result["status"] == "completed"
-    assert result["timeline_event_id"] is not None
-    assert result["receipt_mood"] == "not_my_style"
-    assert result["receipt_rating"] == 2
-    assert len(result["receipt_images"]) == 1
-    image_id = result["receipt_images"][0]["id"]
-    assert client.get(f"/love-receipt-images/{image_id}/thumb", headers=auth(token_a)).status_code == 200
-    assert client.get(f"/love-receipt-images/{image_id}/file", headers=auth(token_b)).content == sample_png_bytes()
-    assert client.post(
-        f"/love-receipts/{receipt['id']}/receipt",
-        headers=auth(token_b),
-        data={"content": "重复"},
-        files=[("files", ("photo.png", sample_png_bytes(), "image/png"))],
-    ).status_code == 409
-    timeline = client.get(f"/events/{result['timeline_event_id']}", headers=auth(token_a)).json()
-    assert timeline["title"] == "爱的回执：忙完后的晚饭"
-    assert "2 颗星" in timeline["description"]
-    assert client.delete(f"/events/{result['timeline_event_id']}", headers=auth(token_b)).status_code == 204
-    assert client.get(f"/love-receipts/{receipt['id']}", headers=auth(token_a)).json()["timeline_event_id"] is None
 
     other_pair = client.post(
         "/admin/pairs",
@@ -143,63 +91,53 @@ def test_love_receipt_photo_flow_is_pair_private_and_creates_timeline_memory(
         json={"user_a_display_name": "C", "user_b_display_name": "D"},
     ).json()
     other_headers = auth(other_pair["user_a_token"])
-    assert client.get(f"/love-receipts/{receipt['id']}", headers=other_headers).status_code == 404
-    assert client.get(f"/love-receipt-images/{image_id}/thumb", headers=other_headers).status_code == 404
+    assert client.get(f"/events/{event['id']}", headers=other_headers).status_code == 404
+    assert client.get(f"/images/{image_id}/thumb", headers=other_headers).status_code == 404
 
 
-def test_love_receipt_without_photo_requirement_completes_on_confirmation(
+def test_received_gift_requires_only_title_and_validates_limits(
     client: TestClient, pair_tokens: dict[str, str | int]
 ) -> None:
-    created = client.post(
-        "/love-receipts",
-        headers=auth(str(pair_tokens["user_a_token"])),
-        data={"receipt_type": "flower", "title": "一束花", "require_receipt": "false"},
-    ).json()
-    completed = client.patch(
-        f"/love-receipts/{created['id']}/status",
-        headers=auth(str(pair_tokens["user_b_token"])),
-        json={"status": "waiting_receipt"},
+    headers = auth(str(pair_tokens["user_a_token"]))
+    minimal = client.post("/events/gifts", headers=headers, data={"title": "一盒糖"})
+    assert minimal.status_code == 201
+    assert minimal.json()["gift_rating"] is None
+    assert minimal.json()["contents"]["images"] == []
+    assert client.post("/events/gifts", headers=headers, data={"title": "一盒糖", "rating": "6"}).status_code == 422
+    too_many = client.post(
+        "/events/gifts",
+        headers=headers,
+        data={"title": "好多照片"},
+        files=[("files", (f"photo-{index}.png", sample_png_bytes(), "image/png")) for index in range(7)],
     )
-    assert completed.status_code == 200
-    assert completed.json()["status"] == "completed"
-    assert completed.json()["timeline_event_id"] is not None
+    assert too_many.status_code == 422
 
 
-def test_love_receipt_notifications_run_after_committed_changes(
-    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+def test_received_gift_keeps_kind_inside_meeting_and_legacy_writes_are_gone(
+    client: TestClient, pair_tokens: dict[str, str | int]
 ) -> None:
-    import app.api.routes.love_receipts as love_receipt_routes
-
-    token_a = str(pair_tokens["user_a_token"])
-    token_b = str(pair_tokens["user_b_token"])
-    client.patch("/auth/me", headers=auth(token_a), json={"email": "sender@example.com"})
-    client.patch("/auth/me", headers=auth(token_b), json={"email": "receiver@example.com"})
-    notifications: list[tuple[str, str]] = []
-    monkeypatch.setattr(
-        love_receipt_routes,
-        "notify_love_receipt_created",
-        lambda **kwargs: notifications.append(("created", kwargs["recipient_email"])) or True,
+    headers = auth(str(pair_tokens["user_a_token"]))
+    client.post(
+        "/meeting-sessions",
+        headers=headers,
+        json={"title": "周末见面", "started_on": "2026-07-20", "ended_on": "2026-07-22"},
     )
-    monkeypatch.setattr(
-        love_receipt_routes,
-        "notify_love_receipt_completed",
-        lambda **kwargs: notifications.append(("completed", kwargs["recipient_email"])) or True,
-    )
-
     created = client.post(
-        "/love-receipts",
-        headers=auth(token_a),
-        data={"receipt_type": "custom", "title": "一个拥抱", "require_receipt": "false"},
+        "/events/gifts",
+        headers=headers,
+        data={"title": "见面时收到的花", "occurred_at": "2026-07-21T12:00:00Z"},
     )
     assert created.status_code == 201
-    assert notifications == [("created", "receiver@example.com")]
-    completed = client.patch(
-        f"/love-receipts/{created.json()['id']}/status",
-        headers=auth(token_b),
-        json={"status": "waiting_receipt"},
+    event = created.json()
+    assert event["event_kind"] == "gift_received"
+    assert event["meeting_session_id"] is not None
+    assert event["meeting_session"]["title"] == "周末见面"
+    retired = client.post(
+        "/love-receipts",
+        headers=headers,
+        data={"receipt_type": "gift", "title": "旧流程"},
     )
-    assert completed.status_code == 200
-    assert notifications[-1] == ("completed", "sender@example.com")
+    assert retired.status_code == 410
 
 
 def test_love_receipt_table_uses_mysql_compatible_text_columns() -> None:
@@ -212,6 +150,70 @@ def test_love_receipt_table_uses_mysql_compatible_text_columns() -> None:
     )
     assert "NULLS LAST" not in query_sql
     assert "love_receipts.completed_at IS NULL" in query_sql
+
+
+def test_legacy_love_receipt_migration_is_idempotent_and_copies_media(
+    client: TestClient,
+    pair_tokens: dict[str, str | int],
+    db_session: Session,
+) -> None:
+    pair_id = int(pair_tokens["pair_id"])
+    sender_id = int(pair_tokens["user_a"]["id"])
+    receiver_id = int(pair_tokens["user_b"]["id"])
+    receipt = LoveReceipt(
+        pair_id=pair_id,
+        sender_id=sender_id,
+        receiver_id=receiver_id,
+        receipt_type=LoveReceiptType.gift,
+        title="旧回执里的一束花",
+        message="路上看到就想送给你",
+        receipt_content="收到时很惊喜",
+        receipt_rating=5,
+        status=LoveReceiptStatus.completed,
+    )
+    db_session.add(receipt)
+    db_session.flush()
+    original_key = f"love-receipts/cover/originals/{pair_id}/{receipt.id}/legacy.png"
+    thumb_key = f"love-receipts/cover/thumbs/{pair_id}/{receipt.id}/legacy.jpg"
+    write_media_file(original_key, sample_png_bytes())
+    write_media_file(thumb_key, sample_png_bytes())
+    legacy_image = LoveReceiptImage(
+        love_receipt_id=receipt.id,
+        author_id=sender_id,
+        kind=LoveReceiptImageKind.cover,
+        sort_order=0,
+        storage_key=original_key,
+        thumb_storage_key=thumb_key,
+        storage_backend="local",
+        mime_type="image/png",
+        size_bytes=len(sample_png_bytes()),
+        thumb_mime_type="image/jpeg",
+        thumb_size_bytes=len(sample_png_bytes()),
+    )
+    db_session.add(legacy_image)
+    db_session.commit()
+
+    database._migrate_love_receipts_to_events(db_session)
+    db_session.commit()
+    db_session.refresh(receipt)
+    migrated = db_session.get(Event, receipt.timeline_event_id)
+    assert migrated is not None
+    assert migrated.creator_id == receiver_id
+    assert migrated.event_kind == EventKind.gift_received
+    assert migrated.gift_rating == 5
+    assert "收到时很惊喜" in (migrated.description or "")
+    copied_images = db_session.execute(
+        select(DBImage).where(DBImage.legacy_love_receipt_image_id == legacy_image.id)
+    ).scalars().all()
+    assert len(copied_images) == 1
+    assert media_path(copied_images[0].storage_key).is_file()
+
+    database._migrate_love_receipts_to_events(db_session)
+    db_session.commit()
+    assert db_session.scalar(select(text("count(*)")).select_from(Event).where(Event.id == migrated.id)) == 1
+    assert db_session.scalar(
+        select(text("count(*)")).select_from(DBImage).where(DBImage.legacy_love_receipt_image_id == legacy_image.id)
+    ) == 1
 
 
 def test_todo_category_enum_migration_sql_targets_mysql_only() -> None:
