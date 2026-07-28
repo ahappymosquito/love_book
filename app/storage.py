@@ -32,6 +32,18 @@ def build_image_storage_keys(pair_id: int, event_id: int, mime_type: str | None)
     )
 
 
+def build_legacy_receipt_event_image_storage_keys(
+    pair_id: int, event_id: int, legacy_image_id: int, mime_type: str | None
+) -> tuple[str, str]:
+    """Return deterministic event-media keys so interrupted legacy copies can be retried safely."""
+    ext = image_extension_for_mime(mime_type)
+    stem = f"legacy-love-receipt-{legacy_image_id}"
+    return (
+        f"images/originals/{pair_id}/{event_id}/{stem}{ext}",
+        f"images/thumbs/{pair_id}/{event_id}/{stem}.jpg",
+    )
+
+
 def build_todo_image_storage_keys(pair_id: int, item_id: int, mime_type: str | None) -> tuple[str, str]:
     stem = uuid4().hex
     ext = image_extension_for_mime(mime_type)

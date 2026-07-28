@@ -2,6 +2,19 @@
 
 export type VisibilityMode = "public" | "mutual_submit";
 export type EventKind = "memory" | "offline_meeting" | "gift_received";
+export type GiftFeeling =
+  | "happy"
+  | "surprised"
+  | "touched"
+  | "reassured"
+  | "cherished"
+  | "hug"
+  | "disappointed"
+  | "wronged"
+  | "pressured"
+  | "not_my_style"
+  | "upset"
+  | "complicated";
 export type TodoCategory = "food" | "play" | "stay" | "wish";
 export type TodoCandidateStatus = "parsing" | "needs_choice" | "ready" | "failed";
 export type TodoParseStatus = "pending" | "resolved" | "failed";
@@ -63,6 +76,9 @@ export interface EventSummary {
   occurred_at: string | null;
   event_kind: EventKind;
   gift_rating: number | null;
+  gift_feelings: GiftFeeling[];
+  preview_image: { id: number; width: number | null; height: number | null } | null;
+  image_count: number;
   visibility_mode: VisibilityMode;
   created_at: string;
   submission_state: SubmissionState;
@@ -91,6 +107,7 @@ export interface ImageOut {
   id: number;
   event_id: number;
   author_id: number;
+  sort_order: number;
   mime_type: string | null;
   size_bytes: number | null;
   width: number | null;

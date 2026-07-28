@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_pair_for_user
@@ -166,9 +166,13 @@ def upload_image(
     except (MediaStorageError, OSError) as exc:
         raise HTTPException(status_code=500, detail=f"Image file could not be saved: {exc}") from exc
 
+    current_max_order = db.scalar(
+        select(func.max(Image.sort_order)).where(Image.event_id == event_id)
+    )
     image = Image(
         event_id=event_id,
         author_id=current_user.id,
+        sort_order=(current_max_order if current_max_order is not None else -1) + 1,
         file_path="",  # 旧列保留占位，新数据不写文件
         storage_key=storage_key,
         thumb_storage_key=thumb_storage_key,

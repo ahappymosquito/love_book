@@ -38,6 +38,21 @@ class EventKind(StrEnum):
     gift_received = "gift_received"
 
 
+class GiftFeeling(StrEnum):
+    happy = "happy"
+    surprised = "surprised"
+    touched = "touched"
+    reassured = "reassured"
+    cherished = "cherished"
+    hug = "hug"
+    disappointed = "disappointed"
+    wronged = "wronged"
+    pressured = "pressured"
+    not_my_style = "not_my_style"
+    upset = "upset"
+    complicated = "complicated"
+
+
 class LoveReceiptType(StrEnum):
     gift = "gift"
     takeout = "takeout"
@@ -195,6 +210,7 @@ class Event(Base):
         Enum(EventKind), default=EventKind.memory, nullable=False, server_default=EventKind.memory.value, index=True
     )
     gift_rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    gift_feelings: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     visibility_mode: Mapped[VisibilityMode] = mapped_column(
         Enum(VisibilityMode), default=VisibilityMode.public, nullable=False
     )
@@ -579,6 +595,7 @@ class Image(Base):
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), nullable=False, index=True)
     author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     legacy_love_receipt_image_id: Mapped[int | None] = mapped_column(Integer, nullable=True, unique=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     # Legacy disk-path column kept as an empty placeholder for old schemas and old rows.
     file_path: Mapped[str] = mapped_column(String(500), nullable=False, default="", server_default="")
     # New image uploads store bytes in MEDIA_ROOT and keep only relative keys in these columns.

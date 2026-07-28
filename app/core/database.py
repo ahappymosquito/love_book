@@ -156,6 +156,11 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         "gift_rating",
         {"default": "INTEGER NULL", "mysql": "TINYINT NULL", "mariadb": "TINYINT NULL"},
     ),
+    (
+        "events",
+        "gift_feelings",
+        {"sqlite": "JSON NULL", "mysql": "JSON NULL", "mariadb": "JSON NULL", "default": "JSON NULL"},
+    ),
     # Legacy image BLOB columns stay readable while new uploads use storage keys.
     (
         "images",
@@ -204,6 +209,11 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         "images",
         "legacy_love_receipt_image_id",
         {"default": "INTEGER NULL", "mysql": "INT NULL", "mariadb": "INT NULL"},
+    ),
+    (
+        "images",
+        "sort_order",
+        {"default": "INTEGER NOT NULL DEFAULT 0", "mysql": "INT NOT NULL DEFAULT 0", "mariadb": "INT NOT NULL DEFAULT 0"},
     ),
     (
         "ai_settings",
@@ -363,28 +373,16 @@ def _migrate_love_receipts_to_events(db: Session) -> None:
     from app.services import find_meeting_for_date, meeting_date_for_values
     from app.storage import (
         MediaStorageError,
-        build_image_storage_keys,
+        build_legacy_receipt_event_image_storage_keys,
+        delete_media_file,
         read_media_file,
         write_media_file,
     )
 
-    mood_labels = {
-        "happy": "开心",
-        "surprised": "惊喜",
-        "touched": "感动",
-        "reassured": "安心",
-        "cherished": "被珍惜",
-        "hug": "想抱抱",
-        "disappointed": "失望",
-        "wronged": "委屈",
-        "pressured": "有压力",
-        "not_my_style": "不太合心意",
-        "upset": "难过",
-        "complicated": "心情复杂",
-    }
     logger = logging.getLogger(__name__)
     receipts = db.execute(select(LoveReceipt).order_by(LoveReceipt.created_at, LoveReceipt.id)).scalars().all()
     for receipt in receipts:
+        receipt_written_keys: list[str] = []
         if receipt.timeline_event_id is None and receipt.timeline_migrated_at is not None:
             continue
         occurred_at = (
@@ -401,10 +399,8 @@ def _migrate_love_receipts_to_events(db: Session) -> None:
             parts.append(response)
         if message and message != response:
             parts.append(f"送礼时的话：{message}")
-        if receipt.receipt_mood is not None:
-            mood_value = receipt.receipt_mood.value
-            parts.append(f"当时的感受：{mood_labels.get(mood_value, mood_value)}")
         description = "\n\n".join(parts) or None
+        gift_feelings = [receipt.receipt_mood.value] if receipt.receipt_mood is not None else []
 
         event = db.get(Event, receipt.timeline_event_id) if receipt.timeline_event_id else None
         event_date = meeting_date_for_values(occurred_at, receipt.created_at)
@@ -419,6 +415,7 @@ def _migrate_love_receipts_to_events(db: Session) -> None:
                 occurred_at=occurred_at,
                 event_kind=EventKind.gift_received,
                 gift_rating=receipt.receipt_rating,
+                gift_feelings=gift_feelings,
                 visibility_mode=VisibilityMode.public,
                 created_at=receipt.created_at,
             )
@@ -432,11 +429,16 @@ def _migrate_love_receipts_to_events(db: Session) -> None:
             event.occurred_at = occurred_at
             event.event_kind = EventKind.gift_received
             event.gift_rating = receipt.receipt_rating
+            event.gift_feelings = gift_feelings
             event.visibility_mode = VisibilityMode.public
             event.meeting_session_id = meeting.id if meeting else None
         receipt.timeline_migrated_at = receipt.timeline_migrated_at or utc_now()
 
-        for legacy_image in receipt.images:
+        ordered_images = sorted(
+            receipt.images,
+            key=lambda image: (0 if image.kind.value == "cover" else 1, image.sort_order, image.id),
+        )
+        for image_order, legacy_image in enumerate(ordered_images):
             copied = db.execute(
                 select(Image).where(Image.legacy_love_receipt_image_id == legacy_image.id)
             ).scalar_one_or_none()
@@ -457,18 +459,33 @@ def _migrate_love_receipts_to_events(db: Session) -> None:
                 except MediaProcessingError as exc:
                     logger.warning("Could not rebuild thumbnail for legacy love-receipt image %s: %s", legacy_image.id, exc)
                     continue
-            storage_key, thumb_key = build_image_storage_keys(receipt.pair_id, event.id, legacy_image.mime_type)
+            storage_key, thumb_key = build_legacy_receipt_event_image_storage_keys(
+                receipt.pair_id,
+                event.id,
+                legacy_image.id,
+                legacy_image.mime_type,
+            )
             try:
                 write_media_file(storage_key, original)
+                receipt_written_keys.append(storage_key)
                 write_media_file(thumb_key, thumbnail)
+                receipt_written_keys.append(thumb_key)
             except (MediaStorageError, OSError) as exc:
                 logger.warning("Could not copy legacy love-receipt image %s: %s", legacy_image.id, exc)
+                for partial_key in (storage_key, thumb_key):
+                    if partial_key in receipt_written_keys:
+                        try:
+                            delete_media_file(partial_key)
+                        except (MediaStorageError, OSError):
+                            pass
+                        receipt_written_keys.remove(partial_key)
                 continue
             db.add(
                 Image(
                     event_id=event.id,
                     author_id=legacy_image.author_id,
                     legacy_love_receipt_image_id=legacy_image.id,
+                    sort_order=image_order,
                     file_path="",
                     storage_key=storage_key,
                     thumb_storage_key=thumb_key,
@@ -484,7 +501,15 @@ def _migrate_love_receipts_to_events(db: Session) -> None:
                     created_at=legacy_image.created_at,
                 )
             )
-        db.flush()
+        try:
+            db.flush()
+        except Exception:
+            for storage_key in receipt_written_keys:
+                try:
+                    delete_media_file(storage_key)
+                except (MediaStorageError, OSError):
+                    pass
+            raise
 
 
 def _ensure_legacy_meeting_sessions(target_engine: Engine) -> None:

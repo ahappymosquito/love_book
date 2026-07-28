@@ -12,6 +12,7 @@ from app.models import (
     CycleMood,
     CyclePhase,
     EventKind,
+    GiftFeeling,
     LoveReceiptImageKind,
     LoveReceiptMood,
     LoveReceiptStatus,
@@ -177,6 +178,14 @@ class EventCreate(APIModel):
     meeting_session_id: int | None = None
     visibility_mode: VisibilityMode = VisibilityMode.public
     gift_rating: int | None = Field(default=None, ge=1, le=5)
+    gift_feelings: list[GiftFeeling] = Field(default_factory=list, max_length=3)
+
+    @field_validator("gift_feelings")
+    @classmethod
+    def unique_gift_feelings(cls, value: list[GiftFeeling]) -> list[GiftFeeling]:
+        if len(set(value)) != len(value):
+            raise ValueError("Gift feelings must be unique")
+        return value
 
 
 class EventUpdate(APIModel):
@@ -187,6 +196,14 @@ class EventUpdate(APIModel):
     meeting_session_id: int | None = None
     visibility_mode: VisibilityMode | None = None
     gift_rating: int | None = Field(default=None, ge=1, le=5)
+    gift_feelings: list[GiftFeeling] | None = Field(default=None, max_length=3)
+
+    @field_validator("gift_feelings")
+    @classmethod
+    def unique_optional_gift_feelings(cls, value: list[GiftFeeling] | None) -> list[GiftFeeling] | None:
+        if value is not None and len(set(value)) != len(value):
+            raise ValueError("Gift feelings must be unique")
+        return value
 
 
 class SubmissionState(APIModel):
@@ -246,6 +263,12 @@ class MeetingSessionOut(MeetingSessionLite):
     model_config = {"from_attributes": True}
 
 
+class ImagePreviewOut(APIModel):
+    id: int
+    width: int | None = None
+    height: int | None = None
+
+
 class EventSummary(APIModel):
     id: int
     pair_id: int
@@ -257,6 +280,9 @@ class EventSummary(APIModel):
     occurred_at: datetime | None
     event_kind: EventKind
     gift_rating: int | None = Field(default=None, ge=1, le=5)
+    gift_feelings: list[GiftFeeling] = Field(default_factory=list, max_length=3)
+    preview_image: ImagePreviewOut | None = None
+    image_count: int = 0
     visibility_mode: VisibilityMode
     created_at: datetime
     submission_state: SubmissionState
@@ -298,6 +324,7 @@ class ImageOut(APIModel):
     id: int
     event_id: int
     author_id: int
+    sort_order: int = 0
     # 手动 INSERT 时这两项可能没填，给个保底值即可
     mime_type: str | None = "application/octet-stream"
     size_bytes: int | None = 0

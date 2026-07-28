@@ -180,6 +180,15 @@ chmod +x deploy_server.sh
 python scripts/migrate_images_to_media.py
 ```
 
+旧“爱的回执”升级为收礼事件时，可在挂载生产媒体卷的后端容器中先审计再执行：
+
+```bash
+python3 scripts/migrate_love_receipts_to_gifts.py
+python3 scripts/migrate_love_receipts_to_gifts.py --apply
+```
+
+命令会保留旧表和旧媒体，只为标准事件创建确定性文件副本与唯一图片映射；返回的 `unmapped_legacy_images` 应为 `0`。
+
 默认只导出文件并回填 key，不清空旧 BLOB。确认接口读取正常后，可执行：
 
 ```bash

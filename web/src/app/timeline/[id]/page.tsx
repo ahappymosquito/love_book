@@ -34,6 +34,7 @@ import { LoadingScreen } from "@/components/loading-screen";
 import { MeetingEditorDialog } from "@/components/meeting-editor-dialog";
 import { VisibilityBadge } from "@/components/visibility-badge";
 import { api } from "@/lib/api";
+import { GIFT_FEELING_OPTIONS, giftFeelingMeta } from "@/lib/gift-feelings";
 import { useAppStore } from "@/lib/store";
 import { formatAbsolute, formatRelative, fromLocalInputValue, toLocalInputValue } from "@/lib/format";
 import { MOTION_TRANSITIONS } from "@/lib/motion";
@@ -43,6 +44,7 @@ import type {
   CommentReactionType,
   EventDetail,
   ImageOut,
+  GiftFeeling,
   UserOut,
   VisibilityMode,
 } from "@/lib/types";
@@ -100,6 +102,7 @@ function EventDetailInner() {
   const [editOccurredAt, setEditOccurredAt] = useState("");
   const [editVisibility, setEditVisibility] = useState<VisibilityMode>("public");
   const [editGiftRating, setEditGiftRating] = useState<number | null>(null);
+  const [editGiftFeelings, setEditGiftFeelings] = useState<GiftFeeling[]>([]);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const reducedMotion = useReducedMotion();
@@ -176,7 +179,9 @@ function EventDetailInner() {
 
     const items: StreamItem[] = [];
     for (const c of event.contents.comments) items.push({ kind: "comment", data: c });
-    for (const i of event.contents.images) items.push({ kind: "image", data: i });
+    if (event.event_kind !== "gift_received") {
+      for (const i of event.contents.images) items.push({ kind: "image", data: i });
+    }
     for (const p of pending) {
       if (p.kind === "comment") items.push({ kind: "comment-pending", data: p });
       if (p.kind === "image") items.push({ kind: "image-pending", data: p });
@@ -279,6 +284,7 @@ function EventDetailInner() {
     setEditOccurredAt(event.occurred_at ? toLocalInputValue(new Date(event.occurred_at)) : "");
     setEditVisibility(event.visibility_mode);
     setEditGiftRating(event.gift_rating);
+    setEditGiftFeelings(event.gift_feelings);
     setEditing(true);
   }
 
@@ -292,6 +298,7 @@ function EventDetailInner() {
         occurred_at: editOccurredAt ? fromLocalInputValue(editOccurredAt) : null,
         visibility_mode: event.event_kind === "gift_received" ? "public" : editVisibility,
         gift_rating: event.event_kind === "gift_received" ? editGiftRating : undefined,
+        gift_feelings: event.event_kind === "gift_received" ? editGiftFeelings : undefined,
       });
       setEvent(updated);
       setEditing(false);
@@ -299,6 +306,17 @@ function EventDetailInner() {
     } finally {
       setSavingEdit(false);
     }
+  }
+
+  function toggleEditGiftFeeling(value: GiftFeeling) {
+    setEditGiftFeelings((current) => {
+      if (current.includes(value)) return current.filter((item) => item !== value);
+      if (current.length >= 3) {
+        toast.error("最多选择 3 个感受");
+        return current;
+      }
+      return [...current, value];
+    });
   }
 
   if (!event) {
@@ -361,12 +379,28 @@ function EventDetailInner() {
       />
 
       <div ref={containerRef} className="mx-auto w-full max-w-3xl min-w-0 px-4 pt-4 sm:px-6 pb-8">
+        {isGift && event.contents.images.length > 0 && (
+          <section className="mb-4 grid grid-cols-2 gap-2 overflow-hidden rounded-2xl bg-surface p-2" aria-label="礼物照片">
+            {event.contents.images.map((image, index) => (
+              <ImageThumb
+                key={image.id}
+                imageId={image.id}
+                onClick={(url) => setLightbox(url)}
+                className={cn(
+                  "!w-full",
+                  index === 0 ? "col-span-2 !h-auto aspect-[16/10]" : "!h-auto aspect-square",
+                )}
+              />
+            ))}
+          </section>
+        )}
+
         {/* Hero */}
         <motion.section
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.32 }}
-          className={cn("glass-card rounded-3xl p-5 sm:p-6", isGift && "bg-peach/10")}
+          className={cn("glass-card rounded-3xl p-5 sm:p-6", isGift && "content-surface rounded-2xl bg-peach/10")}
         >
           <div className="flex items-center gap-2 flex-wrap">
             {isMeeting && (
@@ -405,7 +439,7 @@ function EventDetailInner() {
                 />
               </div>
               <div className="space-y-2">
-                <label htmlFor="event-edit-description" className="font-sc text-xs font-medium text-ink-muted">内容</label>
+                <label htmlFor="event-edit-description" className="font-sc text-xs font-medium text-ink-muted">{isGift ? "反馈" : "内容"}</label>
                 <textarea
                   id="event-edit-description"
                   className="input-field min-h-28 resize-y font-sc leading-relaxed"
@@ -415,6 +449,31 @@ function EventDetailInner() {
                   onChange={(inputEvent) => setEditDescription(inputEvent.target.value)}
                 />
               </div>
+              {isGift && (
+                <fieldset className="space-y-2">
+                  <legend className="font-sc text-xs font-medium text-ink-muted">收到时的感受（最多 3 个）</legend>
+                  <div className="flex flex-wrap gap-2">
+                    {GIFT_FEELING_OPTIONS.map((option) => {
+                      const selected = editGiftFeelings.includes(option.value);
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          disabled={savingEdit || (!selected && editGiftFeelings.length >= 3)}
+                          onClick={() => toggleEditGiftFeeling(option.value)}
+                          aria-pressed={selected}
+                          className={cn(
+                            "min-h-10 rounded-full px-3 font-sc text-xs transition focus-ring disabled:opacity-45",
+                            selected ? "bg-peach/30 text-ink ring-1 ring-peach-deep/28" : "bg-cream-deep/55 text-ink-soft",
+                          )}
+                        >
+                          {option.emoji} {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+              )}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label htmlFor="event-edit-time" className="font-sc text-xs font-medium text-ink-muted">发生时间</label>
@@ -488,9 +547,21 @@ function EventDetailInner() {
                 {event.title}
               </h1>
               {event.description && (
-                <p className="mt-3 whitespace-pre-wrap font-sc text-[15px] leading-relaxed text-ink-soft">
+                <p className="mt-3 max-w-[70ch] whitespace-pre-wrap font-sc text-[15px] leading-relaxed text-ink-soft">
                   {event.description}
                 </p>
+              )}
+              {isGift && event.gift_feelings.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-2" aria-label="收到时的感受">
+                  {event.gift_feelings.map((feeling) => {
+                    const meta = giftFeelingMeta(feeling);
+                    return (
+                      <span key={feeling} className="inline-flex min-h-8 items-center rounded-full bg-surface/78 px-3 font-sc text-xs text-ink-soft">
+                        {meta.emoji} {meta.label}
+                      </span>
+                    );
+                  })}
+                </div>
               )}
               {isGift && event.gift_rating && (
                 <div className="mt-4 flex items-center gap-1" aria-label={`${event.gift_rating} 星`}>

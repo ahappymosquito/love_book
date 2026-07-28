@@ -17,6 +17,7 @@ from app.schemas import (
     ContentsOut,
     EventDetail,
     EventSummary,
+    ImagePreviewOut,
     ImageOut,
     MeetingSessionLite,
     ReminderItem,
@@ -513,7 +514,7 @@ def visible_contents(db: Session, event: Event, user: User, pair: Pair) -> Conte
         images_query = images_query.where(Image.author_id == user.id)
 
     comments = db.execute(comments_query.order_by(Comment.created_at, Comment.id)).scalars().all()
-    images = db.execute(images_query.order_by(Image.created_at, Image.id)).scalars().all()
+    images = db.execute(images_query.order_by(Image.sort_order, Image.created_at, Image.id)).scalars().all()
     return ContentsOut(
         submission_state=state,
         comments=comment_outs(db, comments, user.id),
@@ -522,6 +523,25 @@ def visible_contents(db: Session, event: Event, user: User, pair: Pair) -> Conte
 
 
 def event_summary(db: Session, event: Event, user: User, pair: Pair) -> EventSummary:
+    state = submission_state(db, event, user, pair)
+    preview_image = None
+    image_count = 0
+    if state.unlocked:
+        image_count = int(
+            db.scalar(select(func.count()).select_from(Image).where(Image.event_id == event.id)) or 0
+        )
+        first_image = db.execute(
+            select(Image)
+            .where(Image.event_id == event.id)
+            .order_by(Image.sort_order, Image.created_at, Image.id)
+            .limit(1)
+        ).scalar_one_or_none()
+        if first_image is not None:
+            preview_image = ImagePreviewOut(
+                id=first_image.id,
+                width=first_image.width,
+                height=first_image.height,
+            )
     return EventSummary(
         id=event.id,
         pair_id=event.pair_id,
@@ -533,9 +553,12 @@ def event_summary(db: Session, event: Event, user: User, pair: Pair) -> EventSum
         occurred_at=event.occurred_at,
         event_kind=event.event_kind,
         gift_rating=event.gift_rating,
+        gift_feelings=event.gift_feelings or [],
+        preview_image=preview_image,
+        image_count=image_count,
         visibility_mode=event.visibility_mode,
         created_at=event.created_at,
-        submission_state=submission_state(db, event, user, pair),
+        submission_state=state,
     )
 
 

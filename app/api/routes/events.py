@@ -14,7 +14,7 @@ from app.core.config import get_settings
 from app.core.database import delete_legacy_voice_rows, get_db
 from app.emailer import notify_event_created
 from app.media import MediaProcessingError, make_image_thumbnail
-from app.models import Event, EventKind, Image, LoveReceipt, User, VisibilityMode, utc_now
+from app.models import Event, EventKind, GiftFeeling, Image, LoveReceipt, User, VisibilityMode, utc_now
 from app.schemas import EventCreate, EventDetail, EventSummary, EventUpdate
 from app.services import active_token_for_user, counterpart, ensure_pair_event, ensure_pair_meeting_session, event_detail, event_summary, find_meeting_for_date, get_or_create_single_day_meeting, meeting_date_for_values
 from app.storage import MediaStorageError, build_image_storage_keys, delete_media_file, write_media_file
@@ -54,6 +54,8 @@ def create_event(
     pair = get_pair_for_user(db, current_user.id)
     if payload.gift_rating is not None and payload.event_kind != EventKind.gift_received:
         raise HTTPException(status_code=422, detail="Only received-gift events can have a rating")
+    if payload.gift_feelings and payload.event_kind != EventKind.gift_received:
+        raise HTTPException(status_code=422, detail="Only received-gift events can have feelings")
     if payload.meeting_session_id is not None:
         ensure_pair_meeting_session(db, payload.meeting_session_id, pair)
     explicitly_offline = payload.event_kind == EventKind.offline_meeting or payload.meeting_session_id is not None
@@ -83,6 +85,7 @@ def create_event(
         occurred_at=payload.occurred_at,
         event_kind=event_kind,
         gift_rating=payload.gift_rating,
+        gift_feelings=[feeling.value for feeling in payload.gift_feelings],
         visibility_mode=payload.visibility_mode,
         created_at=created_at,
     )
@@ -108,7 +111,9 @@ def create_event(
 def create_received_gift(
     background: BackgroundTasks,
     title: str = Form(...),
+    feedback: str = Form(default=""),
     feeling: str = Form(default=""),
+    feelings: list[GiftFeeling] = Form(default=[]),
     occurred_at: datetime | None = Form(default=None),
     rating: int | None = Form(default=None, ge=1, le=5),
     files: list[UploadFile] = File(default=[]),
@@ -117,11 +122,13 @@ def create_received_gift(
 ) -> EventDetail:
     """Create a received-gift event and up to six private images as one committed operation."""
     clean_title = title.strip()
-    clean_feeling = feeling.strip()
+    clean_feedback = (feedback or feeling).strip()
     if not clean_title or len(clean_title) > 200:
         raise HTTPException(status_code=422, detail="Gift title must contain 1 to 200 characters")
-    if len(clean_feeling) > 2000:
-        raise HTTPException(status_code=422, detail="Gift feeling must be at most 2000 characters")
+    if len(clean_feedback) > 2000:
+        raise HTTPException(status_code=422, detail="Gift feedback must be at most 2000 characters")
+    if len(feelings) > 3 or len(set(feelings)) != len(feelings):
+        raise HTTPException(status_code=422, detail="Choose up to 3 unique gift feelings")
     if len(files) > 6:
         raise HTTPException(status_code=422, detail="A received gift supports at most 6 images")
 
@@ -135,10 +142,11 @@ def create_received_gift(
         creator_id=current_user.id,
         meeting_session_id=meeting.id if meeting else None,
         title=clean_title,
-        description=clean_feeling or None,
+        description=clean_feedback or None,
         occurred_at=occurred_at,
         event_kind=EventKind.gift_received,
         gift_rating=rating,
+        gift_feelings=[item.value for item in feelings],
         visibility_mode=VisibilityMode.public,
         created_at=created_at,
     )
@@ -146,7 +154,7 @@ def create_received_gift(
     try:
         db.add(event)
         db.flush()
-        for upload in files:
+        for image_order, upload in enumerate(files):
             content_type = (upload.content_type or "").split(";", 1)[0].strip().lower()
             if content_type not in settings.allowed_image_mime_types:
                 raise HTTPException(status_code=415, detail="Unsupported image mime type")
@@ -166,6 +174,7 @@ def create_received_gift(
                 Image(
                     event_id=event.id,
                     author_id=current_user.id,
+                    sort_order=image_order,
                     file_path="",
                     storage_key=storage_key,
                     thumb_storage_key=thumb_key,
@@ -255,6 +264,13 @@ def update_event(
         is_gift = True
     if "gift_rating" in updates and updates["gift_rating"] is not None and not is_gift:
         raise HTTPException(status_code=422, detail="Only received-gift events can have a rating")
+    if updates.get("gift_feelings") and not is_gift:
+        raise HTTPException(status_code=422, detail="Only received-gift events can have feelings")
+    if "gift_feelings" in updates:
+        updates["gift_feelings"] = [
+            feeling.value if isinstance(feeling, GiftFeeling) else feeling
+            for feeling in (updates["gift_feelings"] or [])
+        ]
 
     if "meeting_session_id" in updates:
         if updates["meeting_session_id"] is not None:

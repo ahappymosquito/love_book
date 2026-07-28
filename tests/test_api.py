@@ -22,7 +22,7 @@ import app.main as main_app
 import app.services as services
 from app.core.config import get_settings
 from app.version import APP_VERSION
-from app.models import AISetting, CycleDailyLog, CyclePhase, DefaultQuote, DeviceToken, Event, EventKind, HabitReminderRun, HabitTask, Image as DBImage, LoveReceipt, LoveReceiptImage, LoveReceiptImageKind, LoveReceiptStatus, LoveReceiptType, MeetingSession, TodoImage
+from app.models import AISetting, CycleDailyLog, CyclePhase, DefaultQuote, DeviceToken, Event, EventKind, HabitReminderRun, HabitTask, Image as DBImage, LoveReceipt, LoveReceiptImage, LoveReceiptImageKind, LoveReceiptMood, LoveReceiptStatus, LoveReceiptType, MeetingSession, TodoImage
 from app.storage import media_path, write_media_file
 from tests.conftest import auth
 
@@ -55,7 +55,12 @@ def test_received_gift_is_atomic_pair_private_and_supports_optional_fields(
     created = client.post(
         "/events/gifts",
         headers=auth(token_a),
-        data={"title": "下班后收到的一束花", "feeling": "被惦记到了", "rating": "5"},
+        data={
+            "title": "下班后收到的一束花",
+            "feedback": "被惦记到了",
+            "rating": "5",
+            "feelings": ["happy", "pressured"],
+        },
         files=[
             ("files", ("flower.png", sample_png_bytes(), "image/png")),
             ("files", ("card.png", sample_png_bytes(), "image/png")),
@@ -65,9 +70,13 @@ def test_received_gift_is_atomic_pair_private_and_supports_optional_fields(
     event = created.json()
     assert event["event_kind"] == "gift_received"
     assert event["gift_rating"] == 5
+    assert event["gift_feelings"] == ["happy", "pressured"]
     assert event["description"] == "被惦记到了"
     assert event["visibility_mode"] == "public"
     assert len(event["contents"]["images"]) == 2
+    assert [image["sort_order"] for image in event["contents"]["images"]] == [0, 1]
+    assert event["preview_image"]["id"] == event["contents"]["images"][0]["id"]
+    assert event["image_count"] == 2
     image_id = event["contents"]["images"][0]["id"]
     assert client.get(f"/images/{image_id}/thumb", headers=auth(token_b)).status_code == 200
     assert client.get(f"/images/{image_id}/file", headers=auth(token_a)).content == sample_png_bytes()
@@ -75,10 +84,11 @@ def test_received_gift_is_atomic_pair_private_and_supports_optional_fields(
     edited = client.patch(
         f"/events/{event['id']}",
         headers=auth(token_a),
-        json={"gift_rating": 4, "description": "很喜欢"},
+        json={"gift_rating": 4, "gift_feelings": ["touched", "complicated"], "description": "很喜欢"},
     )
     assert edited.status_code == 200
     assert edited.json()["gift_rating"] == 4
+    assert edited.json()["gift_feelings"] == ["touched", "complicated"]
     assert client.patch(
         f"/events/{event['id']}",
         headers=auth(token_b),
@@ -104,6 +114,16 @@ def test_received_gift_requires_only_title_and_validates_limits(
     assert minimal.json()["gift_rating"] is None
     assert minimal.json()["contents"]["images"] == []
     assert client.post("/events/gifts", headers=headers, data={"title": "一盒糖", "rating": "6"}).status_code == 422
+    assert client.post(
+        "/events/gifts",
+        headers=headers,
+        data={"title": "一盒糖", "feelings": ["happy", "happy"]},
+    ).status_code == 422
+    assert client.post(
+        "/events/gifts",
+        headers=headers,
+        data={"title": "一盒糖", "feelings": ["happy", "touched", "pressured", "complicated"]},
+    ).status_code == 422
     too_many = client.post(
         "/events/gifts",
         headers=headers,
@@ -168,6 +188,7 @@ def test_legacy_love_receipt_migration_is_idempotent_and_copies_media(
         title="旧回执里的一束花",
         message="路上看到就想送给你",
         receipt_content="收到时很惊喜",
+        receipt_mood=LoveReceiptMood.happy,
         receipt_rating=5,
         status=LoveReceiptStatus.completed,
     )
@@ -201,11 +222,15 @@ def test_legacy_love_receipt_migration_is_idempotent_and_copies_media(
     assert migrated.creator_id == receiver_id
     assert migrated.event_kind == EventKind.gift_received
     assert migrated.gift_rating == 5
+    assert migrated.gift_feelings == ["happy"]
     assert "收到时很惊喜" in (migrated.description or "")
+    assert "当时的感受" not in (migrated.description or "")
     copied_images = db_session.execute(
         select(DBImage).where(DBImage.legacy_love_receipt_image_id == legacy_image.id)
     ).scalars().all()
     assert len(copied_images) == 1
+    assert copied_images[0].sort_order == 0
+    assert f"legacy-love-receipt-{legacy_image.id}" in copied_images[0].storage_key
     assert media_path(copied_images[0].storage_key).is_file()
 
     database._migrate_love_receipts_to_events(db_session)

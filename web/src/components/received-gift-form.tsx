@@ -1,19 +1,20 @@
 "use client";
 
-// Lightweight received-gift event form with optional feeling, rating, time, and up to six local image previews.
+// Received-gift form with independent feedback, up to three honest feeling tags, rating, time, and six image previews.
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { CalendarHeart, Gift, ImagePlus, Loader2, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { fromLocalInputValue, toLocalInputValue } from "@/lib/format";
-import type { EventDetail } from "@/lib/types";
-
-const FEELING_PROMPTS = ["被惦记到了", "真的很惊喜", "很喜欢，也很实用", "想好好谢谢 TA"];
+import { GIFT_FEELING_OPTIONS } from "@/lib/gift-feelings";
+import type { EventDetail, GiftFeeling } from "@/lib/types";
+import { cn } from "@/lib/cn";
 
 export function ReceivedGiftForm({ onCreated }: { onCreated: (event: EventDetail) => void }) {
   const [title, setTitle] = useState("");
-  const [feeling, setFeeling] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [feelings, setFeelings] = useState<GiftFeeling[]>([]);
   const [occurredAt, setOccurredAt] = useState(toLocalInputValue(new Date()));
   const [rating, setRating] = useState<number | null>(null);
   const [files, setFiles] = useState<File[]>([]);
@@ -40,7 +41,8 @@ export function ReceivedGiftForm({ onCreated }: { onCreated: (event: EventDetail
     try {
       const created = await api.createReceivedGift({
         title: title.trim(),
-        feeling: feeling.trim(),
+        feedback: feedback.trim(),
+        feelings,
         occurredAt: occurredAt ? fromLocalInputValue(occurredAt) : null,
         rating,
         files,
@@ -50,6 +52,17 @@ export function ReceivedGiftForm({ onCreated }: { onCreated: (event: EventDetail
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function toggleFeeling(value: GiftFeeling) {
+    setFeelings((current) => {
+      if (current.includes(value)) return current.filter((item) => item !== value);
+      if (current.length >= 3) {
+        toast.error("最多选择 3 个感受");
+        return current;
+      }
+      return [...current, value];
+    });
   }
 
   return (
@@ -66,14 +79,39 @@ export function ReceivedGiftForm({ onCreated }: { onCreated: (event: EventDetail
       </div>
 
       <div className="form-section space-y-2">
-        <label htmlFor="gift-feeling" className="font-sc text-xs font-medium text-ink-muted">收到时的感受（可不写）</label>
-        <textarea id="gift-feeling" className="input-field min-h-28 resize-y leading-relaxed" value={feeling} onChange={(event) => setFeeling(event.target.value)} maxLength={2000} placeholder="写一句当时最真实的感受" />
-        <div className="flex gap-2 overflow-x-auto pb-1 local-x-scroll" aria-label="感受示例">
-          {FEELING_PROMPTS.map((prompt) => (
-            <button key={prompt} type="button" onClick={() => setFeeling(prompt)} className="min-h-10 flex-none rounded-full bg-peach/16 px-3 font-sc text-xs text-ink-soft transition hover:bg-peach/26 focus-ring">{prompt}</button>
-          ))}
-        </div>
+        <label htmlFor="gift-feedback" className="font-sc text-xs font-medium text-ink-muted">想记下的反馈（可不写）</label>
+        <textarea id="gift-feedback" className="input-field min-h-28 resize-y leading-relaxed" value={feedback} onChange={(event) => setFeedback(event.target.value)} maxLength={2000} placeholder="喜欢、不喜欢，或者想对 TA 说的话，都可以认真写下来" />
       </div>
+
+      <fieldset className="form-section">
+        <legend className="font-sc text-xs font-medium text-ink-muted">收到时的感受（可选，最多 3 个）</legend>
+        <p className="mt-1 font-sc text-xs leading-relaxed text-ink-muted">真实感受不只一种，开心或有点复杂都值得留下。</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {GIFT_FEELING_OPTIONS.map((option) => {
+            const selected = feelings.includes(option.value);
+            const unavailable = !selected && feelings.length >= 3;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => toggleFeeling(option.value)}
+                aria-pressed={selected}
+                disabled={unavailable}
+                className={cn(
+                  "min-h-11 rounded-full px-3.5 font-sc text-xs transition focus-ring disabled:cursor-not-allowed disabled:opacity-45",
+                  selected
+                    ? option.tone === "warm"
+                      ? "bg-peach/32 text-ink ring-1 ring-peach-deep/30"
+                      : "bg-rose/12 text-ink ring-1 ring-rose-deep/24"
+                    : "bg-cream-deep/55 text-ink-soft hover:bg-peach/18",
+                )}
+              >
+                {option.emoji} {option.label}
+              </button>
+            );
+          })}
+        </div>
+      </fieldset>
 
       <fieldset className="form-section">
         <legend className="font-sc text-xs font-medium text-ink-muted">给这份礼物打分（可选）</legend>

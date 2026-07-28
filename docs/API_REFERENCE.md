@@ -824,9 +824,10 @@ python -m pytest tests -q
 
 ## 收礼事件与旧回执兼容
 
-- `POST /events/gifts` 使用 multipart 创建收礼事件。`title` 必填；`feeling`、`occurred_at`、1–5 的 `rating` 和最多 6 个 `files` 均可选。
-- 收礼事件返回标准 `EventDetail`，`event_kind` 为 `gift_received`，评分位于 `gift_rating`，照片通过现有 `/images/{id}/file|thumb` 私有接口读取。
+- `POST /events/gifts` 使用 multipart 创建收礼事件。`title` 必填；`feedback`、重复提交且最多 3 个的 `feelings`、`occurred_at`、1–5 的 `rating` 和最多 6 个 `files` 均可选。过渡期继续接受旧 `feeling` 文本字段。
+- `feelings` 仅接受 `happy / surprised / touched / reassured / cherished / hug / disappointed / wronged / pressured / not_my_style / upset / complicated`，不得重复。
+- 收礼事件返回标准 `EventDetail`，`event_kind` 为 `gift_received`，反馈复用 `description`，标签位于 `gift_feelings`，评分位于 `gift_rating`。事件摘要额外返回 `preview_image` 和 `image_count`，照片仍通过 `/images/{id}/file|thumb` 私有接口读取。
 - 创建事件及全部照片在同一事务中完成；数据库或媒体写入失败时回滚事件并清理已写文件。
 - 收礼日期落在见面范围内时仍保持 `gift_received`，同时写入 `meeting_session_id`，因此会出现在对应见面分组。
-- 启动迁移会把所有旧 `love_receipts` 幂等转换为收礼事件并复制媒体。旧 `GET /love-receipts` 与详情仅供历史跳转；旧创建、状态推进和提交回执接口返回 `410 Gone`。
+- 启动迁移会把所有旧 `love_receipts` 幂等转换为收礼事件并复制媒体；旧心情迁入 `gift_feelings`，旧图片 ID 使用确定性目标路径和唯一映射避免重复。可先运行 `python scripts/migrate_love_receipts_to_gifts.py` 审计，再加 `--apply` 显式执行。旧 `GET /love-receipts` 与详情仅供历史跳转；旧创建、状态推进和提交回执接口返回 `410 Gone`。
 - 普通登录页面的公共标题栏不显示退出；唯一的用户退出入口位于 `/me` 设置页。管理端继续保留独立的管理员退出操作。

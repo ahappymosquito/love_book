@@ -18,7 +18,7 @@ The habits surface is a logged-in daily check-in dashboard: the bottom navigatio
 
 Timeline's relationship quote keeps anniversary or festival copy on first load, then rotates ordinary pair/default quotes instantly from a five-item in-memory queue. The queue refills quietly when two items remain so repeated taps do not wait for network or holiday aggregation.
 
-Received gifts are recorded directly by the receiver as Timeline events. Only the gift name is required; a feeling, an optional one-to-five-star rating, and up to six private event photos can be added without a delivery state machine. A gift received during a meeting keeps its warm gift identity while also belonging to that meeting.
+Received gifts are recorded directly by the receiver as Timeline events. Only the gift name is required; normal written feedback, up to three honest positive or complex feeling tags, an optional one-to-five-star rating, and up to six private event photos can be added without a delivery state machine. A gift received during a meeting keeps its photo-led warm gift identity while also belonging to that meeting.
 
 ## Brand Personality
 

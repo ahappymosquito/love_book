@@ -20,6 +20,7 @@ import type {
   EventDetail,
   EventKind,
   EventSummary,
+  GiftFeeling,
   HabitDashboardOut,
   HabitTaskOut,
   HabitToggleOut,
@@ -409,14 +410,16 @@ export const api = {
     }),
   createReceivedGift: (payload: {
     title: string;
-    feeling?: string;
+    feedback?: string;
+    feelings?: GiftFeeling[];
     occurredAt?: string | null;
     rating?: number | null;
     files: File[];
   }) => {
     const fd = new FormData();
     fd.append("title", payload.title);
-    fd.append("feeling", payload.feeling ?? "");
+    fd.append("feedback", payload.feedback ?? "");
+    payload.feelings?.forEach((feeling) => fd.append("feelings", feeling));
     if (payload.occurredAt) fd.append("occurred_at", payload.occurredAt);
     if (payload.rating) fd.append("rating", String(payload.rating));
     payload.files.forEach((file) => fd.append("files", file, file.name));
@@ -432,6 +435,7 @@ export const api = {
       meeting_session_id?: number | null;
       visibility_mode?: VisibilityMode;
       gift_rating?: number | null;
+      gift_feelings?: GiftFeeling[];
     },
   ) =>
     apiRequest<EventDetail>(`/events/${id}`, {

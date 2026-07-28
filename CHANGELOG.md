@@ -6,15 +6,16 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ### Added
 
-- Nothing yet.
+- Added up to three honest positive or complex feeling tags to received-gift events, independent from written feedback.
+- Added photo-led received-gift cards, private timeline previews, responsive detail galleries, and an auditable legacy media migration command.
 
 ### Fixed
 
-- Nothing yet.
+- Preserved legacy love-receipt image order and made interrupted media copies safe to retry with deterministic paths.
 
 ### Database
 
-- No pending schema changes.
+- Added nullable `events.gift_feelings` JSON and ordered `images.sort_order` columns through forward-compatible startup migration.
 
 ## [0.5.0] - 2026-07-27
 
