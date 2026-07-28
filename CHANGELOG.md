@@ -16,6 +16,16 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 - No pending schema changes.
 
+## [0.7.0] - 2026-07-28
+
+### Changed
+
+- Simplified received-gift timeline cards to make their photo-led presentation more focused and easier to scan.
+
+### Database
+
+- No schema changes.
+
 ## [0.6.0] - 2026-07-28
 
 ### Added
@@ -93,7 +103,8 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 - Kept Love Receipt table creation and list ordering compatible with MySQL and MariaDB.
 
-[Unreleased]: https://github.com/ahappymosquito/love_book/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/ahappymosquito/love_book/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/ahappymosquito/love_book/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/ahappymosquito/love_book/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/ahappymosquito/love_book/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/ahappymosquito/love_book/compare/v0.4.0...v0.4.1

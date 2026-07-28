@@ -2,7 +2,7 @@
 
 Love Book 是给两个人共同使用的私密生活手账：记录日常、见面和收到的礼物，一起完成 Todo，并维护习惯与周期日历。
 
-![Version](https://img.shields.io/badge/version-0.5.0-cc6677)
+![Version](https://img.shields.io/badge/version-0.7.0-cc6677)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)
 ![Next.js](https://img.shields.io/badge/Next.js-15-black)
 
@@ -62,6 +62,14 @@ love_book/
 | AI 开发约定 | [AGENTS.md](AGENTS.md) |
 
 ## 版本变化
+
+### 0.7.0 · 2026-07-28
+
+- 简化收礼时间线卡片，突出照片与核心信息，浏览更轻松。
+
+### 0.6.0 · 2026-07-28
+
+- 新增收礼人直接记录礼物、反馈、感受、评分和照片的收礼事件，并将旧爱的回执迁移到共享时间线。
 
 ### 0.5.0 · 2026-07-27
 
