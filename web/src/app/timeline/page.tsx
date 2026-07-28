@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home with queued quotes, received-gift styling, restrained transitions, meeting ranges, and reminders.
+// Timeline home with queued quotes, compact received-gift rows, restrained transitions, meeting ranges, and reminders.
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -14,7 +14,6 @@ import {
   Droplet,
   Gift,
   Plus,
-  Star,
 } from "lucide-react";
 import { AuthGate } from "@/components/auth-gate";
 import { Avatar } from "@/components/avatar";
@@ -669,14 +668,23 @@ function MeetingRiverEvent({ event }: { event: EventSummary }) {
   const eventTime = event.occurred_at ?? event.created_at;
   const isGift = event.event_kind === "gift_received";
 
+  if (isGift) {
+    return (
+      <Link href={`/timeline/${event.id}`} className="group block rounded-2xl focus-ring">
+        <article className="meeting-river-event meeting-river-event-gift px-4 py-3.5 sm:px-5">
+          <GiftTimelineContent event={event} />
+        </article>
+      </Link>
+    );
+  }
+
   return (
     <Link href={`/timeline/${event.id}`} className="group block rounded-2xl focus-ring">
-      <article className={cn("meeting-river-event px-4 py-4 sm:px-5", isGift && "meeting-river-event-gift")}>
+      <article className="meeting-river-event px-4 py-4 sm:px-5">
         <div className="flex items-start gap-3">
-          {isGift ? <GiftCardMedia event={event} compact /> : <Avatar user={author} size="md" />}
+          <Avatar user={author} size="md" />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2 font-sc text-xs text-ink-muted">
-              {isGift && <Avatar user={author} size="sm" />}
               <span>{author.display_name}</span>
               <span className="h-1 w-1 rounded-full bg-line" />
               <span>{formatAbsolute(eventTime, false)}</span>
@@ -689,10 +697,8 @@ function MeetingRiverEvent({ event }: { event: EventSummary }) {
                 {event.description}
               </p>
             )}
-            {isGift && <GiftFeelingTags feelings={event.gift_feelings} />}
             <div className="mt-3 flex flex-wrap gap-2">
               <MeetingBadge />
-              {isGift && <GiftBadge rating={event.gift_rating} />}
               <VisibilityBadge mode={event.visibility_mode} />
               <SubmissionBadge state={event.submission_state} mode={event.visibility_mode} />
             </div>
@@ -739,47 +745,76 @@ function MeetingBadge() {
   );
 }
 
-function GiftBadge({ rating }: { rating: number | null }) {
-  return (
-    <span className="pill inline-flex items-center gap-1 bg-peach/24 text-ink">
-      <Gift className="h-3.5 w-3.5 text-peach-deep" />
-      收礼
-      {rating && <><Star className="ml-0.5 h-3 w-3 fill-peach-deep text-peach-deep" />{rating}</>}
-    </span>
-  );
-}
+function GiftEventTags({
+  feelings,
+  showMeetingTag,
+}: {
+  feelings: EventSummary["gift_feelings"];
+  showMeetingTag: boolean;
+}) {
+  const visibleFeelings = feelings.slice(0, showMeetingTag ? 1 : 2);
 
-function GiftFeelingTags({ feelings }: { feelings: EventSummary["gift_feelings"] }) {
-  if (!feelings.length) return null;
   return (
-    <div className="mt-2 flex flex-wrap gap-1.5" aria-label="收到时的感受">
-      {feelings.map((feeling) => {
-        const meta = giftFeelingMeta(feeling);
-        return (
-          <span key={feeling} className="inline-flex min-h-7 items-center rounded-full bg-surface/72 px-2.5 font-sc text-[11px] text-ink-soft">
-            {meta.emoji} {meta.label}
-          </span>
-        );
-      })}
+    <div className="mt-2.5 flex flex-wrap items-center gap-1.5" aria-label="收礼事件标签">
+      <span className="inline-flex min-h-6 items-center gap-1 rounded-full bg-peach/28 px-2 font-sc text-[11px] font-medium text-ink">
+        <Gift className="h-3 w-3 text-peach-deep" />
+        收礼
+      </span>
+      {showMeetingTag && (
+        <span className="inline-flex min-h-6 items-center rounded-full bg-rose/10 px-2 font-sc text-[11px] text-rose-deep">
+          见面
+        </span>
+      )}
+      {visibleFeelings.map((feeling) => (
+        <span
+          key={feeling}
+          className="inline-flex min-h-6 items-center rounded-full bg-surface/78 px-2 font-sc text-[11px] text-ink-soft"
+        >
+          {giftFeelingMeta(feeling).label}
+        </span>
+      ))}
     </div>
   );
 }
 
-function GiftCardMedia({ event, compact = false }: { event: EventSummary; compact?: boolean }) {
-  const size = compact ? "h-24 w-24 sm:h-28 sm:w-28" : "h-24 w-24 sm:h-28 sm:w-32";
+function GiftTimelineContent({
+  event,
+  showMeetingTag = false,
+}: {
+  event: EventSummary;
+  showMeetingTag?: boolean;
+}) {
+  const eventTime = event.occurred_at ?? event.created_at;
+
   return (
-    <div className={cn("relative flex-none overflow-hidden rounded-xl bg-peach/18", size)}>
+    <div className="flex items-center gap-3 sm:gap-4">
+      <GiftCardMedia event={event} />
+      <div className="min-w-0 flex-1">
+        <h3 className="line-clamp-2 font-display text-base font-semibold leading-snug text-ink sm:text-lg">
+          {event.title}
+        </h3>
+        <time
+          dateTime={eventTime}
+          className="mt-1.5 block font-sc text-xs text-ink-muted"
+          title={formatAbsolute(eventTime)}
+        >
+          {formatAbsolute(eventTime, false)}
+        </time>
+        <GiftEventTags feelings={event.gift_feelings} showMeetingTag={showMeetingTag} />
+      </div>
+    </div>
+  );
+}
+
+function GiftCardMedia({ event }: { event: EventSummary }) {
+  return (
+    <div className="relative h-20 w-20 flex-none overflow-hidden rounded-xl bg-peach/18 sm:h-24 sm:w-24">
       {event.preview_image ? (
         <EventImagePreview imageId={event.preview_image.id} alt={`${event.title}的照片`} className="h-full w-full" />
       ) : (
         <div className="grid h-full w-full place-items-center text-peach-deep" aria-hidden="true">
           <Gift className="h-8 w-8" strokeWidth={1.7} />
         </div>
-      )}
-      {event.image_count > 1 && (
-        <span className="absolute bottom-1.5 right-1.5 rounded-full bg-ink/72 px-2 py-0.5 font-sc text-[10px] text-white">
-          {event.image_count} 张
-        </span>
       )}
     </div>
   );
@@ -843,14 +878,23 @@ function EventRow({ event }: { event: EventSummary }) {
   const isMeeting = event.meeting_session_id !== null || event.event_kind === "offline_meeting";
   const isGift = event.event_kind === "gift_received";
 
+  if (isGift) {
+    return (
+      <Link href={`/timeline/${event.id}`} className="group block rounded-2xl focus-ring">
+        <article className={cn("timeline-event-row timeline-event-row-gift px-5 py-3.5 sm:px-6", isMeeting && "timeline-event-row-meeting")}>
+          <GiftTimelineContent event={event} showMeetingTag={isMeeting} />
+        </article>
+      </Link>
+    );
+  }
+
   return (
     <Link href={`/timeline/${event.id}`} className="group block rounded-2xl focus-ring">
-      <article className={cn("timeline-event-row px-5 py-4 sm:px-6", isMeeting && "timeline-event-row-meeting", isGift && "timeline-event-row-gift")}>
+      <article className={cn("timeline-event-row px-5 py-4 sm:px-6", isMeeting && "timeline-event-row-meeting")}>
         <div className="flex items-start gap-3">
-          {isGift ? <GiftCardMedia event={event} /> : <Avatar user={author} size="md" />}
+          <Avatar user={author} size="md" />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-sc text-xs text-ink-muted">
-              {isGift && <Avatar user={author} size="sm" />}
               <span>{author.display_name}</span>
               <span className="h-1 w-1 rounded-full bg-line" />
               <span title={formatAbsolute(event.created_at)}>{formatRelative(event.created_at)}</span>
@@ -865,11 +909,9 @@ function EventRow({ event }: { event: EventSummary }) {
                 {event.description}
               </p>
             )}
-            {isGift && <GiftFeelingTags feelings={event.gift_feelings} />}
 
             <div className="mt-3 flex flex-wrap gap-2">
               {isMeeting && <MeetingBadge />}
-              {isGift && <GiftBadge rating={event.gift_rating} />}
               {isMeeting && event.meeting_session && (
                 <span className="pill inline-flex items-center gap-1 bg-peach/22 text-ink-soft">
                   {event.meeting_session.title}
