@@ -56,10 +56,10 @@ curl -fsS https://qrqto.club/api/health
 后续更新只需运行服务器已安装的更新器：
 
 ```bash
-/home/ts3/love-book/update.sh
+sudo bash /home/ts3/love-book/update.sh
 ```
 
-更新器会拉取前后端 `latest`、确认两套镜像的 OCI 版本标签完全一致、仅在发现新版本时创建 `pre-release` 恢复点，然后启动并验证 `/api/health` 和首页。`/api/health` 返回应用版本和完整 Git SHA。需要更强的供应链固定时，可分别用 `BACKEND_IMAGE`、`FRONTEND_IMAGE` 传入同一次发布生成的镜像 digest。
+脚本从自身路径定位部署目录，不受 `sudo` 将 `HOME` 改为 `/root` 的影响；root 的 Docker 凭据用于拉取私有 GHCR 镜像，备份命令仍以 `ts3` 和 `/home/ts3` 为 HOME 执行。更新器会拉取前后端 `latest`、确认两套镜像的 OCI 版本标签完全一致、仅在发现新版本时创建 `pre-release` 恢复点，然后启动并验证 `/api/health` 和首页。`/api/health` 返回应用版本和完整 Git SHA。需要更强的供应链固定时，可分别用 `BACKEND_IMAGE`、`FRONTEND_IMAGE` 传入同一次发布生成的镜像 digest。
 
 ## 发布前备份
 

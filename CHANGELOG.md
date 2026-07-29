@@ -11,6 +11,7 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 ### Fixed
 
 - Fixed production updates silently retaining an older version-pinned Compose image after newer stable images were published.
+- Fixed `sudo` updates resolving the deployment and backup paths under `/root` instead of the installed `/home/ts3` paths.
 
 ### Changed
 

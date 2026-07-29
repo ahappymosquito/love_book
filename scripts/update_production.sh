@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# Safely update a running Love Book deployment to matching stable-latest frontend/backend images.
+# Update Love Book from stable-latest images, preserving the deployment path and backup identity under sudo.
 
 set -Eeuo pipefail
 
-PROJECT_DIR="${PROJECT_DIR:-${HOME}/love-book}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="${PROJECT_DIR:-${SCRIPT_DIR}}"
 APP_WEB_URL="${APP_WEB_URL:-https://qrqto.club}"
 BACKEND_IMAGE="${BACKEND_IMAGE:-ghcr.io/ahappymosquito/love_book-backend:latest}"
 FRONTEND_IMAGE="${FRONTEND_IMAGE:-ghcr.io/ahappymosquito/love_book-frontend:latest}"
-BACKUP_COMMAND="${BACKUP_COMMAND:-${HOME}/bin/love-book-backup}"
+BACKUP_USER="${BACKUP_USER:-ts3}"
+BACKUP_HOME="${BACKUP_HOME:-/home/ts3}"
+BACKUP_COMMAND="${BACKUP_COMMAND:-${BACKUP_HOME}/bin/love-book-backup}"
 CURL_COMMAND="${CURL_COMMAND:-curl}"
 HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-30}"
 HEALTH_DELAY_SECONDS="${HEALTH_DELAY_SECONDS:-2}"
@@ -54,6 +57,16 @@ services:
 EOF
 }
 
+run_backup() {
+    if [[ "${EUID}" -eq 0 && "${BACKUP_USER}" != "root" ]]; then
+        require_command runuser
+        runuser -u "${BACKUP_USER}" -- env HOME="${BACKUP_HOME}" \
+            "${BACKUP_COMMAND}" pre-release
+        return
+    fi
+    "${BACKUP_COMMAND}" pre-release
+}
+
 show_diagnostics() {
     warn "Update failed; current containers were not automatically rolled back."
     compose ps || true
@@ -66,8 +79,6 @@ on_error() {
     show_diagnostics
     exit "${status}"
 }
-
-trap on_error ERR
 
 require_command docker
 require_command flock
@@ -86,6 +97,7 @@ docker compose version >/dev/null
 
 exec 9>"${LOCK_FILE}"
 flock -n 9 || fail "Another Love Book update is already running"
+trap on_error ERR
 
 info "Checking stable-latest images"
 docker pull "${BACKEND_IMAGE}"
@@ -114,7 +126,7 @@ if [[ "${current_version}" == "${target_version}" ]]; then
 fi
 
 info "Updating Love Book ${current_version:-unknown} -> ${target_version}"
-"${BACKUP_COMMAND}" pre-release
+run_backup
 ok "Pre-release backup completed"
 
 compose up -d --remove-orphans

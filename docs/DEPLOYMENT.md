@@ -149,10 +149,10 @@ chmod +x deploy_server.sh
 
 ```bash
 install -m 700 scripts/update_production.sh /home/ts3/love-book/update.sh
-/home/ts3/love-book/update.sh
+sudo bash /home/ts3/love-book/update.sh
 ```
 
-更新器会先拉取前后端 `latest` 并校验两者 OCI 版本标签一致。检测到新版本时，它会执行 `/home/ts3/bin/love-book-backup pre-release`，生成自动加载的 `docker-compose.override.yml`，启动容器并验证 `/api/health` 与公网首页；已经是最新版时不会备份或重启。更新失败只输出状态和日志，不自动回滚，也绝不会执行 `docker compose down -v`。
+更新器默认以自身所在目录作为部署目录，因此通过 `sudo` 执行时不会误用 `/root/love-book`；仍可用 `PROJECT_DIR` 显式覆盖。root 只用于读取服务器现有 Docker/GHCR 凭据，发布前备份会降权为 `ts3` 并保留 `HOME=/home/ts3`。更新器会先拉取前后端 `latest` 并校验两者 OCI 版本标签一致。检测到新版本时，它会执行 `/home/ts3/bin/love-book-backup pre-release`，生成自动加载的 `docker-compose.override.yml`，启动容器并验证 `/api/health` 与公网首页；已经是最新版时不会备份或重启。更新失败只输出状态和日志，不自动回滚，也绝不会执行 `docker compose down -v`。
 
 ## 5. 验收地址
 

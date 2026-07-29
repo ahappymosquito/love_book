@@ -138,9 +138,11 @@ def run_update(
     current: str = "0.6.0",
     backend: str = "0.7.0",
     frontend: str = "0.7.0",
+    use_script_directory: bool = False,
     **overrides: str,
 ) -> subprocess.CompletedProcess[str]:
     fake_bin = Path(harness["fake_bin"])
+    script = UPDATE_SCRIPT
     env = os.environ.copy()
     env.update(
         {
@@ -159,8 +161,12 @@ def run_update(
         }
     )
     env.update(overrides)
+    if use_script_directory:
+        script = Path(harness["deploy_dir"]) / "update.sh"
+        shutil.copyfile(UPDATE_SCRIPT, script)
+        env.pop("PROJECT_DIR")
     return subprocess.run(
-        [str(harness["bash"]), str(UPDATE_SCRIPT)],
+        [str(harness["bash"]), str(script)],
         cwd=PROJECT_ROOT,
         env=env,
         capture_output=True,
@@ -173,6 +179,28 @@ def run_update(
 def command_log(harness: dict[str, Path | str]) -> str:
     path = Path(harness["log"])
     return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
+def test_update_defaults_to_its_own_deployment_directory_under_sudo(
+    update_harness: dict[str, Path | str],
+) -> None:
+    result = run_update(
+        update_harness,
+        current="0.7.0",
+        use_script_directory=True,
+        HOME="/root",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Deployment directory not found: /root/love-book" not in result.stderr
+
+
+def test_root_update_runs_backup_as_ts3_with_the_ts3_home() -> None:
+    script = UPDATE_SCRIPT.read_text(encoding="utf-8")
+
+    assert 'BACKUP_USER="${BACKUP_USER:-ts3}"' in script
+    assert 'BACKUP_HOME="${BACKUP_HOME:-/home/ts3}"' in script
+    assert 'runuser -u "${BACKUP_USER}" -- env HOME="${BACKUP_HOME}"' in script
 
 
 def test_update_skips_backup_and_restart_when_latest_is_running(update_harness: dict[str, Path | str]) -> None:
