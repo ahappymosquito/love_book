@@ -16,6 +16,7 @@
 - 普通分支 push、pull request 和手动 dispatch 都不会构建或推送镜像。
 - 本地创建标签不会触发远程构建；只有显式推送匹配标签时才会触发。
 - 标签应指向已经通过测试、且 `VERSION`、前端清单和 Changelog 均一致的提交。
+- 前后端版本镜像都成功后才会把同一稳定版本提升为 `latest`；普通 `master` push 不会移动 `latest`。
 
 ```powershell
 python scripts/version.py check --tag v0.5.0
@@ -45,7 +46,7 @@ git push origin v0.5.0
 
 当前生产入口以 `deploy/caddy/Caddyfile` 和 `docker-compose.yml` 中的 `caddy` 服务为准。
 
-服务器直接使用预构建镜像时，通过 `LOVE_BOOK_VERSION=0.5.0 ./deploy_server.sh up` 固定拉取同版本前后端。脚本会在服务器部署目录生成 `.env`、`Caddyfile`、`docker-compose.yml`；不得使用 `latest`。备份、验证与回滚步骤见 [`VERSIONING.md`](VERSIONING.md)。
+服务器首次使用预构建镜像时，通过 `./deploy_server.sh up` 拉取同一稳定版 `latest` 前后端。脚本会在服务器部署目录生成 `.env`、`Caddyfile`、`docker-compose.yml`；需要显式兼容版本时仍可传入 `LOVE_BOOK_VERSION=X.Y.Z`。后续日常更新使用 `scripts/update_production.sh`，备份与验证步骤见 [`VERSIONING.md`](VERSIONING.md)。
 
 ## 2. 前置条件
 
@@ -144,6 +145,15 @@ chmod +x deploy_server.sh
 
 脚本默认生成到 `/opt/love_book`，可用 `PROJECT_DIR=/path/to/app` 覆盖。生成的 Compose 会使用 `love_book_media:/app/media` 保存图片媒体文件，不再使用旧 `UPLOAD_DIR` / `./uploads:/app/uploads` 配置。
 
+首次部署后，把 `scripts/update_production.sh` 安装为部署目录下的 `update.sh`。它会永久使用稳定版 `latest`，因此每次发布后无需重新下载部署脚本：
+
+```bash
+install -m 700 scripts/update_production.sh /home/ts3/love-book/update.sh
+/home/ts3/love-book/update.sh
+```
+
+更新器会先拉取前后端 `latest` 并校验两者 OCI 版本标签一致。检测到新版本时，它会执行 `/home/ts3/bin/love-book-backup pre-release`，生成自动加载的 `docker-compose.override.yml`，启动容器并验证 `/api/health` 与公网首页；已经是最新版时不会备份或重启。更新失败只输出状态和日志，不自动回滚，也绝不会执行 `docker compose down -v`。
+
 ## 5. 验收地址
 
 | 地址 | 期望 |
@@ -225,6 +235,7 @@ python scripts/migrate_images_to_media.py --clear-blobs --compact
 | Caddy HTTPS 与反代 | `deploy/caddy/Caddyfile` |
 | 本机构建部署脚本 | `deploy.sh` / `deploy.bat` |
 | 服务器预构建镜像部署脚本 | `deploy_server.sh` |
+| 服务器稳定版一键更新脚本 | `scripts/update_production.sh` |
 | 前端 API 同源配置 | `docker-compose.yml` 的 `NEXT_PUBLIC_API_BASE=/api` |
 | 管理端动态入口链接 | `web/src/app/admin/page.tsx` |
 | 邮件入口域名 | `.env` / `.env.example` 的 `APP_WEB_URL` |

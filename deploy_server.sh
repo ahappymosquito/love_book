@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Version-pinned server deployment for matching prebuilt frontend/backend GHCR images.
+# Bootstrap a server with stable-latest Love Book images or an explicitly requested compatible version.
 
 set -euo pipefail
 
@@ -51,7 +51,8 @@ fail() { printf "%s[FAIL]%s %s\n" "${RED}" "${RESET}" "$*" >&2; exit 1; }
 usage() {
     cat <<'EOF'
 Usage:
-  LOVE_BOOK_VERSION=0.5.0 ADMIN_KEY=... DATABASE_URL=... ./deploy_server.sh up
+  ADMIN_KEY=... DATABASE_URL=... ./deploy_server.sh up
+  LOVE_BOOK_VERSION=0.7.0 ./deploy_server.sh --env-file ./server.env up
   ./deploy_server.sh --env-file ./server.env up
   ./deploy_server.sh status
   ./deploy_server.sh logs [service]
@@ -66,19 +67,21 @@ Commands:
   logs      Follow logs, optionally for a service name
   config    Render and print the merged Compose config
 
-The frontend and backend default to the same immutable LOVE_BOOK_VERSION.
+The frontend and backend default to the stable-release latest tag.
+Set LOVE_BOOK_VERSION=X.Y.Z only when an explicit compatible version is required.
 BACKEND_IMAGE / FRONTEND_IMAGE may override them with an explicit tag or digest.
 EOF
 }
 
 resolve_release_images() {
-    if [[ -z "${LOVE_BOOK_VERSION}" && -f "${SCRIPT_DIR}/VERSION" ]]; then
-        LOVE_BOOK_VERSION="$(tr -d '\r\n' < "${SCRIPT_DIR}/VERSION")"
+    local image_tag="latest"
+    if [[ -n "${LOVE_BOOK_VERSION}" ]]; then
+        [[ "${LOVE_BOOK_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || fail "LOVE_BOOK_VERSION must be X.Y.Z when provided"
+        image_tag="${LOVE_BOOK_VERSION}"
     fi
-    [[ "${LOVE_BOOK_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
-        || fail "LOVE_BOOK_VERSION must be X.Y.Z or readable from ${SCRIPT_DIR}/VERSION"
-    BACKEND_IMAGE="${BACKEND_IMAGE:-ghcr.io/ahappymosquito/love_book-backend:${LOVE_BOOK_VERSION}}"
-    FRONTEND_IMAGE="${FRONTEND_IMAGE:-ghcr.io/ahappymosquito/love_book-frontend:${LOVE_BOOK_VERSION}}"
+    BACKEND_IMAGE="${BACKEND_IMAGE:-ghcr.io/ahappymosquito/love_book-backend:${image_tag}}"
+    FRONTEND_IMAGE="${FRONTEND_IMAGE:-ghcr.io/ahappymosquito/love_book-frontend:${image_tag}}"
 }
 
 load_optional_env_file() {
@@ -287,7 +290,7 @@ cmd_up() {
     compose up -d --remove-orphans
     compose ps
     compose images
-    ok "Deployment ${LOVE_BOOK_VERSION} started: ${APP_WEB_URL}"
+    ok "Deployment images started: ${BACKEND_IMAGE} / ${FRONTEND_IMAGE}"
     compose exec -T backend curl -fsS http://127.0.0.1:8000/health || warn "Backend health identity is not ready yet"
     printf "\n"
 }

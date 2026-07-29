@@ -102,7 +102,7 @@ poetry run python -m pytest -q --basetemp=.pytest-tmp/local
 cmd /c npm run build
 ```
 
-根目录 `VERSION` 是唯一应用版本。只有与它完全一致的 `vX.Y.Z` 标签会触发 GitHub Actions 构建前后端镜像并创建 GitHub Release，详见 [版本与发布](docs/VERSIONING.md)。
+根目录 `VERSION` 是唯一应用版本。只有与它完全一致的 `vX.Y.Z` 标签会触发 GitHub Actions 构建前后端镜像；两套镜像成功后会同时提升为稳定版 `latest` 并创建 GitHub Release。生产服务器后续通过 `scripts/update_production.sh` 一键检查、备份和更新，详见 [版本与发布](docs/VERSIONING.md)。
 
 ## 数据安全
 

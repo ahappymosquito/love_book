@@ -42,19 +42,24 @@ git commit -m "chore: release 0.5.0"
 git tag -a v0.5.0 -m "Love Book 0.5.0"
 ```
 
-候选镜像必须实际启动：后端 `/health` 需要返回候选版本和构建标识，前端首页需要返回 HTTP 200。只有明确推送 `vX.Y.Z` 标签才会发布 GHCR 镜像。发布工作流会拒绝与 `VERSION` 不一致的标签，并为前后端同时生成 `0.5.0` 与 `sha-xxxxxxx` 两类标签；两套镜像都成功后才会创建 GitHub Release。
+候选镜像必须实际启动：后端 `/health` 需要返回候选版本和构建标识，前端首页需要返回 HTTP 200。只有明确推送 `vX.Y.Z` 标签才会发布 GHCR 镜像。发布工作流会拒绝与 `VERSION` 不一致的标签，并为前后端同时生成 `0.5.0` 与 `sha-xxxxxxx` 两类不可变标签；两套镜像都成功后才会把同一版本提升为稳定版 `latest` 并创建 GitHub Release。普通 `master` push 不会移动 `latest`。
 
 ## 生产部署与验证
 
-生产部署必须让前后端使用同一个版本：
+生产首次部署默认使用同一个稳定版 `latest`：
 
 ```bash
-LOVE_BOOK_VERSION=0.5.0 ./deploy_server.sh up
-LOVE_BOOK_VERSION=0.5.0 ./deploy_server.sh status
+./deploy_server.sh --env-file ./server.env up
 curl -fsS https://qrqto.club/api/health
 ```
 
-`/api/health` 返回应用版本和完整 Git SHA。需要更强的供应链固定时，可分别用 `BACKEND_IMAGE`、`FRONTEND_IMAGE` 传入同一次发布生成的镜像 digest。
+后续更新只需运行服务器已安装的更新器：
+
+```bash
+/home/ts3/love-book/update.sh
+```
+
+更新器会拉取前后端 `latest`、确认两套镜像的 OCI 版本标签完全一致、仅在发现新版本时创建 `pre-release` 恢复点，然后启动并验证 `/api/health` 和首页。`/api/health` 返回应用版本和完整 Git SHA。需要更强的供应链固定时，可分别用 `BACKEND_IMAGE`、`FRONTEND_IMAGE` 传入同一次发布生成的镜像 digest。
 
 ## 发布前备份
 
@@ -66,15 +71,15 @@ curl -fsS https://qrqto.club/api/health
 
 脚本会动态解析后端 `/app/media` 的真实 volume 名，打包 MySQL、媒体和生产 `.env`，并验证 gzip、tar、MySQL 完成标记和 SHA-256。确认恢复点包含 `SUCCESS` 后再部署。当前启动迁移只允许向前兼容地增加或扩展结构，不在启动时删除业务表、旧媒体或旧字段。
 
-## 回滚
+## 显式兼容版本
 
-应用回滚时，前后端一起切回同一旧版本：
+日常更新不自动回滚。仅在明确需要兼容旧环境时，前后端才一起指定同一版本：
 
 ```bash
 LOVE_BOOK_VERSION=0.2.3 ./deploy_server.sh up
 ```
 
-先回滚镜像并验证 `/api/health`。只有旧应用确实无法读取新数据库时，才按 [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md) 在临时数据库和临时 volume 演练成功后恢复生产，避免把新数据静默覆盖。
+切换后必须验证 `/api/health`。只有旧应用确实无法读取新数据库时，才按 [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md) 在临时数据库和临时 volume 演练成功后恢复生产，避免把新数据静默覆盖。
 
 ## 依赖更新
 

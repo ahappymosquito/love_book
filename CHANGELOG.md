@@ -10,7 +10,11 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ### Fixed
 
-- Nothing yet.
+- Fixed production updates silently retaining an older version-pinned Compose image after newer stable images were published.
+
+### Changed
+
+- Stable releases now promote matching frontend and backend images to `latest`, with a reusable production updater that checks versions, creates a validated backup, pulls, starts, and verifies the site.
 
 ### Database
 

@@ -1,3 +1,4 @@
+# Build immutable stable-release images, promote the matching pair to latest, and publish the GitHub Release.
 name: release-images
 
 # Stable semantic-version tags are the only event allowed to publish images.
@@ -162,11 +163,42 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,scope=frontend,mode=max
 
+  promote-latest:
+    name: promote stable latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    needs: [prep, backend, frontend]
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify immutable source images
+        shell: bash
+        run: |
+          docker buildx imagetools inspect \
+            "${REGISTRY}/${{ needs.prep.outputs.image_owner }}/${{ needs.prep.outputs.image_repo }}-backend:${{ needs.prep.outputs.version }}"
+          docker buildx imagetools inspect \
+            "${REGISTRY}/${{ needs.prep.outputs.image_owner }}/${{ needs.prep.outputs.image_repo }}-frontend:${{ needs.prep.outputs.version }}"
+
+      - name: Promote matching images to latest
+        shell: bash
+        run: |
+          docker buildx imagetools create \
+            --tag "${REGISTRY}/${{ needs.prep.outputs.image_owner }}/${{ needs.prep.outputs.image_repo }}-backend:latest" \
+            "${REGISTRY}/${{ needs.prep.outputs.image_owner }}/${{ needs.prep.outputs.image_repo }}-backend:${{ needs.prep.outputs.version }}"
+          docker buildx imagetools create \
+            --tag "${REGISTRY}/${{ needs.prep.outputs.image_owner }}/${{ needs.prep.outputs.image_repo }}-frontend:latest" \
+            "${REGISTRY}/${{ needs.prep.outputs.image_owner }}/${{ needs.prep.outputs.image_repo }}-frontend:${{ needs.prep.outputs.version }}"
+
   release:
     name: publish GitHub Release
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    needs: [prep, backend, frontend]
+    needs: [prep, promote-latest]
     permissions:
       contents: write
     steps:
