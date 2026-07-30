@@ -1,8 +1,7 @@
 "use client";
 
-// Timeline home with queued quotes, compact received-gift rows, restrained transitions, meeting ranges, and reminders.
+// Timeline home with a lightweight 2D puppy stage, queued quotes, compact gift rows, meeting ranges, and reminders.
 
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -21,6 +20,7 @@ import { EventImagePreview } from "@/components/event-image-preview";
 import { LoadingScreen } from "@/components/loading-screen";
 import { MeetingEditorDialog } from "@/components/meeting-editor-dialog";
 import { AppHeader } from "@/components/app-header";
+import { TimelinePuppy } from "@/components/timeline-puppy";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { MotionCollapse } from "@/components/ui/motion-collapse";
 import { SubmissionBadge, VisibilityBadge } from "@/components/visibility-badge";
@@ -36,11 +36,6 @@ import { MOTION_DURATION, MOTION_EASE, MOTION_TRANSITIONS } from "@/lib/motion";
 import { useAppStore } from "@/lib/store";
 import type { AnniversaryOut, CycleDashboardOut, EventSummary, MeetingSessionOut } from "@/lib/types";
 import { cn } from "@/lib/cn";
-
-const PuppyScene = dynamic(
-  () => import("@/components/puppy-scene").then((module) => module.PuppyScene),
-  { ssr: false },
-);
 
 const LOCAL_REMINDER_QUOTES = [
   "我说伤心了怎么办，小狗说忘忘忘忘忘。",
@@ -478,69 +473,84 @@ function HomeHero({
   onRefreshQuote: () => void;
 }) {
   const reducedMotion = useReducedMotion();
+  const [puppyCue, setPuppyCue] = useState(0);
+
+  function refreshQuoteWithPuppy() {
+    setPuppyCue((value) => value + 1);
+    onRefreshQuote();
+  }
 
   return (
-    <section className="timeline-hero-panel mb-5 rounded-[2rem] px-5 py-6 sm:mb-6 sm:px-7 sm:py-7">
-      <div className="min-w-0 space-y-5">
-        <div className="flex flex-wrap gap-2.5">
-          <span className="pill inline-flex items-center gap-1.5 bg-rose/12 text-rose-deep">
-            <BookHeart className="h-3.5 w-3.5" />
-            {userName} 和 {counterpartName}
-          </span>
-          <span className="pill inline-flex items-center gap-1.5 bg-peach/22 text-ink-soft">
-            在一起第 {relationshipDays} 天
-          </span>
+    <section className="timeline-home-stage mb-5 rounded-[1.5rem] px-5 py-5 sm:mb-6 sm:px-7 sm:py-6">
+      <div className="timeline-home-grid">
+        <div className="timeline-home-copy min-w-0 space-y-5">
+          <div className="flex flex-wrap gap-2.5">
+            <span className="pill inline-flex items-center gap-1.5 bg-rose/12 text-rose-deep">
+              <BookHeart className="h-3.5 w-3.5" />
+              {userName} 和 {counterpartName}
+            </span>
+            <span className="pill inline-flex items-center gap-1.5 bg-peach/22 text-ink-soft">
+              在一起第 {relationshipDays} 天
+            </span>
+          </div>
+          <motion.button
+            type="button"
+            onClick={refreshQuoteWithPuppy}
+            disabled={quoteRefreshing}
+            layout="size"
+            whileTap={reducedMotion ? undefined : { scale: 0.995 }}
+            transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.state}
+            className="relative block w-full max-w-3xl overflow-hidden rounded-[1.35rem] py-1 text-left font-display text-[1.55rem] font-semibold leading-snug text-ink transition-colors hover:text-rose-deep focus-ring disabled:cursor-wait sm:text-[1.9rem]"
+            aria-label="刷新今日话语"
+            aria-busy={quoteRefreshing}
+          >
+            <span className="relative block min-h-[2.15rem] sm:min-h-[2.6rem]">
+              <AnimatePresence initial={false} mode="popLayout">
+                <motion.span
+                  key={data.message}
+                  aria-hidden="true"
+                  className="block origin-left"
+                  initial={
+                    reducedMotion
+                      ? { opacity: 0 }
+                      : { opacity: 0.2, y: 6, filter: "blur(2px)", clipPath: "inset(0 0 70% 0 round 8px)" }
+                  }
+                  animate={{ opacity: 1, y: 0, filter: "blur(0px)", clipPath: "inset(0 0 0% 0 round 8px)" }}
+                  exit={
+                    reducedMotion
+                      ? { opacity: 0 }
+                      : {
+                          opacity: 0,
+                          y: -4,
+                          filter: "blur(2px)",
+                          transition: { duration: MOTION_DURATION.press, ease: MOTION_EASE },
+                        }
+                  }
+                  transition={reducedMotion ? MOTION_TRANSITIONS.reduced : { ...MOTION_TRANSITIONS.state, duration: 0.24 }}
+                >
+                  {data.message}
+                </motion.span>
+              </AnimatePresence>
+              {quoteRefreshing && (
+                <motion.span
+                  aria-hidden="true"
+                  className="absolute inset-x-0 bottom-0 h-0.5 origin-left rounded-full bg-rose/55"
+                  initial={{ opacity: 0.35, scaleX: 0.24 }}
+                  animate={reducedMotion ? { opacity: 0.7, scaleX: 1 } : { opacity: [0.35, 0.8, 0.35], scaleX: [0.24, 1, 0.24] }}
+                  transition={reducedMotion ? MOTION_TRANSITIONS.reduced : { duration: 0.8, ease: MOTION_EASE, repeat: Infinity }}
+                />
+              )}
+            </span>
+            <span className="sr-only" aria-live="polite" aria-atomic="true">{data.message}</span>
+          </motion.button>
         </div>
-        <motion.button
-          type="button"
-          onClick={onRefreshQuote}
-          disabled={quoteRefreshing}
-          layout="size"
-          whileTap={reducedMotion ? undefined : { scale: 0.995 }}
-          transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.state}
-          className="relative block w-full max-w-3xl overflow-hidden rounded-[1.35rem] py-1 text-left font-display text-[1.55rem] font-semibold leading-snug text-ink transition-colors hover:text-rose-deep focus-ring disabled:cursor-wait sm:text-[1.9rem]"
-          aria-label="刷新今日话语"
-          aria-busy={quoteRefreshing}
-        >
-          <span className="relative block min-h-[2.15rem] sm:min-h-[2.6rem]">
-            <AnimatePresence initial={false} mode="popLayout">
-              <motion.span
-                key={data.message}
-                aria-hidden="true"
-                className="block origin-left"
-                initial={
-                  reducedMotion
-                    ? { opacity: 0 }
-                    : { opacity: 0.2, y: 6, filter: "blur(2px)", clipPath: "inset(0 0 70% 0 round 8px)" }
-                }
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)", clipPath: "inset(0 0 0% 0 round 8px)" }}
-                exit={
-                  reducedMotion
-                    ? { opacity: 0 }
-                    : {
-                        opacity: 0,
-                        y: -4,
-                        filter: "blur(2px)",
-                        transition: { duration: MOTION_DURATION.press, ease: MOTION_EASE },
-                      }
-                }
-                transition={reducedMotion ? MOTION_TRANSITIONS.reduced : { ...MOTION_TRANSITIONS.state, duration: 0.24 }}
-              >
-                {data.message}
-              </motion.span>
-            </AnimatePresence>
-            {quoteRefreshing && (
-              <motion.span
-                aria-hidden="true"
-                className="absolute inset-x-0 bottom-0 h-0.5 origin-left rounded-full bg-rose/55"
-                initial={{ opacity: 0.35, scaleX: 0.24 }}
-                animate={reducedMotion ? { opacity: 0.7, scaleX: 1 } : { opacity: [0.35, 0.8, 0.35], scaleX: [0.24, 1, 0.24] }}
-                transition={reducedMotion ? MOTION_TRANSITIONS.reduced : { duration: 0.8, ease: MOTION_EASE, repeat: Infinity }}
-              />
-            )}
-          </span>
-          <span className="sr-only" aria-live="polite" aria-atomic="true">{data.message}</span>
-        </motion.button>
+
+        <TimelinePuppy
+          cue={puppyCue}
+          cueAction="curious"
+          className="timeline-home-puppy"
+          label="和首页小狗打个招呼"
+        />
       </div>
     </section>
   );
@@ -1047,13 +1057,8 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
           </button>
         </div>
 
-        <div className="inline-puppy-shell relative h-[220px] overflow-hidden rounded-[1.8rem] sm:h-[250px]">
-          <PuppyScene
-            variant="inline"
-            interactive={false}
-            reducedMotionFallback="still"
-            className="absolute inset-0"
-          />
+        <div className="timeline-empty-puppy-shell grid min-h-[220px] place-items-center overflow-hidden rounded-[1.5rem] sm:min-h-[250px]">
+          <TimelinePuppy className="h-[200px] w-[200px] sm:h-[228px] sm:w-[228px]" />
         </div>
       </div>
     </section>

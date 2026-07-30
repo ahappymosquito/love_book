@@ -1,4 +1,4 @@
-/* Global Love Book visual system: OKLCH Liquid Glass controls, solid content surfaces, unified restrained motion, warm day/night themes, mobile viewport guards, and accessible fallbacks. */
+/* Global Love Book visual system: OKLCH controls, solid content layers, lightweight 2D mascot motion, warm themes, viewport guards, and accessible fallbacks. */
 
 @tailwind base;
 @tailwind components;
@@ -840,14 +840,113 @@
       linear-gradient(180deg, transparent 50%, rgb(var(--surface-raised) / 0.58) 100%);
   }
 
-  .timeline-hero-panel {
-    border: 1px solid rgb(255 255 255 / 0.62);
-    background:
-      radial-gradient(circle at 20% 0%, rgb(255 255 255 / 0.78), transparent 34%),
-      linear-gradient(120deg, rgb(var(--rose-soft) / 0.26), rgb(var(--surface-raised) / 0.82) 36%, rgb(var(--peach) / 0.16) 100%);
-    box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.84) inset,
-      0 20px 44px -34px rgb(var(--rose-deep) / 0.4);
+  .timeline-home-stage {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    border: 1px solid oklch(var(--lb-line) / 0.66);
+    background: oklch(var(--lb-surface-solid));
+    box-shadow: 0 3px 8px oklch(var(--lb-rose-strong) / 0.1);
+  }
+
+  .timeline-home-stage::before {
+    content: "";
+    position: absolute;
+    z-index: -2;
+    top: 50%;
+    right: clamp(1.25rem, 5vw, 4rem);
+    width: clamp(9rem, 24vw, 15rem);
+    aspect-ratio: 1;
+    translate: 0 -54%;
+    border-radius: 999px;
+    background: oklch(var(--lb-peach) / 0.19);
+  }
+
+  .timeline-home-stage::after {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    right: -4%;
+    bottom: -18%;
+    width: min(54%, 28rem);
+    height: 46%;
+    border-radius: 50% 50% 0 0;
+    background: oklch(var(--lb-sage) / 0.12);
+  }
+
+  .timeline-home-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(10rem, 13.5rem);
+    align-items: center;
+    gap: clamp(0.75rem, 3vw, 2rem);
+    min-height: 13.5rem;
+  }
+
+  .timeline-home-copy {
+    position: relative;
+    z-index: 1;
+  }
+
+  .timeline-puppy-button {
+    display: block;
+    aspect-ratio: 1;
+    min-width: 44px;
+    min-height: 44px;
+    appearance: none;
+    border: 0;
+    border-radius: 1rem;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: transform var(--lb-motion-fast) cubic-bezier(0.22, 1, 0.36, 1);
+    contain: layout paint style;
+  }
+
+  .timeline-puppy-button:hover {
+    transform: translateY(-2px);
+  }
+
+  .timeline-puppy-button:active {
+    transform: translateY(0) scale(0.985);
+  }
+
+  .timeline-puppy-frame {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background-image: url("/pets/xiaohua-home-atlas.webp");
+    background-repeat: no-repeat;
+    background-size: 600% 400%;
+  }
+
+  .timeline-home-puppy {
+    justify-self: end;
+    width: min(100%, 13.5rem);
+  }
+
+  @media (max-width: 639px) {
+    .timeline-home-grid {
+      grid-template-columns: minmax(0, 1fr) 8.75rem;
+      gap: 0.5rem;
+      min-height: 14rem;
+    }
+
+    .timeline-home-puppy {
+      width: 9.25rem;
+      margin-right: -0.35rem;
+    }
+
+    .timeline-home-stage::before {
+      right: 0.6rem;
+      width: 9.75rem;
+    }
+
+    .timeline-home-stage::after {
+      right: -8%;
+      width: 48%;
+      height: 38%;
+    }
   }
 
   .timeline-event-row {
@@ -954,14 +1053,10 @@
       linear-gradient(135deg, rgb(var(--peach) / 0.24), rgb(var(--surface-raised) / 0.88) 58%, rgb(var(--sage) / 0.08));
   }
 
-  .inline-puppy-shell {
-    border: 1px solid rgb(255 255 255 / 0.58);
-    background:
-      radial-gradient(circle at 24% 0%, rgb(255 255 255 / 0.76), transparent 32%),
-      linear-gradient(180deg, rgb(var(--surface-raised) / 0.68), rgb(var(--peach) / 0.12));
-    box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.82) inset,
-      0 18px 34px -30px rgb(var(--rose-deep) / 0.32);
+  .timeline-empty-puppy-shell {
+    border: 1px solid oklch(var(--lb-line) / 0.66);
+    background: oklch(var(--lb-peach) / 0.1);
+    box-shadow: 0 2px 8px oklch(var(--lb-rose-strong) / 0.08);
   }
 
   @media (min-width: 640px) {
@@ -1029,12 +1124,10 @@
         rgb(var(--surface) / 0.44);
     }
 
-    .timeline-hero-panel,
-    .inline-puppy-shell {
+    .timeline-home-stage,
+    .timeline-empty-puppy-shell {
       border-color: rgb(255 255 255 / 0.14);
-      box-shadow:
-        0 1px 0 rgb(255 255 255 / 0.08) inset,
-        0 20px 44px -34px rgb(0 0 0 / 0.72);
+      box-shadow: 0 3px 8px rgb(0 0 0 / 0.28);
     }
 
     .login-floating-panel {
@@ -1043,10 +1136,8 @@
       box-shadow: 0 4px 8px oklch(0.08 0.015 18 / 0.28);
     }
 
-    .timeline-hero-panel {
-      background:
-        radial-gradient(circle at 20% 0%, rgb(255 255 255 / 0.1), transparent 34%),
-        linear-gradient(120deg, rgb(var(--rose) / 0.18), rgb(var(--surface-raised) / 0.82) 36%, rgb(var(--peach) / 0.12) 100%);
+    .timeline-home-stage {
+      background: oklch(var(--lb-surface-solid));
     }
 
     .timeline-event-row:hover {
@@ -1085,10 +1176,8 @@
         0 16px 32px -25px rgb(0 0 0 / 0.66);
     }
 
-    .inline-puppy-shell {
-      background:
-        radial-gradient(circle at 24% 0%, rgb(255 255 255 / 0.08), transparent 32%),
-        linear-gradient(180deg, rgb(var(--surface-raised) / 0.68), rgb(var(--peach) / 0.08));
+    .timeline-empty-puppy-shell {
+      background: oklch(var(--lb-peach) / 0.08);
     }
 
     .liquid-habit-row-done {
@@ -1468,15 +1557,15 @@
     border-color: oklch(var(--lb-sage) / 0.42);
   }
 
-  .timeline-hero-panel {
-    background: oklch(var(--lb-surface) / 0.66);
-    border: 0;
-    box-shadow: none;
+  .timeline-home-stage {
+    background: oklch(var(--lb-surface-solid));
+    border-color: oklch(var(--lb-line) / 0.7);
+    box-shadow: 0 2px 8px oklch(var(--lb-ink) / 0.07);
   }
 
   .meeting-river-shell,
   .meeting-river-event,
-  .inline-puppy-shell {
+  .timeline-empty-puppy-shell {
     background: oklch(var(--lb-surface-solid));
     border-color: oklch(var(--lb-line) / 0.7);
     box-shadow: 0 2px 8px oklch(var(--lb-ink) / 0.07);
@@ -1571,7 +1660,8 @@
   .segmented-control-lens,
   .login-scene-placeholder,
   .login-scene-layer .puppy-scene-hero,
-  .login-submit-button {
+  .login-submit-button,
+  .timeline-puppy-button {
     transition-duration: 0.01ms !important;
   }
 
