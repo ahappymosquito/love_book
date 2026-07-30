@@ -10,16 +10,35 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ### Fixed
 
+- Nothing yet.
+
+### Changed
+
+- Nothing yet.
+
+### Database
+
+- No pending schema changes.
+
+## [0.8.0] - 2026-07-31
+
+### Added
+
+- Added a lightweight animated 2D puppy companion to the Timeline, with idle, greeting, curious, and celebration actions.
+
+### Fixed
+
 - Fixed production updates silently retaining an older version-pinned Compose image after newer stable images were published.
 - Fixed `sudo` updates resolving the deployment and backup paths under `/root` instead of the installed `/home/ts3` paths.
 
 ### Changed
 
+- Replaced the Timeline's login-scene dependency with a dedicated transparent puppy atlas, including reduced-motion and background-tab pause behavior for smooth low-overhead animation.
 - Stable releases now promote matching frontend and backend images to `latest`, with a reusable production updater that checks versions, creates a validated backup, pulls, starts, and verifies the site.
 
 ### Database
 
-- No pending schema changes.
+- No schema changes.
 
 ## [0.7.0] - 2026-07-28
 
@@ -108,7 +127,8 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 - Kept Love Receipt table creation and list ordering compatible with MySQL and MariaDB.
 
-[Unreleased]: https://github.com/ahappymosquito/love_book/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/ahappymosquito/love_book/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/ahappymosquito/love_book/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/ahappymosquito/love_book/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/ahappymosquito/love_book/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/ahappymosquito/love_book/compare/v0.4.1...v0.5.0
