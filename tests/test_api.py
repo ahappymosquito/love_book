@@ -1419,7 +1419,7 @@ def test_meeting_sessions_are_pair_private_and_memory_events_auto_become_meeting
     client: TestClient, pair_tokens: dict[str, str | int]
 ) -> None:
     token = str(pair_tokens["user_a_token"])
-    today = date.today().isoformat()
+    today = datetime.now(services.CHINA_TZ).date().isoformat()
     session = client.post("/meeting-sessions", headers=auth(token), json={"title": "只属于第一对", "started_on": today, "ended_on": today}).json()
     other_pair = client.post(
         "/admin/pairs",
@@ -1483,7 +1483,7 @@ def test_counterpart_can_assign_existing_event_to_meeting_session_without_editin
         headers=auth(token_a),
         json={"title": "待整理的小事", "event_kind": "memory", "visibility_mode": "public"},
     ).json()
-    today = date.today().isoformat()
+    today = datetime.now(services.CHINA_TZ).date().isoformat()
     session = client.post("/meeting-sessions", headers=auth(token_b), json={"title": "周末见面", "started_on": today, "ended_on": today}).json()
 
     assigned = client.patch(

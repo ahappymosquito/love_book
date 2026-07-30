@@ -28,6 +28,7 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ### Fixed
 
+- Fixed meeting-session regression tests to use the application's `Asia/Shanghai` date instead of the CI runner's local date at UTC day boundaries.
 - Fixed production updates silently retaining an older version-pinned Compose image after newer stable images were published.
 - Fixed `sudo` updates resolving the deployment and backup paths under `/root` instead of the installed `/home/ts3` paths.
 
