@@ -10,7 +10,7 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ### Fixed
 
-- Nothing yet.
+- Fixed the Timeline puppy atlas so every animation frame keeps the same horizontal anchor instead of sliding left before each loop reset.
 
 ### Changed
 
