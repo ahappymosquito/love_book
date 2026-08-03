@@ -1,25 +1,31 @@
-"""Validate the login runner puppy atlas geometry, transparency, and used cells."""
+"""Validate the six-action Xiaohua atlas geometry, scale, anchors, transparency, and file budget."""
 
 from pathlib import Path
+from statistics import median
 
 from PIL import Image
 
 
-ATLAS_PATH = Path(__file__).parents[1] / "web" / "public" / "game" / "xiaohua-runner-atlas.webp"
-CELL_SIZE = 128
+GAME_DIR = Path(__file__).parents[1] / "web" / "public" / "game"
+ATLAS_PATH = GAME_DIR / "xiaohua-runner-atlas.webp"
+CONTACT_SHEET_PATH = GAME_DIR / "qa" / "xiaohua-runner-contact-sheet.png"
+CELL_SIZE = 192
 ATLAS_COLUMNS = 8
-FRAME_COUNTS = (4, 8, 6, 6, 6)
+ACTIONS = ("idle", "run", "jump", "crouch", "stumble", "celebrate")
+FRAME_COUNTS = (4, 8, 8, 6, 6, 6)
 
 
 def test_runner_puppy_atlas_contract() -> None:
     with Image.open(ATLAS_PATH) as source:
         atlas = source.convert("RGBA")
 
-    assert atlas.size == (CELL_SIZE * ATLAS_COLUMNS, CELL_SIZE * len(FRAME_COUNTS))
-    assert atlas.getpixel((0, 0))[3] == 0
-
-    for row, frame_count in enumerate(FRAME_COUNTS):
+    assert atlas.size == (1536, 1152)
+    assert ATLAS_PATH.stat().st_size <= 1_500_000
+    row_bounds: dict[str, list[tuple[int, int, int, int]]] = {}
+    row_areas: dict[str, list[int]] = {}
+    for row, (action, frame_count) in enumerate(zip(ACTIONS, FRAME_COUNTS, strict=True)):
         occupied_bounds: list[tuple[int, int, int, int]] = []
+        occupied_areas: list[int] = []
         for column in range(ATLAS_COLUMNS):
             cell = atlas.crop(
                 (
@@ -32,20 +38,29 @@ def test_runner_puppy_atlas_contract() -> None:
             alpha = cell.getchannel("A")
             bounds = alpha.getbbox()
             if column < frame_count:
-                assert bounds is not None, f"row {row} frame {column} is empty"
-                assert bounds[2] - bounds[0] >= 32
-                assert bounds[3] - bounds[1] >= 32
+                assert bounds is not None, f"{action} frame {column} is empty"
+                assert bounds[2] - bounds[0] >= 48
+                assert bounds[3] - bounds[1] >= 48
                 occupied_bounds.append(bounds)
+                occupied_areas.append(sum(1 for value in alpha.get_flattened_data() if value))
             else:
-                assert bounds is None, f"row {row} unused cell {column} is not transparent"
+                assert bounds is None, f"{action} unused cell {column} is not transparent"
+        row_bounds[action] = occupied_bounds
+        row_areas[action] = occupied_areas
 
-        if row in (0, 1, 3):
-            bottoms = [bounds[3] for bounds in occupied_bounds]
-            assert max(bottoms) - min(bottoms) <= 14, f"row {row} has an unstable foot baseline"
+    for action in ("idle", "run", "crouch"):
+        bottoms = [bounds[3] for bounds in row_bounds[action]]
+        assert max(bottoms) - min(bottoms) <= 1, f"{action} foot baseline drifted"
+    assert 0.9 <= median(row_areas["jump"]) / median(row_areas["run"]) <= 1.1
+    idle_height = median(bounds[3] - bounds[1] for bounds in row_bounds["idle"])
+    crouch_heights = [bounds[3] - bounds[1] for bounds in row_bounds["crouch"]]
+    assert median(crouch_heights) <= idle_height * 0.7
+    assert min(crouch_heights) <= idle_height * 0.58
 
 
-def test_runner_puppy_atlas_has_clean_transparent_pixels() -> None:
-    with Image.open(ATLAS_PATH) as source:
+def test_runner_puppy_contact_sheet_has_clean_transparent_pixels() -> None:
+    # PNG is the canonical lossless QA surface; WebP decoders may synthesize hidden RGB values.
+    with Image.open(CONTACT_SHEET_PATH) as source:
         atlas = source.convert("RGBA")
 
     assert all(

@@ -1210,7 +1210,7 @@
   width: 100%;
   height: 100dvh;
   overflow: hidden;
-  background: #75b96b;
+  background: #cfe4df;
 }
 
 .runner-stage,
@@ -1221,8 +1221,29 @@
   height: 100%;
 }
 
-.runner-stage { touch-action: manipulation; }
-.runner-canvas { display: block; }
+.runner-stage { touch-action: none; }
+.runner-canvas { display: block; pointer-events: none; }
+.runner-touch-zone { position: absolute; z-index: 3; user-select: none; -webkit-user-select: none; touch-action: none; }
+.runner-touch-zone-left { cursor: s-resize; }
+.runner-touch-zone-right { cursor: n-resize; }
+.runner-input-hint,
+.runner-asset-status {
+  position: absolute;
+  z-index: 11;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 1px solid rgb(255 255 255 / 0.72);
+  border-radius: 999px;
+  background: rgb(56 43 40 / 0.78);
+  color: white;
+  box-shadow: 0 0.35rem 1.25rem rgb(56 43 40 / 0.16);
+  font-size: 0.78rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.runner-input-hint { bottom: max(5rem, calc(env(safe-area-inset-bottom) + 4rem)); padding: 0.55rem 0.8rem; pointer-events: none; }
+.runner-asset-status { top: 50%; display: flex; align-items: center; gap: 0.75rem; padding: 0.7rem 0.9rem; transform: translate(-50%, -50%); }
+.runner-asset-status .runner-play-button { min-height: 2.25rem; padding-block: 0.35rem; }
 
 .login-runner-header {
   position: absolute;
@@ -1287,6 +1308,7 @@
 .runner-controls { position: absolute; z-index: 10; right: max(1rem, env(safe-area-inset-right)); bottom: max(1rem, env(safe-area-inset-bottom)); display: flex; gap: 0.5rem; }
 .runner-icon-button { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; border-radius: 999px; }
 .runner-play-button { display: inline-flex; min-height: 2.75rem; align-items: center; gap: 0.45rem; border-radius: 999px; padding: 0.55rem 0.9rem; font-size: 0.82rem; font-weight: 700; }
+.runner-play-button:disabled { cursor: wait; opacity: 0.58; }
 .runner-gameover { position: absolute; z-index: 10; left: 50%; bottom: 5rem; transform: translateX(-50%); border-radius: 0.75rem; background: rgb(56 43 40 / 0.82); padding: 0.55rem 0.8rem; color: white; font-size: 0.875rem; font-weight: 650; white-space: nowrap; }
 
 .runner-leaderboard { top: 4.75rem; right: max(1rem, env(safe-area-inset-right)); width: min(21rem, calc(100vw - 2rem)); padding: 1rem; }
@@ -1310,6 +1332,7 @@
   .login-runner-panel { top: 4.75rem; right: 1rem; max-height: calc(100dvh - 5.75rem); overflow-y: auto; }
   .login-runner-shell[data-panel-open="false"] .login-runner-panel { transform: translateX(1rem); }
   .login-runner-brand { padding-inline: 0.7rem; }
+  .runner-input-hint { bottom: max(1rem, env(safe-area-inset-bottom)); }
 }
 
 @media (max-width: 500px) {

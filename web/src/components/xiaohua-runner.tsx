@@ -1,23 +1,38 @@
 "use client";
 
-// Full-screen Canvas 2D grassland runner with fixed-step physics, pixel rendering, and accessible controls.
+// Responsive Canvas renderer and accessible pointer/keyboard controller for the asset-driven Xiaohua runner.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Expand, Pause, Play, RotateCcw } from "lucide-react";
 import {
   RUNNER_STEP,
+  createRunnerMetrics,
   createRunnerState,
   jumpRunner,
   pauseRunner,
+  setRunnerCrouch,
   startRunner,
   stepRunner,
+  type RunnerMetrics,
+  type RunnerObstacleKind,
   type RunnerState,
   type RunnerStatus,
 } from "@/lib/xiaohua-runner";
 
-const ATLAS_PATH = "/game/xiaohua-runner-atlas.webp";
-const ACTION_ROW = { idle: 0, run: 1, jump: 2, stumble: 3, celebrate: 4 } as const;
-const ACTION_FRAMES = { idle: 4, run: 8, jump: 6, stumble: 6, celebrate: 6 } as const;
+const ASSET_PATHS = {
+  dog: "/game/xiaohua-runner-atlas.webp",
+  far: "/game/runner-scene-far.webp",
+  mid: "/game/runner-scene-mid.webp",
+  ground: "/game/runner-scene-ground.webp",
+  obstacles: "/game/runner-obstacles.webp",
+  bird: "/game/runner-bird.webp",
+} as const;
+const ACTION_ROW = { idle: 0, run: 1, jump: 2, crouch: 3, stumble: 4, celebrate: 5 } as const;
+const ACTION_FRAMES = { idle: 4, run: 8, jump: 8, crouch: 6, stumble: 6, celebrate: 6 } as const;
+const OBSTACLE_COLUMN: Record<Exclude<RunnerObstacleKind, "bird">, number> = { rock: 0, stump: 1, log: 2, puddle: 3 };
+
+type RunnerAssets = Record<keyof typeof ASSET_PATHS, HTMLImageElement>;
+type AssetStatus = "loading" | "ready" | "error";
 
 export interface XiaohuaRunnerProps {
   leaderboardBest?: number | null;
@@ -27,108 +42,171 @@ export interface XiaohuaRunnerProps {
   onGameOver?: (score: number) => void;
 }
 
-function drawPixelDog(context: CanvasRenderingContext2D, x: number, y: number, scale: number) {
-  context.fillStyle = "#d79447";
-  context.fillRect(x + 22 * scale, y + 18 * scale, 42 * scale, 42 * scale);
-  context.fillRect(x + 14 * scale, y + 48 * scale, 58 * scale, 31 * scale);
-  context.fillStyle = "#fff4d9";
-  context.fillRect(x + 34 * scale, y + 18 * scale, 16 * scale, 34 * scale);
-  context.fillRect(x + 26 * scale, y + 56 * scale, 36 * scale, 18 * scale);
-  context.fillStyle = "#382b28";
-  context.fillRect(x + 28 * scale, y + 35 * scale, 5 * scale, 5 * scale);
-  context.fillRect(x + 54 * scale, y + 35 * scale, 5 * scale, 5 * scale);
-  context.fillStyle = "#4d8a58";
-  context.fillRect(x + 36 * scale, y + 72 * scale, 18 * scale, 6 * scale);
-  context.fillStyle = "#f4a0ae";
-  context.fillRect(x + 18 * scale, y + 13 * scale, 8 * scale, 8 * scale);
-  context.fillRect(x + 34 * scale, y + 9 * scale, 8 * scale, 8 * scale);
-  context.fillRect(x + 50 * scale, y + 13 * scale, 8 * scale, 8 * scale);
+function snap(value: number, dpr: number): number {
+  return Math.round(value * dpr) / dpr;
+}
+
+function drawCover(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) {
+  const sourceRatio = image.naturalWidth / image.naturalHeight;
+  const targetRatio = width / height;
+  let sourceX = 0;
+  let sourceY = 0;
+  let sourceWidth = image.naturalWidth;
+  let sourceHeight = image.naturalHeight;
+  if (sourceRatio > targetRatio) {
+    sourceWidth = sourceHeight * targetRatio;
+    sourceX = (image.naturalWidth - sourceWidth) / 2;
+  } else {
+    sourceHeight = sourceWidth / targetRatio;
+    sourceY = (image.naturalHeight - sourceHeight) / 2;
+  }
+  context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
+}
+
+function drawLoopingLayer(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  metrics: RunnerMetrics,
+  distancePixels: number,
+) {
+  const tileHeight = metrics.frame.height;
+  const tileWidth = Math.round(tileHeight * (image.naturalWidth / image.naturalHeight));
+  const offset = Math.round(((distancePixels % tileWidth) + tileWidth) % tileWidth);
+  let index = -1;
+  for (let x = metrics.frame.x - offset; x < metrics.frame.x + metrics.frame.width + tileWidth; x += tileWidth) {
+    context.save();
+    if (index % 2 !== 0) {
+      context.translate(x * 2 + tileWidth, 0);
+      context.scale(-1, 1);
+    }
+    context.drawImage(image, x, metrics.frame.y, tileWidth, tileHeight);
+    context.restore();
+    index += 1;
+  }
+}
+
+function drawObstacle(
+  context: CanvasRenderingContext2D,
+  state: RunnerState,
+  obstacle: RunnerState["obstacles"][number],
+  metrics: RunnerMetrics,
+  assets: RunnerAssets,
+  dpr: number,
+) {
+  const x = snap(metrics.frame.x + obstacle.x * metrics.bodyUnit, dpr);
+  if (obstacle.kind === "bird") {
+    const frame = Math.floor(state.elapsed * 10) % 6;
+    const width = metrics.bodyUnit * 1.08;
+    const height = metrics.standingHeight * 0.82;
+    const bottom = metrics.groundBaseline - obstacle.bottom * metrics.standingHeight;
+    context.drawImage(assets.bird, frame * 192, 0, 192, 192, x, snap(bottom - height, dpr), width, height);
+    return;
+  }
+  const visualSize: Record<Exclude<RunnerObstacleKind, "bird">, [number, number]> = {
+    rock: [0.78, 0.78],
+    stump: [0.78, 0.86],
+    log: [1.08, 0.68],
+    puddle: [1.2, 0.52],
+  };
+  const [widthUnits, heightUnits] = visualSize[obstacle.kind];
+  const width = widthUnits * metrics.bodyUnit;
+  const height = heightUnits * metrics.standingHeight;
+  context.drawImage(
+    assets.obstacles,
+    OBSTACLE_COLUMN[obstacle.kind] * 256,
+    0,
+    256,
+    256,
+    x,
+    snap(metrics.groundBaseline - height, dpr),
+    width,
+    height,
+  );
 }
 
 function drawScene(
   context: CanvasRenderingContext2D,
-  width: number,
-  height: number,
+  viewportWidth: number,
+  viewportHeight: number,
   state: RunnerState,
-  atlas: HTMLImageElement | null,
+  metrics: RunnerMetrics,
+  assets: RunnerAssets,
   reducedMotion: boolean,
   celebrating: boolean,
   renderTime: number,
+  dpr: number,
 ) {
+  context.clearRect(0, 0, viewportWidth, viewportHeight);
+  context.imageSmoothingEnabled = true;
+  context.globalAlpha = 0.5;
+  drawCover(context, assets.far, 0, 0, viewportWidth, viewportHeight);
+  context.globalAlpha = 1;
+  context.save();
+  context.beginPath();
+  context.rect(metrics.frame.x, metrics.frame.y, metrics.frame.width, metrics.frame.height);
+  context.clip();
   context.imageSmoothingEnabled = false;
-  const horizon = Math.floor(height * 0.58);
-  context.fillStyle = "#9ed8df";
-  context.fillRect(0, 0, width, horizon);
-  context.fillStyle = "#d9eff0";
-  context.fillRect(0, horizon - 34, width, 34);
+  drawLoopingLayer(context, assets.far, metrics, state.distance * metrics.bodyUnit * 0.035);
+  drawLoopingLayer(context, assets.mid, metrics, state.distance * metrics.bodyUnit * 0.16);
+  drawLoopingLayer(context, assets.ground, metrics, state.distance * metrics.bodyUnit * 0.78);
+  for (const obstacle of state.obstacles) drawObstacle(context, state, obstacle, metrics, assets, dpr);
 
-  const farOffset = Math.floor((state.distance * 0.08) % 160);
-  context.fillStyle = "#83b977";
-  for (let x = -farOffset - 160; x < width + 160; x += 160) {
-    context.fillRect(x, horizon - 28, 112, 28);
-    context.fillRect(x + 24, horizon - 44, 64, 16);
-  }
-
-  context.fillStyle = "#5e9e58";
-  context.fillRect(0, horizon, width, height - horizon);
-  context.fillStyle = "#75b96b";
-  context.fillRect(0, horizon, width, 12);
-  const groundOffset = Math.floor(state.distance % 48);
-  for (let x = -groundOffset; x < width + 48; x += 48) {
-    context.fillStyle = "#3d7d43";
-    context.fillRect(x + 6, horizon + 26, 4, 10);
-    context.fillRect(x + 14, horizon + 22, 4, 14);
-    context.fillStyle = x % 96 === 0 ? "#f7d4db" : "#fff1bf";
-    context.fillRect(x + 10, horizon + 18, 8, 6);
-  }
-
-  const unit = Math.max(0.72, Math.min(1.1, height / 620));
-  const groundY = horizon + 44;
-  for (const obstacle of state.obstacles) {
-    const x = obstacle.x;
-    if (obstacle.kind === "puddle") {
-      context.fillStyle = "#4f99a6";
-      context.fillRect(x, groundY + 52, obstacle.width, 9);
-      context.fillStyle = "#8fd0d2";
-      context.fillRect(x + 12, groundY + 54, obstacle.width - 26, 3);
-    } else if (obstacle.kind === "stump") {
-      context.fillStyle = "#734a31";
-      context.fillRect(x + 8, groundY + 60 - obstacle.height, obstacle.width - 16, obstacle.height);
-      context.fillStyle = "#aa7144";
-      context.fillRect(x, groundY + 60 - obstacle.height, obstacle.width, 12);
-    } else {
-      context.fillStyle = "#65776d";
-      context.fillRect(x + 7, groundY + 60 - obstacle.height, obstacle.width - 12, obstacle.height);
-      context.fillStyle = "#91a498";
-      context.fillRect(x + 15, groundY + 67 - obstacle.height, obstacle.width - 26, 8);
-    }
-  }
-
-  const action: keyof typeof ACTION_ROW =
-    state.status === "gameover" ? (celebrating ? "celebrate" : "stumble") : state.y < -1 ? "jump" : state.status === "playing" ? "run" : "idle";
+  const action: keyof typeof ACTION_ROW = state.status === "gameover"
+    ? (celebrating ? "celebrate" : "stumble")
+    : state.y > 0.001
+      ? "jump"
+      : state.crouching
+        ? "crouch"
+        : state.status === "playing"
+          ? "run"
+          : "idle";
   const actionTime = action === "celebrate" ? renderTime : state.elapsed;
   const frame = reducedMotion && (action === "idle" || action === "celebrate")
     ? 0
-    : Math.floor(actionTime * (action === "run" ? 12 : 8)) % ACTION_FRAMES[action];
-  const dogX = 54;
-  const dogY = groundY - 72 * unit + state.y * unit;
-  if (atlas?.complete && atlas.naturalWidth > 0) {
-    context.drawImage(atlas, frame * 128, ACTION_ROW[action] * 128, 128, 128, dogX, dogY - 42 * unit, 128 * unit, 128 * unit);
-  } else {
-    drawPixelDog(context, dogX, dogY, unit);
-  }
+    : Math.floor(actionTime * (action === "run" ? 11 : 8)) % ACTION_FRAMES[action];
+  const dogX = snap(metrics.playerScreenX - metrics.bodyUnit * 0.08, dpr);
+  const dogY = snap(
+    metrics.groundBaseline - metrics.spriteSize - state.y * metrics.standingHeight + metrics.spriteSize * (8 / 192),
+    dpr,
+  );
+  context.drawImage(
+    assets.dog,
+    frame * 192,
+    ACTION_ROW[action] * 192,
+    192,
+    192,
+    dogX,
+    dogY,
+    metrics.spriteSize,
+    metrics.spriteSize,
+  );
+  context.restore();
+  context.strokeStyle = "rgb(255 248 236 / 0.72)";
+  context.lineWidth = Math.max(1, 1 / dpr);
+  context.strokeRect(metrics.frame.x + 0.5, metrics.frame.y + 0.5, metrics.frame.width - 1, metrics.frame.height - 1);
 }
 
 export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, celebrating = false, onStart, onGameOver }: XiaohuaRunnerProps) {
   const shellRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef(createRunnerState());
-  const atlasRef = useRef<HTMLImageElement | null>(null);
+  const assetsRef = useRef<RunnerAssets | null>(null);
   const gameOverScoreRef = useRef<number | null>(null);
   const pausedByPanelRef = useRef(false);
   const [status, setStatus] = useState<RunnerStatus>("idle");
   const [score, setScore] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [assetStatus, setAssetStatus] = useState<AssetStatus>("loading");
+  const [assetAttempt, setAssetAttempt] = useState(0);
+  const [metrics, setMetrics] = useState<RunnerMetrics | null>(null);
+  const [showHint, setShowHint] = useState(true);
 
   const syncUi = useCallback((state: RunnerState) => {
     setStatus((value) => (value === state.status ? value : state.status));
@@ -136,20 +214,47 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, celebra
   }, []);
 
   const play = useCallback(() => {
+    if (assetStatus !== "ready") return;
     const wasNewRun = stateRef.current.status === "idle" || stateRef.current.status === "gameover";
     stateRef.current = startRunner(stateRef.current);
     gameOverScoreRef.current = null;
     syncUi(stateRef.current);
-    if (wasNewRun) onStart?.();
-  }, [onStart, syncUi]);
+    if (wasNewRun) {
+      setShowHint(true);
+      onStart?.();
+    }
+  }, [assetStatus, onStart, syncUi]);
 
   const jump = useCallback(() => {
-    if (stateRef.current.status === "idle" || stateRef.current.status === "gameover") {
-      play();
-      return;
+    if (assetStatus !== "ready") return;
+    const wasNewRun = stateRef.current.status === "idle" || stateRef.current.status === "gameover";
+    if (wasNewRun) {
+      stateRef.current = startRunner(stateRef.current);
+      gameOverScoreRef.current = null;
+      onStart?.();
     }
     stateRef.current = jumpRunner(stateRef.current);
-  }, [play]);
+    syncUi(stateRef.current);
+  }, [assetStatus, onStart, syncUi]);
+
+  const crouch = useCallback((held: boolean) => {
+    if (assetStatus !== "ready") return;
+    if (held && (stateRef.current.status === "idle" || stateRef.current.status === "gameover")) {
+      stateRef.current = startRunner(stateRef.current);
+      gameOverScoreRef.current = null;
+      onStart?.();
+    }
+    stateRef.current = setRunnerCrouch(stateRef.current, held);
+    syncUi(stateRef.current);
+  }, [assetStatus, onStart, syncUi]);
+
+  const markOperated = useCallback(() => setShowHint(false), []);
+
+  useEffect(() => {
+    if (status !== "playing" || !showHint) return;
+    const timeout = window.setTimeout(() => setShowHint(false), 3_500);
+    return () => window.clearTimeout(timeout);
+  }, [showHint, status]);
 
   useEffect(() => {
     if (pauseRequested && stateRef.current.status === "playing") {
@@ -172,12 +277,37 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, celebra
   }, []);
 
   useEffect(() => {
-    const image = new Image();
-    image.src = ATLAS_PATH;
-    atlasRef.current = image;
+    let cancelled = false;
+    setAssetStatus("loading");
+    Promise.all(Object.entries(ASSET_PATHS).map(([key, source]) => new Promise<[keyof RunnerAssets, HTMLImageElement]>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve([key as keyof RunnerAssets, image]);
+      image.onerror = reject;
+      image.src = `${source}?v=2`;
+    }))).then((entries) => {
+      if (cancelled) return;
+      assetsRef.current = Object.fromEntries(entries) as RunnerAssets;
+      setAssetStatus("ready");
+    }).catch(() => {
+      if (!cancelled) setAssetStatus("error");
+    });
     return () => {
-      atlasRef.current = null;
+      cancelled = true;
+      assetsRef.current = null;
     };
+  }, [assetAttempt]);
+
+  useEffect(() => {
+    const shell = shellRef.current;
+    if (!shell) return;
+    const update = () => {
+      const rect = shell.getBoundingClientRect();
+      setMetrics(createRunnerMetrics({ width: rect.width, height: rect.height }));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(shell);
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -192,15 +322,31 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, celebra
   }, [syncUi]);
 
   useEffect(() => {
+    const ignoresGameKeys = (target: EventTarget | null) => (target as HTMLElement | null)?.closest("input, textarea, button");
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.code !== "Space" && event.code !== "ArrowUp") return;
-      if ((event.target as HTMLElement | null)?.closest("input, textarea, button")) return;
-      event.preventDefault();
-      jump();
+      if (ignoresGameKeys(event.target)) return;
+      if (event.code === "Space" || event.code === "ArrowUp") {
+        event.preventDefault();
+        if (!event.repeat) {
+          markOperated();
+          jump();
+        }
+      } else if (event.code === "ArrowDown" || event.code === "KeyS") {
+        event.preventDefault();
+        markOperated();
+        crouch(true);
+      }
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "ArrowDown" || event.code === "KeyS") crouch(false);
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [jump]);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [crouch, jump, markOperated]);
 
   useEffect(() => {
     let frame = 0;
@@ -209,8 +355,10 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, celebra
     const render = (now: number) => {
       const canvas = canvasRef.current;
       const shell = shellRef.current;
-      if (canvas && shell) {
+      const assets = assetsRef.current;
+      if (canvas && shell && assets) {
         const rect = shell.getBoundingClientRect();
+        const currentMetrics = createRunnerMetrics({ width: rect.width, height: rect.height });
         const dpr = Math.min(2, window.devicePixelRatio || 1);
         const nextWidth = Math.max(1, Math.floor(rect.width * dpr));
         const nextHeight = Math.max(1, Math.floor(rect.height * dpr));
@@ -222,19 +370,21 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, celebra
         previous = now;
         accumulator += delta;
         while (accumulator >= RUNNER_STEP) {
-          stateRef.current = stepRunner(stateRef.current, RUNNER_STEP, rect.width);
+          stateRef.current = stepRunner(stateRef.current, RUNNER_STEP, currentMetrics.worldWidth);
           accumulator -= RUNNER_STEP;
         }
         const context = canvas.getContext("2d");
         if (context) {
           context.setTransform(dpr, 0, 0, dpr, 0, 0);
-          drawScene(context, rect.width, rect.height, stateRef.current, atlasRef.current, reducedMotion, celebrating, now / 1000);
+          drawScene(context, rect.width, rect.height, stateRef.current, currentMetrics, assets, reducedMotion, celebrating, now / 1000, dpr);
         }
         syncUi(stateRef.current);
         if (stateRef.current.status === "gameover" && gameOverScoreRef.current !== stateRef.current.score) {
           gameOverScoreRef.current = stateRef.current.score;
           onGameOver?.(stateRef.current.score);
         }
+      } else {
+        previous = now;
       }
       frame = requestAnimationFrame(render);
     };
@@ -252,18 +402,51 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, celebra
     }
   }
 
+  const touchStyle = metrics ? {
+    top: metrics.frame.y,
+    left: metrics.frame.x,
+    width: metrics.frame.width / 2,
+    height: metrics.frame.height,
+  } : undefined;
+
   return (
-    <div ref={shellRef} className="runner-stage" data-runner-status={status}>
-      <canvas
-        ref={canvasRef}
-        className="runner-canvas"
-        onPointerDown={(event) => {
-          if ((event.target as HTMLElement).closest("button")) return;
-          jump();
-        }}
-        role="img"
-        aria-label="小花在像素草地上奔跑，点击草地或按空格键跳过障碍"
-      />
+    <div ref={shellRef} className="runner-stage" data-runner-status={status} data-assets={assetStatus}>
+      <canvas ref={canvasRef} className="runner-canvas" role="img" aria-label="小花在春日草地上奔跑，左侧按住趴下，右侧点按跳跃" />
+      {metrics && assetStatus === "ready" ? (
+        <>
+          <div
+            className="runner-touch-zone runner-touch-zone-left"
+            style={touchStyle}
+            onPointerDown={(event) => {
+              event.currentTarget.setPointerCapture(event.pointerId);
+              markOperated();
+              crouch(true);
+            }}
+            onPointerUp={() => crouch(false)}
+            onPointerCancel={() => crouch(false)}
+            onLostPointerCapture={() => crouch(false)}
+            aria-hidden="true"
+          />
+          <div
+            className="runner-touch-zone runner-touch-zone-right"
+            style={{ ...touchStyle, left: metrics.frame.x + metrics.frame.width / 2 }}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              markOperated();
+              jump();
+            }}
+            aria-hidden="true"
+          />
+        </>
+      ) : null}
+      {assetStatus === "loading" ? <div className="runner-asset-status">正在铺好春日小路…</div> : null}
+      {assetStatus === "error" ? (
+        <div className="runner-asset-status">
+          <span>场景素材没有加载成功</span>
+          <button type="button" className="runner-play-button focus-ring" onClick={() => setAssetAttempt((value) => value + 1)}>重新加载</button>
+        </div>
+      ) : null}
+      {status === "playing" && showHint ? <p className="runner-input-hint">左侧按住趴下 · 右侧点按跳跃</p> : null}
       <div className="runner-scoreboard" aria-live="polite">
         <span>本局 {score}</span>
         {leaderboardBest != null ? <span>纪录 {leaderboardBest}</span> : null}
@@ -285,7 +468,7 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, celebra
             <Pause className="h-4 w-4" />
           </button>
         ) : (
-          <button type="button" className="runner-play-button focus-ring" onClick={play}>
+          <button type="button" className="runner-play-button focus-ring" onClick={play} disabled={assetStatus !== "ready"}>
             {status === "gameover" ? <RotateCcw className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             {status === "gameover" ? "再跑一次" : status === "paused" ? "继续奔跑" : "开始奔跑"}
           </button>
