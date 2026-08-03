@@ -1,4 +1,4 @@
-"""Anonymous global runner leaderboard routes that retain only the best ten scores."""
+"""Anonymous global runner leaderboard routes that retain only the best three scores."""
 
 from threading import Lock
 
@@ -12,9 +12,10 @@ from app.schemas import GameScoreCreate, GameScoreOut, LeaderboardOut, Leaderboa
 
 router = APIRouter(prefix="/game", tags=["game"])
 _leaderboard_write_lock = Lock()
+LEADERBOARD_LIMIT = 3
 
 
-def _ordered_scores(db: Session, limit: int = 10) -> list[GameScore]:
+def _ordered_scores(db: Session, limit: int = LEADERBOARD_LIMIT) -> list[GameScore]:
     return list(
         db.execute(
             select(GameScore)
@@ -25,7 +26,7 @@ def _ordered_scores(db: Session, limit: int = 10) -> list[GameScore]:
 
 
 def _threshold(items: list[GameScore]) -> int:
-    return items[-1].score if len(items) >= 10 else 0
+    return items[-1].score if len(items) >= LEADERBOARD_LIMIT else 0
 
 
 @router.get("/leaderboard", response_model=LeaderboardOut)
@@ -41,7 +42,7 @@ def read_leaderboard(db: Session = Depends(get_db)) -> LeaderboardOut:
 def submit_score(payload: GameScoreCreate, db: Session = Depends(get_db)) -> LeaderboardSubmitOut:
     with _leaderboard_write_lock:
         current = _ordered_scores(db)
-        if len(current) >= 10 and payload.score < current[-1].score:
+        if len(current) >= LEADERBOARD_LIMIT and payload.score < current[-1].score:
             return LeaderboardSubmitOut(
                 entered=False,
                 rank=None,
@@ -52,16 +53,16 @@ def submit_score(payload: GameScoreCreate, db: Session = Depends(get_db)) -> Lea
         submitted = GameScore(player_name=payload.player_name, score=payload.score)
         db.add(submitted)
         db.flush()
-        ranked = _ordered_scores(db, limit=11)
-        top_ten = ranked[:10]
-        kept_ids = [item.id for item in top_ten]
+        ranked = _ordered_scores(db, limit=LEADERBOARD_LIMIT + 1)
+        top_scores = ranked[:LEADERBOARD_LIMIT]
+        kept_ids = [item.id for item in top_scores]
         db.execute(delete(GameScore).where(GameScore.id.not_in(kept_ids)))
         entered = submitted.id in kept_ids
-        rank = next((index + 1 for index, item in enumerate(top_ten) if item.id == submitted.id), None)
+        rank = next((index + 1 for index, item in enumerate(top_scores) if item.id == submitted.id), None)
         db.commit()
     return LeaderboardSubmitOut(
         entered=entered,
         rank=rank,
-        items=[GameScoreOut.model_validate(item) for item in top_ten],
-        threshold=_threshold(top_ten),
+        items=[GameScoreOut.model_validate(item) for item in top_scores],
+        threshold=_threshold(top_scores),
     )

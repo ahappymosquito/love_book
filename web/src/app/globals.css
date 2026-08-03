@@ -1210,7 +1210,8 @@
   width: 100%;
   height: 100dvh;
   overflow: hidden;
-  background: #cfe4df;
+  background:
+    linear-gradient(180deg, #51c7ef 0%, #9ee7ed 42%, #b9edcb 64%, #65bd67 78%, #27854d 100%);
 }
 
 .runner-stage,
@@ -1223,6 +1224,13 @@
 
 .runner-stage { touch-action: none; }
 .runner-canvas { display: block; pointer-events: none; }
+.runner-frame-blend {
+  position: absolute;
+  z-index: 2;
+  border-radius: clamp(0.75rem, 2vw, 1.75rem);
+  box-shadow: 0 0 3rem 1.5rem rgb(118 215 167 / 0.2), inset 0 0 1.5rem rgb(255 255 255 / 0.1);
+  pointer-events: none;
+}
 .runner-touch-zone { position: absolute; z-index: 3; user-select: none; -webkit-user-select: none; touch-action: none; }
 .runner-touch-zone-left { cursor: s-resize; }
 .runner-touch-zone-right { cursor: n-resize; }
@@ -1309,7 +1317,25 @@
 .runner-icon-button { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; border-radius: 999px; }
 .runner-play-button { display: inline-flex; min-height: 2.75rem; align-items: center; gap: 0.45rem; border-radius: 999px; padding: 0.55rem 0.9rem; font-size: 0.82rem; font-weight: 700; }
 .runner-play-button:disabled { cursor: wait; opacity: 0.58; }
-.runner-gameover { position: absolute; z-index: 10; left: 50%; bottom: 5rem; transform: translateX(-50%); border-radius: 0.75rem; background: rgb(56 43 40 / 0.82); padding: 0.55rem 0.8rem; color: white; font-size: 0.875rem; font-weight: 650; white-space: nowrap; }
+.runner-state-banner {
+  position: absolute;
+  z-index: 10;
+  left: 50%;
+  bottom: max(5rem, calc(env(safe-area-inset-bottom) + 4rem));
+  display: grid;
+  min-width: min(18rem, calc(100vw - 2rem));
+  gap: 0.15rem;
+  transform: translateX(-50%);
+  border: 1px solid rgb(255 255 255 / 0.72);
+  border-radius: 0.9rem;
+  background: rgb(35 86 56 / 0.84);
+  padding: 0.65rem 0.9rem;
+  color: white;
+  box-shadow: 0 0.5rem 1.5rem rgb(26 83 50 / 0.18);
+  text-align: center;
+}
+.runner-state-banner strong { font-size: 0.9rem; font-weight: 750; }
+.runner-state-banner span { font-size: 0.72rem; opacity: 0.86; }
 
 .runner-leaderboard { top: 4.75rem; right: max(1rem, env(safe-area-inset-right)); width: min(21rem, calc(100vw - 2rem)); padding: 1rem; }
 .runner-close { display: grid; width: 2.5rem; height: 2.5rem; place-items: center; border-radius: 999px; color: oklch(var(--lb-ink-soft)); }

@@ -1,6 +1,6 @@
 "use client";
 
-// Game-first Love Book login with a Canvas pixel runner, token/password authentication, and public Top 10 scores.
+// Game-first Love Book login with a state-locked Canvas pixel runner, token/password authentication, and public Top 3 scores.
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -74,6 +74,7 @@ export default function LoginPage() {
     if (submitting) return false;
     return method === "token" ? tokenInput.trim().length > 0 : loginName.trim().length >= 3 && password.length >= 15;
   }, [loginName, method, password, submitting, tokenInput]);
+  const overlayOpen = panelOpen || leaderboardOpen || scoreToName != null;
 
   const finishLogin = useCallback(
     async (nextToken: string, next?: string | null, loginMethod: LoginMethod = "token") => {
@@ -145,7 +146,7 @@ export default function LoginPage() {
   }
 
   function handleGameOver(score: number) {
-    const qualifies = leaderboard.items.length < 10 || score >= leaderboard.threshold;
+    const qualifies = leaderboard.items.length < 3 || score >= leaderboard.threshold;
     if (score > 0 && qualifies) setScoreToName(score);
   }
 
@@ -172,7 +173,8 @@ export default function LoginPage() {
     <main className="login-runner-shell viewport-guard" data-panel-open={panelOpen ? "true" : "false"}>
       <XiaohuaRunner
         leaderboardBest={leaderboard.items[0]?.score ?? null}
-        pauseRequested={panelOpen}
+        pauseRequested={overlayOpen}
+        interactionBlocked={overlayOpen}
         celebrating={scoreToName != null}
         onStart={() => setPanelOpen(false)}
         onGameOver={handleGameOver}
@@ -181,10 +183,10 @@ export default function LoginPage() {
       <header className="login-runner-header">
         <div className="login-runner-brand"><Heart className="h-4 w-4" fill="currentColor" /> Love Book</div>
         <div className="flex gap-2">
-          <button type="button" className="login-runner-action focus-ring" onClick={() => setLeaderboardOpen((value) => !value)}>
-            <ListOrdered className="h-4 w-4" /> Top 10
+          <button type="button" className="login-runner-action focus-ring" onClick={() => { setLeaderboardOpen((value) => !value); setPanelOpen(false); }}>
+            <ListOrdered className="h-4 w-4" /> Top 3
           </button>
-          <button type="button" className="login-runner-action login-panel-trigger focus-ring" onClick={() => setPanelOpen((value) => !value)}>
+          <button type="button" className="login-runner-action login-panel-trigger focus-ring" onClick={() => { setPanelOpen((value) => !value); setLeaderboardOpen(false); }}>
             <LogIn className="h-4 w-4" /> 登录 Love Book
           </button>
         </div>
@@ -222,7 +224,7 @@ export default function LoginPage() {
 
       {leaderboardOpen ? (
         <aside className="runner-leaderboard" aria-label="小花跑酷排行榜">
-          <div className="flex items-center justify-between"><h2 className="font-display text-lg font-semibold text-ink">全站 Top 10</h2><button type="button" onClick={() => setLeaderboardOpen(false)} className="runner-close focus-ring" aria-label="关闭排行榜"><X className="h-4 w-4" /></button></div>
+          <div className="flex items-center justify-between"><h2 className="font-display text-lg font-semibold text-ink">全站 Top 3</h2><button type="button" onClick={() => setLeaderboardOpen(false)} className="runner-close focus-ring" aria-label="关闭排行榜"><X className="h-4 w-4" /></button></div>
           <ol className="mt-3 space-y-1.5">{leaderboard.items.length ? leaderboard.items.map((item, index) => <li key={item.id} className="runner-rank-row"><span>{index + 1}</span><strong>{item.player_name}</strong><b>{item.score}</b></li>) : <li className="py-5 text-center font-sc text-sm text-ink-muted">还没有纪录，来跑第一局吧。</li>}</ol>
         </aside>
       ) : null}

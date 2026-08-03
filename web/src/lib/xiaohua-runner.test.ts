@@ -110,52 +110,52 @@ describe("Xiaohua runner physics and input", () => {
 
   it("caps logical speed and derives stable score from logical distance", () => {
     expect(runnerSpeed(999)).toBe(RUNNER_MAX_SPEED);
-    expect(runnerScore(29.99)).toBe(99);
-    expect(runnerScore(30)).toBe(100);
+    expect(runnerScore(31.49)).toBe(99);
+    expect(runnerScore(31.5)).toBe(100);
   });
 });
 
 describe("Xiaohua runner collisions", () => {
   it("clears every ground obstacle above its hitbox", () => {
-    for (const kind of ["rock", "stump", "log", "puddle"] as const) {
-      const state = { ...safePlayingState(), y: 0.7, velocityY: 0 };
+    for (const kind of ["rock", "stump", "log", "bramble"] as const) {
+      const state = { ...safePlayingState(), y: 0.8, velocityY: 0 };
       expect(runnerCollides(state, obstacle({ kind }))).toBe(false);
     }
   });
 
   it("requires crouching for a bird and jumping for ground obstacles", () => {
-    const bird = obstacle({ kind: "bird", requirement: "crouch", width: 0.92, height: 0.43, bottom: 0.53 });
+    const bird = obstacle({ kind: "bird", requirement: "crouch", width: 0.94, height: 0.37, bottom: 0.53 });
     expect(runnerCollides(safePlayingState(), bird)).toBe(true);
     expect(runnerCollides({ ...safePlayingState(), crouching: true }, bird)).toBe(false);
-    expect(runnerCollides({ ...safePlayingState(), y: 0.8 }, bird)).toBe(true);
+    expect(runnerCollides({ ...safePlayingState(), y: 0.9 }, bird)).toBe(false);
     expect(runnerCollides({ ...safePlayingState(), crouching: true }, obstacle({}))).toBe(true);
   });
 });
 
 describe("Xiaohua runner obstacle generation", () => {
-  it("only emits jump obstacles before 20 seconds", () => {
+  it("only emits jump obstacles before the bird speed gate", () => {
     for (let seed = 0; seed < 100; seed += 1) {
-      const group = generateObstacleGroup(19.99, 3, 1, 1, () => (seed % 97) / 97);
+      const group = generateObstacleGroup(17.99, 3.2, 1, 1, () => (seed % 97) / 97);
       expect(group.obstacles).toHaveLength(1);
       expect(group.obstacles[0].requirement).toBe("jump");
     }
   });
 
-  it("does not emit double obstacles before 45 seconds", () => {
+  it("does not emit double obstacles before 40 seconds", () => {
     for (let seed = 0; seed < 100; seed += 1) {
       const values = [0, (seed % 97) / 97, 0];
-      const group = generateObstacleGroup(44.99, 3.4, 1, 1, () => values.shift() ?? 0);
+      const group = generateObstacleGroup(39.99, 3.7, 1, 1, () => values.shift() ?? 0);
       expect(group.obstacles).toHaveLength(1);
     }
   });
 
   it("gives late double obstacles a full action window and opposite actions", () => {
-    const values = [0.5, 0, 0, 0];
+    const values = [0, 0, 0, 0, 0];
     const group = generateObstacleGroup(60, 4, 1, 1, () => values.shift() ?? 0);
     expect(group.obstacles).toHaveLength(2);
-    expect(group.obstacles[1].x - group.obstacles[0].x).toBeCloseTo(4 * 1.18, 8);
+    expect(group.obstacles[1].x - group.obstacles[0].x).toBeCloseTo(4 * 1.08, 8);
     expect(new Set(group.obstacles.map((item) => item.requirement)).size).toBe(2);
-    expect(group.nextSpawnIn).toBeGreaterThan((group.obstacles[1].x - group.obstacles[0].x) + 4 * 1.35 - 0.001);
+    expect(group.nextSpawnIn).toBeGreaterThan(group.obstacles[1].x - group.obstacles[0].x + group.obstacles[1].width * 4 + 1.25 - 0.001);
   });
 
   it("keeps thousands of seeded late groups solvable", () => {
@@ -171,10 +171,15 @@ describe("Xiaohua runner obstacle generation", () => {
       if (group.obstacles.length !== 2) continue;
       doubleGroups += 1;
       const [first, second] = group.obstacles;
-      expect(second.x - first.x).toBeGreaterThanOrEqual(speed * 1.18 - 1e-8);
+      expect(second.x - first.x).toBeGreaterThanOrEqual(speed * 1.08 - 1e-8);
       expect(first.requirement).not.toBe(second.requirement);
-      expect(group.nextSpawnIn - (second.x - first.x)).toBeGreaterThanOrEqual(speed * 1.35 - 1e-8);
+      expect(group.nextSpawnIn - (second.x - first.x)).toBeGreaterThanOrEqual(second.width + second.width * speed + 1.25 - 1e-8);
     }
-    expect(doubleGroups).toBeGreaterThan(500);
+    expect(doubleGroups).toBeGreaterThan(20);
+  });
+
+  it("suppresses a third identical obstacle like Chrome's duplication history", () => {
+    const group = generateObstacleGroup(30, 3.8, 1, 1, () => 0, ["rock", "rock"]);
+    expect(group.obstacles[0].kind).not.toBe("rock");
   });
 });

@@ -13,7 +13,7 @@
 - 管理端一次创建一对用户，并返回两个入口 token，支持默认永久有效或指定过期时间。
 - 用户可在已登录状态设置唯一登录名和安全密码，密码登录会签发 90 天有效的随机 Bearer 会话；邮件和入口链接继续使用原入口 token。
 - 普通接口使用 `Authorization: Bearer <token>` 鉴权，每个 token 直接代表一个用户身份和确定的 pair 关系。
-- 未登录首页提供像素小花草地跑酷与匿名全站 Top 10 排行榜；达到入榜门槛后可留下 1–12 字符的 Unicode 名字。
+- 未登录首页提供像素小花草原跑酷与匿名全站 Top 3 排行榜；达到入榜门槛后可留下 1–12 字符的 Unicode 名字。
 - 两位用户都可以创建事件、提交评论、上传图片，并对可见留言添加点赞 / 倒赞 reaction。
 - 线下见面使用内部 `meeting_sessions` 作为真实见面次数统计单位，并以 `started_on / ended_on` 保存包含首尾整天的北京时间范围；范围内双方事件自动归类，标记范围外事件时自动建立同名单日见面。双方点击见面标题可同时编辑标题与日期范围，重叠范围自动合并并保留较早标题，也可取消整个见面；不再提供加号或手动归入流程，事件内容权限保持不变。
 - 事件、内容和留言 reaction 写接口会在响应返回前完成数据库提交，前端创建、评论或点 reaction 后可以立即刷新详情。
@@ -122,7 +122,7 @@ npm run dev
 
 页面：
 
-- `/` 登录页（居中响应式像素小花草地跑酷、左右分区触控、匿名 Top 10 排行榜和按方向收放的登录卡，支持安全密码、手动 token，以及 `?token=` / `#token=` 自动登录）
+- `/` 登录页（居中响应式像素小花草原跑酷、左右分区触控、匿名 Top 3 排行榜和按方向收放的登录卡，支持安全密码、手动 token，以及 `?token=` / `#token=` 自动登录）
 - `/admin` 管理控制台（先用 `ADMIN_KEY` 验证身份，然后创建配对 / 复制 token / 复制入口链接；入口链接按当前浏览器 origin 动态生成，复制失败会自动降级到隐藏文本框复制）
 - `/timeline` 事件列表首页（单列精选语录、全部 / 见面分段、见面标题与日期范围弹窗编辑、月份分组、静态空状态和底边栏导航）
 - `/timeline/[id]` 事件详情（创建者可原地编辑标题、描述、发生时间和可见方式；日历爱心可创建见面或打开所属见面编辑窗口；评论 / 图片混排，底部输入栏支持文字和相册）
@@ -220,7 +220,7 @@ Authorization: Bearer <token>
 | quotes | GET | `/quotes` | `Bearer` | 当前 pair 的共享语录列表 |
 | quotes | POST | `/quotes` | `Bearer` | 添加一条共享语录 |
 | quotes | DELETE | `/quotes/{quote_id}` | `Bearer` | 删除当前 pair 的共享语录 |
-| game | GET | `/game/leaderboard` | 无 | 匿名读取全站跑酷 Top 10 和入榜门槛 |
+| game | GET | `/game/leaderboard` | 无 | 匿名读取全站跑酷 Top 3 和入榜门槛 |
 | game | POST | `/game/leaderboard` | 无 | 匿名提交名字和成绩，返回是否入榜及最新榜单 |
 | events | POST | `/events` | `Bearer` | 创建事件 |
 | events | GET | `/events` | `Bearer` | 当前 pair 的事件列表 |
@@ -776,7 +776,7 @@ Docker 生产环境迁移服务器时需要同时备份数据库和 `love_book_m
 
 ## 像素跑酷排行榜
 
-`GET /game/leaderboard` 和 `POST /game/leaderboard` 均为匿名接口。读取接口返回全站前 10 名 `items` 与当前 `threshold`；不足 10 人时门槛为 0。提交体为 `{ "player_name": "小花", "score": 128 }`，名字去除首尾空白后须为 1–12 个 Unicode 字符，分数须为非负 32 位整数。
+`GET /game/leaderboard` 和 `POST /game/leaderboard` 均为匿名接口。读取接口返回全站前 3 名 `items` 与当前 `threshold`；不足 3 人时门槛为 0。提交体为 `{ "player_name": "小花", "score": 128 }`，名字去除首尾空白后须为 1–12 个 Unicode 字符，分数须为非负 32 位整数。
 
 榜单按分数降序、创建时间升序、ID 升序排列，同分时较早纪录优先。提交接口返回 `entered`、可空的 `rank`、最新 `items` 和 `threshold`；未入榜的成绩不会保留，成功写入后会在返回前提交并清理第 11 名以后记录。
 

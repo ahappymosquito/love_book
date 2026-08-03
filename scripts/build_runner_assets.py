@@ -174,7 +174,9 @@ def fit_subject(frame: Image.Image, target_width: int, target_height: int, cell_
 
 def build_obstacles(source_dir: Path, output_dir: Path, qa_dir: Path) -> None:
     frames = split_grid(source_dir / "obstacles.png", 2, 2, 4)
-    targets = ((210, 154), (214, 164), (230, 120), (230, 92))
+    # Keep each visible silhouette close to its atlas cell so render metrics and
+    # collision boxes can share the same apparent footprint.
+    targets = ((246, 180), (220, 230), (246, 128), (246, 136))
     atlas = Image.new("RGBA", (256 * 4, 256))
     for index, (frame, target) in enumerate(zip(frames, targets, strict=True)):
         atlas.alpha_composite(fit_subject(frame, *target, 256), (index * 256, 0))
@@ -243,13 +245,20 @@ def main() -> None:
     parser.add_argument("source_dir", type=Path)
     parser.add_argument("output_dir", type=Path)
     parser.add_argument("qa_dir", type=Path)
+    parser.add_argument(
+        "--scenery-only",
+        action="store_true",
+        help="Rebuild scenery and obstacles without requiring character source rows.",
+    )
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     args.qa_dir.mkdir(parents=True, exist_ok=True)
-    build_character_atlas(args.source_dir, args.output_dir, args.qa_dir)
+    if not args.scenery_only:
+        build_character_atlas(args.source_dir, args.output_dir, args.qa_dir)
     build_scenery(args.source_dir, args.output_dir)
     build_obstacles(args.source_dir, args.output_dir, args.qa_dir)
-    validate_assets(args.output_dir, args.qa_dir)
+    if not args.scenery_only:
+        validate_assets(args.output_dir, args.qa_dir)
 
 
 if __name__ == "__main__":

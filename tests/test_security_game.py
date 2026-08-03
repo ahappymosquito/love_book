@@ -200,31 +200,31 @@ def test_password_session_expires_in_ninety_days(
     assert timedelta(days=89, hours=23) < expires_at - utc_now() <= timedelta(days=90)
 
 
-def test_leaderboard_retains_top_ten_and_orders_ties_by_age(
+def test_leaderboard_retains_top_three_and_orders_ties_by_age(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    for index, score in enumerate(range(100, 0, -10)):
+    for index, score in enumerate((100, 90, 80)):
         response = client.post("/game/leaderboard", json={"player_name": f"玩家{index}", "score": score})
         assert response.status_code == 201
         assert response.json()["entered"] is True
 
-    tied_out = client.post("/game/leaderboard", json={"player_name": "后来同分", "score": 10})
+    tied_out = client.post("/game/leaderboard", json={"player_name": "后来同分", "score": 80})
     assert tied_out.json()["entered"] is False
     assert tied_out.json()["rank"] is None
-    assert tied_out.json()["threshold"] == 10
+    assert tied_out.json()["threshold"] == 80
     assert db_session.scalar(select(GameScore).where(GameScore.player_name == "后来同分")) is None
 
     winner = client.post("/game/leaderboard", json={"player_name": "  小花  ", "score": 999}).json()
     assert winner["entered"] is True
     assert winner["rank"] == 1
     assert winner["items"][0]["player_name"] == "小花"
-    assert len(winner["items"]) == 10
-    assert len(db_session.execute(select(GameScore)).scalars().all()) == 10
+    assert len(winner["items"]) == 3
+    assert len(db_session.execute(select(GameScore)).scalars().all()) == 3
 
     ignored = client.post("/game/leaderboard", json={"player_name": "未入榜", "score": 0}).json()
     assert ignored["entered"] is False
-    assert len(db_session.execute(select(GameScore)).scalars().all()) == 10
+    assert len(db_session.execute(select(GameScore)).scalars().all()) == 3
 
 
 def test_leaderboard_validation_and_empty_threshold(client: TestClient) -> None:

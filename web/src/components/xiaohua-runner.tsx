@@ -29,7 +29,7 @@ const ASSET_PATHS = {
 } as const;
 const ACTION_ROW = { idle: 0, run: 1, jump: 2, crouch: 3, stumble: 4, celebrate: 5 } as const;
 const ACTION_FRAMES = { idle: 4, run: 8, jump: 8, crouch: 6, stumble: 6, celebrate: 6 } as const;
-const OBSTACLE_COLUMN: Record<Exclude<RunnerObstacleKind, "bird">, number> = { rock: 0, stump: 1, log: 2, puddle: 3 };
+const OBSTACLE_COLUMN: Record<Exclude<RunnerObstacleKind, "bird">, number> = { rock: 0, stump: 1, log: 2, bramble: 3 };
 
 type RunnerAssets = Record<keyof typeof ASSET_PATHS, HTMLImageElement>;
 type AssetStatus = "loading" | "ready" | "error";
@@ -37,6 +37,7 @@ type AssetStatus = "loading" | "ready" | "error";
 export interface XiaohuaRunnerProps {
   leaderboardBest?: number | null;
   pauseRequested?: boolean;
+  interactionBlocked?: boolean;
   celebrating?: boolean;
   onStart?: () => void;
   onGameOver?: (score: number) => void;
@@ -103,21 +104,14 @@ function drawObstacle(
   const x = snap(metrics.frame.x + obstacle.x * metrics.bodyUnit, dpr);
   if (obstacle.kind === "bird") {
     const frame = Math.floor(state.elapsed * 10) % 6;
-    const width = metrics.bodyUnit * 1.08;
-    const height = metrics.standingHeight * 0.82;
+    const width = metrics.bodyUnit * obstacle.width * 1.08;
+    const height = metrics.standingHeight * obstacle.height * 1.22;
     const bottom = metrics.groundBaseline - obstacle.bottom * metrics.standingHeight;
     context.drawImage(assets.bird, frame * 192, 0, 192, 192, x, snap(bottom - height, dpr), width, height);
     return;
   }
-  const visualSize: Record<Exclude<RunnerObstacleKind, "bird">, [number, number]> = {
-    rock: [0.78, 0.78],
-    stump: [0.78, 0.86],
-    log: [1.08, 0.68],
-    puddle: [1.2, 0.52],
-  };
-  const [widthUnits, heightUnits] = visualSize[obstacle.kind];
-  const width = widthUnits * metrics.bodyUnit;
-  const height = heightUnits * metrics.standingHeight;
+  const width = obstacle.width * metrics.bodyUnit * 1.04;
+  const height = obstacle.height * metrics.standingHeight * 1.08;
   context.drawImage(
     assets.obstacles,
     OBSTACLE_COLUMN[obstacle.kind] * 256,
@@ -188,12 +182,9 @@ function drawScene(
     metrics.spriteSize,
   );
   context.restore();
-  context.strokeStyle = "rgb(255 248 236 / 0.72)";
-  context.lineWidth = Math.max(1, 1 / dpr);
-  context.strokeRect(metrics.frame.x + 0.5, metrics.frame.y + 0.5, metrics.frame.width - 1, metrics.frame.height - 1);
 }
 
-export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, celebrating = false, onStart, onGameOver }: XiaohuaRunnerProps) {
+export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, interactionBlocked = false, celebrating = false, onStart, onGameOver }: XiaohuaRunnerProps) {
   const shellRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef(createRunnerState());
@@ -214,7 +205,7 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, celebra
   }, []);
 
   const play = useCallback(() => {
-    if (assetStatus !== "ready") return;
+    if (assetStatus !== "ready" || interactionBlocked) return;
     const wasNewRun = stateRef.current.status === "idle" || stateRef.current.status === "gameover";
     stateRef.current = startRunner(stateRef.current);
     gameOverScoreRef.current = null;
@@ -223,11 +214,11 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, celebra
       setShowHint(true);
       onStart?.();
     }
-  }, [assetStatus, onStart, syncUi]);
+  }, [assetStatus, interactionBlocked, onStart, syncUi]);
 
   const jump = useCallback(() => {
-    if (assetStatus !== "ready") return;
-    const wasNewRun = stateRef.current.status === "idle" || stateRef.current.status === "gameover";
+    if (assetStatus !== "ready" || interactionBlocked || stateRef.current.status === "gameover") return;
+    const wasNewRun = stateRef.current.status === "idle";
     if (wasNewRun) {
       stateRef.current = startRunner(stateRef.current);
       gameOverScoreRef.current = null;
@@ -235,18 +226,18 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, celebra
     }
     stateRef.current = jumpRunner(stateRef.current);
     syncUi(stateRef.current);
-  }, [assetStatus, onStart, syncUi]);
+  }, [assetStatus, interactionBlocked, onStart, syncUi]);
 
   const crouch = useCallback((held: boolean) => {
-    if (assetStatus !== "ready") return;
-    if (held && (stateRef.current.status === "idle" || stateRef.current.status === "gameover")) {
+    if (assetStatus !== "ready" || interactionBlocked || stateRef.current.status === "gameover") return;
+    if (held && stateRef.current.status === "idle") {
       stateRef.current = startRunner(stateRef.current);
       gameOverScoreRef.current = null;
       onStart?.();
     }
     stateRef.current = setRunnerCrouch(stateRef.current, held);
     syncUi(stateRef.current);
-  }, [assetStatus, onStart, syncUi]);
+  }, [assetStatus, interactionBlocked, onStart, syncUi]);
 
   const markOperated = useCallback(() => setShowHint(false), []);
 
@@ -283,7 +274,7 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, celebra
       const image = new Image();
       image.onload = () => resolve([key as keyof RunnerAssets, image]);
       image.onerror = reject;
-      image.src = `${source}?v=2`;
+      image.src = `${source}?v=3`;
     }))).then((entries) => {
       if (cancelled) return;
       assetsRef.current = Object.fromEntries(entries) as RunnerAssets;
@@ -324,7 +315,7 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, celebra
   useEffect(() => {
     const ignoresGameKeys = (target: EventTarget | null) => (target as HTMLElement | null)?.closest("input, textarea, button");
     const onKeyDown = (event: KeyboardEvent) => {
-      if (ignoresGameKeys(event.target)) return;
+      if (interactionBlocked || ignoresGameKeys(event.target)) return;
       if (event.code === "Space" || event.code === "ArrowUp") {
         event.preventDefault();
         if (!event.repeat) {
@@ -346,7 +337,7 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, celebra
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [crouch, jump, markOperated]);
+  }, [crouch, interactionBlocked, jump, markOperated]);
 
   useEffect(() => {
     let frame = 0;
@@ -410,9 +401,10 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, celebra
   } : undefined;
 
   return (
-    <div ref={shellRef} className="runner-stage" data-runner-status={status} data-assets={assetStatus}>
+    <div ref={shellRef} className="runner-stage" data-runner-status={status} data-assets={assetStatus} data-interaction-blocked={interactionBlocked ? "true" : "false"}>
       <canvas ref={canvasRef} className="runner-canvas" role="img" aria-label="小花在春日草地上奔跑，左侧按住趴下，右侧点按跳跃" />
-      {metrics && assetStatus === "ready" ? (
+      {metrics ? <div className="runner-frame-blend" style={{ top: metrics.frame.y, left: metrics.frame.x, width: metrics.frame.width, height: metrics.frame.height }} aria-hidden="true" /> : null}
+      {metrics && assetStatus === "ready" && !interactionBlocked && status !== "gameover" ? (
         <>
           <div
             className="runner-touch-zone runner-touch-zone-left"
@@ -447,6 +439,8 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, celebra
         </div>
       ) : null}
       {status === "playing" && showHint ? <p className="runner-input-hint">左侧按住趴下 · 右侧点按跳跃</p> : null}
+      {status === "idle" ? <p className="runner-state-banner"><strong>准备出发</strong><span>点“开始奔跑”，或按空格起跑</span></p> : null}
+      {status === "paused" ? <p className="runner-state-banner"><strong>已暂停</strong><span>场景会在你继续后恢复</span></p> : null}
       <div className="runner-scoreboard" aria-live="polite">
         <span>本局 {score}</span>
         {leaderboardBest != null ? <span>纪录 {leaderboardBest}</span> : null}
@@ -474,7 +468,7 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, celebra
           </button>
         )}
       </div>
-      {status === "gameover" ? <p className="runner-gameover">撞到啦，本局 {score} 分</p> : null}
+      {status === "gameover" ? <p className="runner-state-banner runner-gameover"><strong>本局结束 · {score} 分</strong><span>点“再跑一次”开启新一局</span></p> : null}
     </div>
   );
 }

@@ -1,19 +1,21 @@
-// Device-independent fixed-step engine, responsive metrics, inputs, collisions, and fair obstacle generation for Xiaohua Runner.
+// Device-independent Xiaohua Runner engine: responsive metrics, fixed-step physics, silhouette collisions, and Chrome-style obstacle pacing.
 
 export const RUNNER_STEP = 1 / 60;
-export const RUNNER_BASE_SPEED = 3;
-export const RUNNER_MAX_SPEED = 4.2;
-export const RUNNER_SPEED_INTERVAL = 15;
-export const RUNNER_SPEED_INCREMENT = 0.15;
+export const RUNNER_BASE_SPEED = 3.15;
+export const RUNNER_MAX_SPEED = 5.1;
+export const RUNNER_ACCELERATION = 0.015;
 export const RUNNER_STANDING_HEIGHT = 1;
 export const RUNNER_AIRTIME = 0.88;
 export const RUNNER_JUMP_APEX = 1.45;
 export const RUNNER_GRAVITY = (8 * RUNNER_JUMP_APEX) / (RUNNER_AIRTIME * RUNNER_AIRTIME);
 export const RUNNER_JUMP_VELOCITY = (4 * RUNNER_JUMP_APEX) / RUNNER_AIRTIME;
 export const RUNNER_PLAYER_X = 0.78;
+export const RUNNER_BIRD_START = 18;
+export const RUNNER_DOUBLE_START = 40;
+export const RUNNER_ACTION_WINDOW = 1.08;
 
 export type RunnerStatus = "idle" | "playing" | "paused" | "gameover";
-export type RunnerObstacleKind = "rock" | "stump" | "log" | "puddle" | "bird";
+export type RunnerObstacleKind = "rock" | "stump" | "log" | "bramble" | "bird";
 export type RunnerActionRequirement = "jump" | "crouch";
 
 export interface RunnerViewport {
@@ -54,18 +56,26 @@ export interface RunnerState {
   crouchHeld: boolean;
   crouching: boolean;
   obstacles: RunnerObstacle[];
+  obstacleHistory: RunnerObstacleKind[];
   nextObstacleId: number;
   nextGroupId: number;
   nextSpawnIn: number;
 }
 
 const OBSTACLE_SPECS: Record<RunnerObstacleKind, Omit<RunnerObstacle, "id" | "groupId" | "x" | "kind">> = {
-  rock: { width: 0.62, height: 0.47, bottom: 0, requirement: "jump" },
-  stump: { width: 0.58, height: 0.61, bottom: 0, requirement: "jump" },
-  log: { width: 0.9, height: 0.4, bottom: 0, requirement: "jump" },
-  puddle: { width: 1.05, height: 0.15, bottom: 0, requirement: "jump" },
-  bird: { width: 0.92, height: 0.43, bottom: 0.53, requirement: "crouch" },
+  rock: { width: 0.78, height: 0.57, bottom: 0, requirement: "jump" },
+  stump: { width: 0.68, height: 0.72, bottom: 0, requirement: "jump" },
+  log: { width: 1.02, height: 0.43, bottom: 0, requirement: "jump" },
+  bramble: { width: 0.98, height: 0.48, bottom: 0, requirement: "jump" },
+  bird: { width: 0.94, height: 0.37, bottom: 0.53, requirement: "crouch" },
 };
+
+interface CollisionBox {
+  x: number;
+  bottom: number;
+  width: number;
+  height: number;
+}
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
@@ -93,7 +103,6 @@ export function createRunnerMetrics(viewport: RunnerViewport): RunnerMetrics {
     ? clamp(shortSide * 0.28, 112, 128)
     : clamp(shortSide * 0.198, 96, 168);
   const bodyUnit = standingHeight * 0.96;
-  // The generated standing silhouette occupies 146px of a 192px cell.
   const spriteSize = standingHeight * (192 / 146);
   const worldWidth = width / bodyUnit;
   return {
@@ -120,9 +129,10 @@ export function createRunnerState(): RunnerState {
     crouchHeld: false,
     crouching: false,
     obstacles: [],
+    obstacleHistory: [],
     nextObstacleId: 1,
     nextGroupId: 1,
-    nextSpawnIn: 0,
+    nextSpawnIn: RUNNER_BASE_SPEED * 0.55,
   };
 }
 
@@ -150,18 +160,17 @@ export function setRunnerCrouch(state: RunnerState, held: boolean): RunnerState 
 }
 
 export function runnerSpeed(elapsed: number): number {
-  return Math.min(
-    RUNNER_MAX_SPEED,
-    RUNNER_BASE_SPEED + Math.floor(elapsed / RUNNER_SPEED_INTERVAL) * RUNNER_SPEED_INCREMENT,
-  );
+  return Math.min(RUNNER_MAX_SPEED, RUNNER_BASE_SPEED + Math.max(0, elapsed) * RUNNER_ACCELERATION);
 }
 
 export function runnerScore(distance: number): number {
   return Math.max(0, Math.floor((distance * 10) / RUNNER_BASE_SPEED));
 }
 
-function chooseGroundKind(random: () => number): RunnerObstacleKind {
-  const kinds: RunnerObstacleKind[] = ["rock", "stump", "log", "puddle"];
+function chooseGroundKind(random: () => number, history: RunnerObstacleKind[]): RunnerObstacleKind {
+  const allKinds: RunnerObstacleKind[] = ["rock", "stump", "log", "bramble"];
+  const repeated = history.length >= 2 && history.at(-1) === history.at(-2) ? history.at(-1) : null;
+  const kinds = repeated ? allKinds.filter((kind) => kind !== repeated) : allKinds;
   return kinds[Math.min(kinds.length - 1, Math.floor(random() * kinds.length))];
 }
 
@@ -171,6 +180,7 @@ function makeObstacle(kind: RunnerObstacleKind, x: number, id: number, groupId: 
 
 export interface GeneratedObstacleGroup {
   obstacles: RunnerObstacle[];
+  history: RunnerObstacleKind[];
   nextObstacleId: number;
   nextGroupId: number;
   nextSpawnIn: number;
@@ -182,45 +192,81 @@ export function generateObstacleGroup(
   nextObstacleId: number,
   nextGroupId: number,
   random: () => number = Math.random,
+  history: RunnerObstacleKind[] = [],
 ): GeneratedObstacleGroup {
-  const spawnX = RUNNER_PLAYER_X + speed * 2.05;
-  const intervalRange = elapsed < 20 ? [1.55, 2.2] : [1.35, 1.95];
-  const interval = intervalRange[0] + random() * (intervalRange[1] - intervalRange[0]);
+  const spawnX = RUNNER_PLAYER_X + speed * 2.25;
   const obstacles: RunnerObstacle[] = [];
-  if (elapsed < 20) {
-    obstacles.push(makeObstacle(chooseGroundKind(random), spawnX, nextObstacleId, nextGroupId));
-  } else if (elapsed < 45 || random() >= 0.36) {
-    const kind = random() < 0.38 ? "bird" : chooseGroundKind(random);
-    obstacles.push(makeObstacle(kind, spawnX, nextObstacleId, nextGroupId));
-  } else {
+  const latestTwoAreBirds = history.length >= 2 && history.at(-1) === "bird" && history.at(-2) === "bird";
+  const birdChance = elapsed < RUNNER_BIRD_START ? 0 : Math.min(0.46, 0.24 + (elapsed - RUNNER_BIRD_START) * 0.003);
+  const doubleChance = elapsed < RUNNER_DOUBLE_START ? 0 : Math.min(0.42, 0.16 + (elapsed - RUNNER_DOUBLE_START) * 0.004);
+  const makeGround = () => chooseGroundKind(random, [...history, ...obstacles.map((item) => item.kind)]);
+
+  if (random() < doubleChance) {
     const firstIsBird = random() < 0.5;
-    const separationTime = 1.18;
-    const firstKind = firstIsBird ? "bird" : chooseGroundKind(random);
-    const secondKind = firstIsBird ? chooseGroundKind(random) : "bird";
+    const firstKind = firstIsBird ? "bird" : makeGround();
+    const secondKind = firstIsBird ? makeGround() : "bird";
+    const separation = speed * (RUNNER_ACTION_WINDOW + random() * 0.2);
     obstacles.push(makeObstacle(firstKind, spawnX, nextObstacleId, nextGroupId));
-    obstacles.push(makeObstacle(secondKind, spawnX + speed * separationTime, nextObstacleId + 1, nextGroupId));
+    obstacles.push(makeObstacle(secondKind, spawnX + separation, nextObstacleId + 1, nextGroupId));
+  } else {
+    const kind = !latestTwoAreBirds && random() < birdChance ? "bird" : makeGround();
+    obstacles.push(makeObstacle(kind, spawnX, nextObstacleId, nextGroupId));
   }
-  const groupSpan = obstacles.length === 2 ? obstacles[1].x - obstacles[0].x : 0;
+
+  const lastObstacle = obstacles.at(-1)!;
+  const groupSpan = lastObstacle.x + lastObstacle.width - obstacles[0].x;
+  const difficultyBase = elapsed < 20 ? 1.75 : elapsed < 55 ? 1.45 : 1.25;
+  const chromeLikeMinGap = lastObstacle.width * speed + difficultyBase;
+  const randomizedGap = chromeLikeMinGap * (1 + random() * 0.5);
+  const nextHistory = [...history, ...obstacles.map((item) => item.kind)].slice(-2);
   return {
     obstacles,
+    history: nextHistory,
     nextObstacleId: nextObstacleId + obstacles.length,
     nextGroupId: nextGroupId + 1,
-    nextSpawnIn: groupSpan + speed * interval,
+    nextSpawnIn: groupSpan + randomizedGap,
   };
 }
 
-function horizontalOverlap(obstacle: RunnerObstacle): boolean {
-  const playerLeft = RUNNER_PLAYER_X + 0.12;
-  const playerRight = RUNNER_PLAYER_X + 0.82;
-  return playerRight > obstacle.x + 0.06 && playerLeft < obstacle.x + obstacle.width - 0.06;
+function boxesOverlap(left: CollisionBox, right: CollisionBox): boolean {
+  return left.x < right.x + right.width
+    && left.x + left.width > right.x
+    && left.bottom < right.bottom + right.height
+    && left.bottom + left.height > right.bottom;
+}
+
+function playerBoxes(state: RunnerState): CollisionBox[] {
+  const lift = state.y;
+  if (state.crouching) {
+    return [{ x: RUNNER_PLAYER_X + 0.08, bottom: lift + 0.05, width: 0.78, height: 0.4 }];
+  }
+  return [
+    { x: RUNNER_PLAYER_X + 0.13, bottom: lift + 0.52, width: 0.55, height: 0.41 },
+    { x: RUNNER_PLAYER_X + 0.18, bottom: lift + 0.19, width: 0.59, height: 0.48 },
+    { x: RUNNER_PLAYER_X + 0.24, bottom: lift + 0.03, width: 0.48, height: 0.26 },
+  ];
+}
+
+function obstacleBox(obstacle: RunnerObstacle): CollisionBox {
+  const horizontalInset = obstacle.kind === "rock"
+    ? 0.12
+    : obstacle.kind === "stump"
+      ? 0.1
+      : obstacle.kind === "log"
+        ? 0.08
+        : 0.06;
+  const verticalInset = obstacle.kind === "bird" ? 0.04 : 0.05;
+  return {
+    x: obstacle.x + horizontalInset,
+    bottom: obstacle.bottom + verticalInset,
+    width: obstacle.width - horizontalInset * 2,
+    height: obstacle.height - verticalInset * 2,
+  };
 }
 
 export function runnerCollides(state: RunnerState, obstacle: RunnerObstacle): boolean {
-  if (!horizontalOverlap(obstacle)) return false;
-  if (obstacle.requirement === "crouch") return !state.crouching;
-  const playerBottom = state.y + 0.03;
-  const playerTop = state.y + (state.crouching ? 0.44 : 0.88);
-  return playerTop > obstacle.bottom && playerBottom < obstacle.bottom + obstacle.height;
+  const target = obstacleBox(obstacle);
+  return playerBoxes(state).some((box) => boxesOverlap(box, target));
 }
 
 export function stepRunner(
@@ -250,12 +296,14 @@ export function stepRunner(
   let nextSpawnIn = state.nextSpawnIn - speed * dt;
   let nextObstacleId = state.nextObstacleId;
   let nextGroupId = state.nextGroupId;
+  let obstacleHistory = state.obstacleHistory;
   if (nextSpawnIn <= 0) {
-    const generated = generateObstacleGroup(elapsed, speed, nextObstacleId, nextGroupId, random);
+    const generated = generateObstacleGroup(elapsed, speed, nextObstacleId, nextGroupId, random, obstacleHistory);
     obstacles = [...obstacles, ...generated.obstacles];
     nextSpawnIn += generated.nextSpawnIn;
     nextObstacleId = generated.nextObstacleId;
     nextGroupId = generated.nextGroupId;
+    obstacleHistory = generated.history;
   }
   const crouching = state.crouchHeld && y <= 0.001;
   const nextState: RunnerState = {
@@ -268,6 +316,7 @@ export function stepRunner(
     velocityY,
     crouching,
     obstacles,
+    obstacleHistory,
     nextObstacleId,
     nextGroupId,
     nextSpawnIn,
