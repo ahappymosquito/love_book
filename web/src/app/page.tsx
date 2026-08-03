@@ -1,22 +1,20 @@
 "use client";
 
-// Responsive Love Book login with an immediate solid form, state-linked interactive sunset meadow, safe token auto-login, and accessible inline recovery.
+// Game-first Love Book login with a Canvas pixel runner, token/password authentication, and public Top 10 scores.
 
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowRight, Eye, EyeOff, Heart, LoaderCircle, Sparkles } from "lucide-react";
+import { AlertCircle, ArrowRight, ChevronDown, Eye, EyeOff, Heart, KeyRound, ListOrdered, LoaderCircle, LogIn, X } from "lucide-react";
 import { toast } from "sonner";
-import type { PuppySceneMood } from "@/components/puppy-scene";
-import { GlassSurface } from "@/components/ui/glass-surface";
+import { XiaohuaRunner } from "@/components/xiaohua-runner";
 import { api, APIError } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
+import type { GameLeaderboardOut } from "@/lib/types";
 
-const PuppyScene = dynamic(
-  () => import("@/components/puppy-scene").then((module) => module.PuppyScene),
-  { ssr: false, loading: () => null },
-);
+type LoginMethod = "password" | "token";
+
+const PLAYER_NAME_KEY = "love-book:runner-player-name";
 
 function sanitizeNext(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -33,71 +31,64 @@ function sanitizeNext(value: string | null | undefined): string | null {
 async function reportLoginFingerprint() {
   if (typeof window === "undefined") return;
   try {
-    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const screen = `${window.screen.width}x${window.screen.height}@${window.devicePixelRatio || 1}`;
     await api.recordLogin({
       user_agent: navigator.userAgent,
       locale: navigator.language,
-      timezone_name: timeZone,
-      screen,
+      timezone_name: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      screen: `${window.screen.width}x${window.screen.height}@${window.devicePixelRatio || 1}`,
     });
   } catch {
-    // 登录记录失败不影响主流程。
+    // Login telemetry must never block entry.
   }
 }
 
-function getLoginError(error: unknown) {
+function loginErrorMessage(error: unknown, method: LoginMethod) {
+  if (error instanceof APIError && error.status === 429) return "尝试次数较多，请稍等一会儿再试。";
   if (error instanceof APIError && error.status === 401) {
-    return error.message.includes("expired")
-      ? "这个入口口令已过期，请联系对方获取新的入口链接。"
-      : "这个入口口令不正确，请检查是否完整粘贴后再试。";
+    if (method === "password") return "登录名或安全密码不正确。";
+    return error.message.includes("expired") ? "这个入口口令已过期，请联系对方获取新的入口链接。" : "入口口令不正确，请检查后再试。";
   }
-  if (error instanceof APIError && error.status === 0) {
-    return "暂时无法连接 Love Book，请检查网络后重试。";
-  }
+  if (error instanceof APIError && error.status === 0) return "暂时无法连接 Love Book，请检查网络后重试。";
   return "暂时无法登录，请稍后再试。";
 }
 
 export default function LoginPage() {
   const router = useRouter();
   const { token, hydrated, setToken, setMe } = useAppStore();
+  const [method, setMethod] = useState<LoginMethod>("password");
+  const [loginName, setLoginName] = useState("");
+  const [password, setPassword] = useState("");
   const [tokenInput, setTokenInput] = useState("");
   const [reveal, setReveal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
-  const [inputFocused, setInputFocused] = useState(false);
-  const [loginSucceeded, setLoginSucceeded] = useState(false);
-  const [sceneReady, setSceneReady] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [leaderboard, setLeaderboard] = useState<GameLeaderboardOut>({ items: [], threshold: 0 });
+  const [scoreToName, setScoreToName] = useState<number | null>(null);
+  const [playerName, setPlayerName] = useState("");
+  const [scoreSubmitting, setScoreSubmitting] = useState(false);
   const autoRan = useRef(false);
 
-  const canSubmit = useMemo(() => tokenInput.trim().length > 0 && !submitting, [submitting, tokenInput]);
-  const sceneMood: PuppySceneMood = loginSucceeded
-    ? "success"
-    : submitting
-      ? "submitting"
-      : loginError
-        ? "error"
-        : inputFocused
-          ? "focused"
-          : "idle";
-  const markSceneReady = useCallback(() => setSceneReady(true), []);
+  const canSubmit = useMemo(() => {
+    if (submitting) return false;
+    return method === "token" ? tokenInput.trim().length > 0 : loginName.trim().length >= 3 && password.length >= 15;
+  }, [loginName, method, password, submitting, tokenInput]);
 
-  const doLogin = useCallback(
-    async (nextToken: string, next?: string | null) => {
+  const finishLogin = useCallback(
+    async (nextToken: string, next?: string | null, loginMethod: LoginMethod = "token") => {
       setSubmitting(true);
       setLoginError(null);
-      setLoginSucceeded(false);
       setToken(nextToken);
       try {
         const me = await api.me({ silent: true });
         setMe(me);
-        setLoginSucceeded(true);
         toast.success(`欢迎回来，${me.user.display_name}`);
         void reportLoginFingerprint();
         router.replace(sanitizeNext(next) || "/timeline");
       } catch (error) {
         setToken(null);
-        setLoginError(getLoginError(error));
+        setLoginError(loginErrorMessage(error, loginMethod));
       } finally {
         setSubmitting(false);
       }
@@ -106,156 +97,144 @@ export default function LoginPage() {
   );
 
   useEffect(() => {
+    void api.getGameLeaderboard().then(setLeaderboard).catch(() => undefined);
+    setPlayerName(window.localStorage.getItem(PLAYER_NAME_KEY) ?? "");
+  }, []);
+
+  useEffect(() => {
+    const landscape = window.matchMedia("(orientation: landscape) and (max-height: 600px)");
+    const syncPanelForOrientation = () => setPanelOpen(!landscape.matches);
+    syncPanelForOrientation();
+    landscape.addEventListener?.("change", syncPanelForOrientation);
+    return () => landscape.removeEventListener?.("change", syncPanelForOrientation);
+  }, []);
+
+  useEffect(() => {
     if (!hydrated || autoRan.current) return;
-
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      const hash = window.location.hash.replace(/^#/, "");
-      const hashParams = new URLSearchParams(hash);
-      const queryToken = url.searchParams.get("token");
-      const hashToken = hashParams.get("token");
-      const incomingToken = queryToken || hashToken;
-      const nextParam = url.searchParams.get("next") || hashParams.get("next");
-
-      if (incomingToken) {
-        autoRan.current = true;
-        url.searchParams.delete("token");
-        url.searchParams.delete("next");
-        window.history.replaceState(null, "", `${url.pathname}${url.search}`);
-        void doLogin(incomingToken, nextParam);
-        return;
-      }
-
-      if (token && !submitting && nextParam) {
-        const target = sanitizeNext(nextParam);
-        if (target) {
-          router.replace(target);
-          return;
-        }
-      }
-    }
-
-    if (token && !submitting) router.replace("/timeline");
-  }, [doLogin, hydrated, router, submitting, token]);
-
-  function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    const nextToken = tokenInput.trim();
-    if (!nextToken) {
-      setLoginError("请先粘贴入口口令。");
+    const url = new URL(window.location.href);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const incomingToken = url.searchParams.get("token") || hashParams.get("token");
+    const nextParam = url.searchParams.get("next") || hashParams.get("next");
+    if (incomingToken) {
+      autoRan.current = true;
+      url.searchParams.delete("token");
+      url.searchParams.delete("next");
+      window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+      void finishLogin(incomingToken, nextParam, "token");
       return;
     }
-    void doLogin(nextToken);
+    if (token && !submitting) router.replace(sanitizeNext(nextParam) || "/timeline");
+  }, [finishLogin, hydrated, router, submitting, token]);
+
+  async function onSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setLoginError(null);
+    if (method === "token") {
+      await finishLogin(tokenInput.trim(), null, "token");
+      return;
+    }
+    try {
+      const session = await api.passwordLogin({ login_name: loginName.trim(), password });
+      await finishLogin(session.access_token, null, "password");
+    } catch (error) {
+      setLoginError(loginErrorMessage(error, "password"));
+      setSubmitting(false);
+    }
+  }
+
+  function handleGameOver(score: number) {
+    const qualifies = leaderboard.items.length < 10 || score >= leaderboard.threshold;
+    if (score > 0 && qualifies) setScoreToName(score);
+  }
+
+  async function submitScore(event: React.FormEvent) {
+    event.preventDefault();
+    const name = playerName.trim();
+    if (scoreToName == null || !name || scoreSubmitting) return;
+    setScoreSubmitting(true);
+    try {
+      const result = await api.submitGameScore({ player_name: name, score: scoreToName });
+      window.localStorage.setItem(PLAYER_NAME_KEY, name);
+      setLeaderboard({ items: result.items, threshold: result.threshold });
+      setScoreToName(null);
+      setLeaderboardOpen(true);
+      toast.success(result.entered ? `小花跑进第 ${result.rank} 名啦` : "成绩已提交");
+    } catch {
+      toast.error("排行榜暂时没有回应，继续玩也没关系");
+    } finally {
+      setScoreSubmitting(false);
+    }
   }
 
   return (
-    <div className="login-shell viewport-guard" data-login-mood={sceneMood}>
-      <div className={`login-scene-layer ${sceneReady ? "is-ready" : ""}`} aria-hidden="true">
-        <div className="login-scene-placeholder" />
-        <PuppyScene
-          variant="hero"
-          interactive
-          reducedMotionFallback="soft"
-          mood={sceneMood}
-          onReady={markSceneReady}
-        />
-      </div>
+    <main className="login-runner-shell viewport-guard" data-panel-open={panelOpen ? "true" : "false"}>
+      <XiaohuaRunner
+        leaderboardBest={leaderboard.items[0]?.score ?? null}
+        pauseRequested={panelOpen}
+        celebrating={scoreToName != null}
+        onStart={() => setPanelOpen(false)}
+        onGameOver={handleGameOver}
+      />
 
-      <div className="login-submit-flight" aria-hidden="true">
-        <span />
-      </div>
+      <header className="login-runner-header">
+        <div className="login-runner-brand"><Heart className="h-4 w-4" fill="currentColor" /> Love Book</div>
+        <div className="flex gap-2">
+          <button type="button" className="login-runner-action focus-ring" onClick={() => setLeaderboardOpen((value) => !value)}>
+            <ListOrdered className="h-4 w-4" /> Top 10
+          </button>
+          <button type="button" className="login-runner-action login-panel-trigger focus-ring" onClick={() => setPanelOpen((value) => !value)}>
+            <LogIn className="h-4 w-4" /> 登录 Love Book
+          </button>
+        </div>
+      </header>
 
-      <div className="login-content">
-        <header className="login-brand-row">
-          <GlassSurface variant="clear" shape="capsule" className="login-brand-chip inline-flex items-center gap-2 px-3.5 py-2 text-sm font-semibold">
-            <Heart className="h-4 w-4 text-rose" fill="currentColor" aria-hidden="true" />
-            <span className="font-display">love book</span>
-          </GlassSurface>
-        </header>
+      <section
+        className="login-runner-panel"
+        aria-labelledby="login-title"
+        aria-hidden={!panelOpen}
+        inert={!panelOpen}
+      >
+        <button type="button" className="login-panel-close focus-ring" onClick={() => setPanelOpen(false)} aria-label="收起登录框"><ChevronDown className="h-5 w-5" /></button>
+        <h1 id="login-title" className="font-display text-2xl font-bold text-ink">欢迎回家</h1>
+        <p className="mt-1 font-sc text-sm text-ink-soft">用好记的安全密码，或继续粘贴入口口令。</p>
 
-        <main className="login-main">
-          <section className="login-floating-panel w-full max-w-[25rem]" aria-labelledby="login-title">
-            <div className="mb-6">
-              <p className="font-sc text-xs font-semibold text-rose-deep">欢迎回家</p>
-              <h1 id="login-title" className="mt-2 max-w-[10ch] text-balance font-display text-[2rem] font-bold leading-tight text-ink sm:text-[2.25rem]">
-                小狗在等你。
-              </h1>
-              <p className="mt-3 font-sc text-base leading-6 text-ink-soft">把口令贴进来，我们就继续今天。</p>
-            </div>
+        <div className="login-method-tabs" role="tablist" aria-label="登录方式">
+          <button type="button" role="tab" aria-selected={method === "password"} onClick={() => { setMethod("password"); setLoginError(null); }}>安全密码</button>
+          <button type="button" role="tab" aria-selected={method === "token"} onClick={() => { setMethod("token"); setLoginError(null); }}>入口口令</button>
+        </div>
 
-            <form onSubmit={onSubmit} className="space-y-4" noValidate aria-busy={submitting}>
-              <div className="space-y-2">
-                <label htmlFor="token" className="font-sc text-sm font-medium text-ink-soft">
-                  入口口令
-                </label>
-                <div className="relative">
-                  <input
-                    id="token"
-                    name="token"
-                    type={reveal ? "text" : "password"}
-                    autoComplete="one-time-code"
-                    inputMode="text"
-                    placeholder="粘贴对方发给你的入口口令"
-                    value={tokenInput}
-                    onChange={(event) => {
-                      setTokenInput(event.target.value);
-                      if (loginError) setLoginError(null);
-                    }}
-                    onFocus={() => setInputFocused(true)}
-                    onBlur={() => setInputFocused(false)}
-                    className={`input-field min-h-[52px] pr-14 text-base ${loginError ? "login-input-error" : ""}`}
-                    aria-invalid={Boolean(loginError)}
-                    aria-describedby={loginError ? "token-error" : undefined}
-                    spellCheck={false}
-                    disabled={submitting}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setReveal((value) => !value)}
-                    disabled={submitting}
-                    aria-label={reveal ? "隐藏入口口令" : "显示入口口令"}
-                    className="absolute right-2 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full text-ink-soft transition-colors hover:bg-ink/5 active:bg-ink/10 focus-ring disabled:opacity-50"
-                  >
-                    {reveal ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
-                  </button>
-                </div>
-                {loginError ? (
-                  <p id="token-error" role="alert" className="login-inline-error font-sc text-sm leading-5">
-                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                    <span>{loginError}</span>
-                  </p>
-                ) : null}
-              </div>
+        <form onSubmit={onSubmit} className="mt-4 space-y-3" noValidate aria-busy={submitting}>
+          {method === "password" ? (
+            <>
+              <label className="block"><span className="login-field-label">登录名</span><input className="input-field mt-1 min-h-11 text-base" autoComplete="username" value={loginName} onChange={(event) => setLoginName(event.target.value)} maxLength={32} disabled={submitting} /></label>
+              <label className="block"><span className="login-field-label">安全密码</span><span className="relative mt-1 block"><input className="input-field min-h-11 pr-12 text-base" type={reveal ? "text" : "password"} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={15} maxLength={128} disabled={submitting} /><button type="button" className="login-reveal focus-ring" onClick={() => setReveal((value) => !value)} aria-label={reveal ? "隐藏安全密码" : "显示安全密码"}>{reveal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span></label>
+            </>
+          ) : (
+            <label className="block"><span className="login-field-label">入口口令</span><span className="relative mt-1 block"><input className="input-field min-h-11 pr-12 text-base" type={reveal ? "text" : "password"} autoComplete="one-time-code" value={tokenInput} onChange={(event) => setTokenInput(event.target.value)} disabled={submitting} /><button type="button" className="login-reveal focus-ring" onClick={() => setReveal((value) => !value)} aria-label={reveal ? "隐藏入口口令" : "显示入口口令"}>{reveal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span></label>
+          )}
+          {loginError ? <p role="alert" className="login-inline-error"><AlertCircle className="h-4 w-4 shrink-0" />{loginError}</p> : null}
+          <button type="submit" disabled={!canSubmit} className="btn-primary flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 font-sc text-sm font-semibold focus-ring disabled:opacity-50">{submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : method === "password" ? <KeyRound className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}{submitting ? "正在登录" : "进入 Love Book"}</button>
+        </form>
+        <Link href="/admin" className="mt-3 inline-flex min-h-11 items-center gap-1.5 rounded-lg px-1 font-sc text-sm text-rose-deep focus-ring">管理员入口 <ArrowRight className="h-4 w-4" /></Link>
+      </section>
 
-              <button
-                type="submit"
-                disabled={!canSubmit}
-                className="login-submit-button btn-primary inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-[1rem] px-5 py-3.5 font-sc text-base font-semibold focus-ring"
-              >
-                {submitting ? (
-                  <>
-                    <LoaderCircle className="h-4 w-4 motion-safe:animate-spin" aria-hidden="true" />
-                    正在翻开小书
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4" aria-hidden="true" />
-                    进入
-                  </>
-                )}
-              </button>
-            </form>
+      {leaderboardOpen ? (
+        <aside className="runner-leaderboard" aria-label="小花跑酷排行榜">
+          <div className="flex items-center justify-between"><h2 className="font-display text-lg font-semibold text-ink">全站 Top 10</h2><button type="button" onClick={() => setLeaderboardOpen(false)} className="runner-close focus-ring" aria-label="关闭排行榜"><X className="h-4 w-4" /></button></div>
+          <ol className="mt-3 space-y-1.5">{leaderboard.items.length ? leaderboard.items.map((item, index) => <li key={item.id} className="runner-rank-row"><span>{index + 1}</span><strong>{item.player_name}</strong><b>{item.score}</b></li>) : <li className="py-5 text-center font-sc text-sm text-ink-muted">还没有纪录，来跑第一局吧。</li>}</ol>
+        </aside>
+      ) : null}
 
-            <Link
-              href="/admin"
-              className="mt-4 inline-flex min-h-11 items-center gap-1.5 rounded-full px-1 font-sc text-sm font-medium text-rose-deep transition-colors hover:text-rose active:text-rose focus-ring"
-            >
-              管理员入口
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
-          </section>
-        </main>
-      </div>
-    </div>
+      {scoreToName != null ? (
+        <form className="runner-name-score" onSubmit={submitScore}>
+          <button type="button" onClick={() => setScoreToName(null)} className="runner-close focus-ring" aria-label="暂不留名"><X className="h-4 w-4" /></button>
+          <p className="font-display text-lg font-semibold text-ink">新纪录，{scoreToName} 分</p>
+          <label className="mt-3 block"><span className="login-field-label">留下名字</span><input autoFocus className="input-field mt-1 min-h-11 text-base" value={playerName} onChange={(event) => setPlayerName(event.target.value)} maxLength={12} required /></label>
+          <button type="submit" className="btn-primary mt-3 min-h-11 w-full rounded-xl px-4 font-sc text-sm focus-ring" disabled={!playerName.trim() || scoreSubmitting}>{scoreSubmitting ? "正在记录" : "写进排行榜"}</button>
+        </form>
+      ) : null}
+    </main>
   );
 }

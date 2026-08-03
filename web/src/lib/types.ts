@@ -1,4 +1,4 @@
-// Shared TypeScript contracts for received-gift-aware timelines, profiles, editable meeting ranges, quotes, habits, todo boards, AMap evidence, admin AI settings, cycle records, and reminders.
+// Shared TypeScript contracts for authentication, runner rankings, timelines, profiles, meetings, quotes, habits, todo boards, AMap, admin AI, cycles, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
 export type EventKind = "memory" | "offline_meeting" | "gift_received";
@@ -260,6 +260,39 @@ export interface QuoteOut {
   author_id: number;
   text: string;
   created_at: string;
+}
+
+export interface PasswordSessionOut {
+  access_token: string;
+  token_type: string;
+  expires_at: string;
+}
+
+export interface SecurityPasswordOut {
+  login_name: string | null;
+  configured: boolean;
+  password_updated_at: string | null;
+}
+
+export interface SecurityPasswordUpdateOut extends PasswordSessionOut {
+  security: SecurityPasswordOut;
+}
+
+export interface GameScoreOut {
+  id: number;
+  player_name: string;
+  score: number;
+  created_at: string;
+}
+
+export interface GameLeaderboardOut {
+  items: GameScoreOut[];
+  threshold: number;
+}
+
+export interface GameScoreSubmitOut extends GameLeaderboardOut {
+  entered: boolean;
+  rank: number | null;
 }
 
 export interface QuoteSampleOut {

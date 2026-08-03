@@ -10,9 +10,10 @@
 
 ## 功能概览
 
-- 管理端一次创建一对用户，并返回两个 token，支持默认永久有效或指定过期时间。
-- 普通接口使用 `Authorization: Bearer <token>` 鉴权。
-- 每个 token 直接代表一个用户身份，用户身份和 pair 关系在 token 生成时确定。
+- 管理端一次创建一对用户，并返回两个入口 token，支持默认永久有效或指定过期时间。
+- 用户可在已登录状态设置唯一登录名和安全密码，密码登录会签发 90 天有效的随机 Bearer 会话；邮件和入口链接继续使用原入口 token。
+- 普通接口使用 `Authorization: Bearer <token>` 鉴权，每个 token 直接代表一个用户身份和确定的 pair 关系。
+- 未登录首页提供像素小花草地跑酷与匿名全站 Top 10 排行榜；达到入榜门槛后可留下 1–12 字符的 Unicode 名字。
 - 两位用户都可以创建事件、提交评论、上传图片，并对可见留言添加点赞 / 倒赞 reaction。
 - 线下见面使用内部 `meeting_sessions` 作为真实见面次数统计单位，并以 `started_on / ended_on` 保存包含首尾整天的北京时间范围；范围内双方事件自动归类，标记范围外事件时自动建立同名单日见面。双方点击见面标题可同时编辑标题与日期范围，重叠范围自动合并并保留较早标题，也可取消整个见面；不再提供加号或手动归入流程，事件内容权限保持不变。
 - 事件、内容和留言 reaction 写接口会在响应返回前完成数据库提交，前端创建、评论或点 reaction 后可以立即刷新详情。
@@ -38,7 +39,9 @@ app/
     routes/
       admin_auth.py       管理密钥校验接口
       admin.py            管理接口入口（创建、列出 pair）
-      auth.py             当前用户接口
+      auth.py             当前用户、密码登录与安全凭据接口
+      game.py             匿名跑酷排行榜接口
+  security_credentials.py 登录名规范化、Argon2id 哈希与登录冷却
       quotes.py           情侣共享本地语录库接口
       events.py           事件接口
       meeting_sessions.py 共享见面标题/日期范围编辑、合并和取消接口
@@ -119,11 +122,11 @@ npm run dev
 
 页面：
 
-- `/` 登录页（全屏 3D 小狗背景 + 偏置前景登录框，文案只保留欢迎语、token、进入和管理员入口，支持 `?token=` 或 `#token=` 自动登录）
+- `/` 登录页（全屏像素小花草地跑酷、匿名 Top 10 排行榜和按方向收放的登录卡，支持安全密码、手动 token，以及 `?token=` / `#token=` 自动登录）
 - `/admin` 管理控制台（先用 `ADMIN_KEY` 验证身份，然后创建配对 / 复制 token / 复制入口链接；入口链接按当前浏览器 origin 动态生成，复制失败会自动降级到隐藏文本框复制）
-- `/timeline` 事件列表首页（关系状态 hero、全部 / 见面分段、见面标题与日期范围弹窗编辑、月份分组、狗狗空状态和底边栏导航）
+- `/timeline` 事件列表首页（单列精选语录、全部 / 见面分段、见面标题与日期范围弹窗编辑、月份分组、静态空状态和底边栏导航）
 - `/timeline/[id]` 事件详情（创建者可原地编辑标题、描述、发生时间和可见方式；日历爱心可创建见面或打开所属见面编辑窗口；评论 / 图片混排，底部输入栏支持文字和相册）
-- `/me` 我的页面（当前用户头像、用户名、邮箱、常用位置和共享语录管理）
+- `/me` 我的页面（当前用户头像、用户名、邮箱、常用位置、共享语录和安全密码管理）
 - `/create` 新建事件
 - `/todo` 共享 todo 工作区（四板块待确认队列 / 中央任务 / 右侧详情布局，默认展示全部未完成事项，按要完成时间排序，含详情内日期安排、描述编辑、双方打卡评论完成、照片折叠大图预览、餐厅搜索、随机抽奖和打卡详情）
 - `/cycle` 周期日历 Dashboard（月 / 周 / 列表视图、筛选、提醒设置和移动端详情面板）
@@ -132,7 +135,7 @@ npm run dev
 
 - 产品默认按 [`PRODUCT.md`](ai/PRODUCT.md) 和 [`DESIGN.md`](ai/DESIGN.md) 的 product register 执行，目标气质为“温暖、可爱、舒服、可信”。
 - 当前视觉基线是柔和恋爱手账型产品 UI：低饱和玫瑰主操作、暖桃重点、鼠尾草薄荷正向状态、奶油色可读面板。
-- 前端避免晃眼高饱和色、清冷灰后台、装饰玻璃拟态、渐变文字和低对比彩色文本；动画服务状态反馈、3D 登录背景、todo 抽奖和少量成功/空状态情绪表达，整体使用丝滑缓动。当前登录和 Timeline 首页强调“温柔陪伴型”狗狗主视觉：登录页使用全屏狗狗背景和偏置登录框，首页只在空状态做轻量露出。
+- 前端避免晃眼高饱和色、清冷灰后台、装饰玻璃拟态、渐变文字和低对比彩色文本。登录页用 Canvas 2D 像素跑酷承担陪伴感，Timeline 首页不展示动态小狗，以实体语录内容层和静态空状态保持阅读安静；Three.js 仅继续服务 Todo 抽奖。
 
 token 分发链接形如 `http://localhost:3000/?token=xxx` 或 `https://qrqto.club/?token=xxx`；管理端会按当前访问域名和协议动态生成，链接本身携带身份凭据，请只通过可信渠道发送。
 
@@ -156,7 +159,7 @@ X-Admin-Key: your-admin-key
 Authorization: Bearer <token>
 ```
 
-token 由管理接口生成，默认永久有效；创建 pair 时也可以指定统一的过期时间。过期 token 会返回 `401`。v1 不提供刷新、撤销、普通注册或登录接口。
+入口 token 由管理接口生成，默认永久有效；创建 pair 时也可以指定统一的过期时间。用户还可用安全密码换取 90 天有效的随机 Bearer 会话。重置安全密码会撤销该用户此前全部密码会话并签发新会话，不影响入口 token、邮件链接或历史免登录链接。过期或已撤销 token 返回 `401`。
 
 ## 核心可见性规则
 
@@ -204,7 +207,10 @@ token 由管理接口生成，默认永久有效；创建 pair 时也可以指�
 | admin | POST | `/admin/auth` | 无 | 校验管理密钥，前端登录管理页用 |
 | admin | POST | `/admin/pairs` | `X-Admin-Key` | 创建一对用户并签发两个 token，可选过期时间 |
 | admin | GET | `/admin/pairs` | `X-Admin-Key` | 列出全部配对及其 token |
+| auth | POST | `/auth/login/password` | 无 | 使用登录名和安全密码换取 90 天 Bearer 会话 |
 | auth | GET | `/auth/me` | `Bearer` | 获取当前用户、对方、pair_id |
+| auth | GET | `/auth/me/security-password` | `Bearer` | 获取当前用户安全密码配置状态 |
+| auth | PUT | `/auth/me/security-password` | `Bearer` | 设置或重置登录名和安全密码，返回新会话 |
 | auth | PATCH | `/auth/me` | `Bearer` | 修改自己的昵称、邮箱或 emoji 头像 |
 | auth | PATCH | `/auth/me/location` | `Bearer` | 保存当前用户常用位置，支持坐标逆地理编码或地址地理编码 |
 | auth | DELETE | `/auth/me/location` | `Bearer` | 清除当前用户常用位置 |
@@ -214,6 +220,8 @@ token 由管理接口生成，默认永久有效；创建 pair 时也可以指�
 | quotes | GET | `/quotes` | `Bearer` | 当前 pair 的共享语录列表 |
 | quotes | POST | `/quotes` | `Bearer` | 添加一条共享语录 |
 | quotes | DELETE | `/quotes/{quote_id}` | `Bearer` | 删除当前 pair 的共享语录 |
+| game | GET | `/game/leaderboard` | 无 | 匿名读取全站跑酷 Top 10 和入榜门槛 |
+| game | POST | `/game/leaderboard` | 无 | 匿名提交名字和成绩，返回是否入榜及最新榜单 |
 | events | POST | `/events` | `Bearer` | 创建事件 |
 | events | GET | `/events` | `Bearer` | 当前 pair 的事件列表 |
 | events | GET | `/events/{event_id}` | `Bearer` | 事件详情（含已可见内容） |
@@ -463,7 +471,15 @@ Content-Type: multipart/form-data
 
 请求头可使用当前用户 `Bearer` token 或管理员 `X-Admin-Key`。只有同一 pair 的双方和管理员可读取；未上传、已清除、文件缺失或无权限时返回 `404`。成功时返回头像 JPEG 文件，并带 `Cache-Control: private, max-age=604800`。
 
-### 5.3 共享语录库
+### 5.3 安全密码与密码会话
+
+`POST /auth/login/password` 接收 `{ "login_name": "xiaohua", "password": "..." }`，成功后返回 `access_token`、`token_type: "bearer"` 和 90 天后的 `expires_at`。错误账号与错误密码统一返回“登录名或安全密码不正确”；账号与 IP 连续失败达到 5 次后进入渐进冷却。
+
+`GET /auth/me/security-password` 返回当前用户的规范化登录名、是否已配置及更新时间。`PUT /auth/me/security-password` 只需当前 Bearer 鉴权，接收登录名和新密码，设置或重置后撤销该用户全部旧 `password` 来源会话，并在响应中返回新会话和最新 `security` 状态；`entry` 来源入口 token 不受影响。
+
+登录名会执行 NFKC、去除首尾空白和 casefold，允许 3–32 个 Unicode 字母/数字及 `._-`，并通过唯一索引避免大小写或全半角重复。密码允许 Unicode、空格和粘贴，长度为 15–128；凭据使用 Argon2id 单向哈希，接口与日志均不返回明文或哈希。
+
+### 5.4 共享语录库
 
 `GET /quotes`、`POST /quotes`、`DELETE /quotes/{quote_id}`
 
@@ -758,6 +774,12 @@ Docker 生产环境迁移服务器时需要同时备份数据库和 `love_book_m
 - 只有事件创建者可以修改和删除事件。
 - 情侣共享语录库的添加、列表、删除和 pair 隔离权限。
 
+## 像素跑酷排行榜
+
+`GET /game/leaderboard` 和 `POST /game/leaderboard` 均为匿名接口。读取接口返回全站前 10 名 `items` 与当前 `threshold`；不足 10 人时门槛为 0。提交体为 `{ "player_name": "小花", "score": 128 }`，名字去除首尾空白后须为 1–12 个 Unicode 字符，分数须为非负 32 位整数。
+
+榜单按分数降序、创建时间升序、ID 升序排列，同分时较早纪录优先。提交接口返回 `entered`、可空的 `rank`、最新 `items` 和 `threshold`；未入榜的成绩不会保留，成功写入后会在返回前提交并清理第 11 名以后记录。
+
 运行测试：
 
 ```powershell
@@ -766,8 +788,8 @@ python -m pytest tests -q
 
 ## 注意事项
 
-- v1 token 默认永久有效，也可以在创建 pair 时指定过期时间；尚未提供刷新和撤销机制。
-- v1 自动建表，并带少量轻量级补列逻辑（如 `users.avatar`、`device_tokens.expires_at`）。已有生产数据库中的旧 token 因 `expires_at` 为 `NULL` 会继续永久有效。
+- 入口 token 默认永久有效，也可以在创建 pair 时指定过期时间；密码会话固定 90 天有效，重置凭据时只撤销旧密码会话。
+- v1 自动建表，并带少量轻量级补列和索引逻辑（包括用户安全凭据字段、`device_tokens.source` 与唯一登录名索引）。已有生产 token 会迁移为 `entry` 来源，`expires_at` 为 `NULL` 时继续永久有效。
 - SQLite 适合本地开发；正式部署建议改成 PostgreSQL，并增加迁移、备份和文件存储策略。
 - 图片文件默认保存到 `MEDIA_ROOT` 本地目录；Docker 生产部署已用 `love_book_media` named volume 持久化，服务器迁移时要和数据库一起备份。旧语音文件仍可能存在于该 volume 中，除非运维在备份后手动清理。
 - `.env` 不应提交到版本库；项目已在 `.gitignore` 中排除 `.env`。
@@ -783,7 +805,7 @@ python -m pytest tests -q
 - 首页标题区右侧月亮图标进入 `/cycle` 月经周期记录页面，桌面端和手机端都显示。
 - 首页不再常驻展示周期入口；仅在预计月经开始前本机配置的 N 天到预计当天、且今日尚未记录时弹出周期记录提醒，可进入 `/cycle?quickLog=today` 填写或选择当天暂时不写。
 - 一言模块已弃用；非特殊日后端从当前 pair 的 `quotes` 数据库语录库和 `default_quotes` 全站共享兜底语录表合并后的随机池中取一句。
-- 前端在纪念日卡片右侧提供刷新和编辑图标：刷新会重新请求提醒文案，编辑可添加、查看和删除当前 pair 的共享语录，保存后自动收起编辑区。
+- Timeline 首页进入时预读 5 句语录，点击语录文案立即换句，剩余 2 句时后台补充；页面不展示刷新图标或动态小狗，语录管理继续集中在 `/me`。
 - 节假日信息使用 `https://timor.tech/api/holiday/info/{YYYY-MM-DD}`；接口失败时静默跳过节假日标签，不影响首页加载。
 ## 周期日历 Dashboard
 

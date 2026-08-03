@@ -1,4 +1,4 @@
-"""Shared pair, meeting, event, comment, image, quote, visibility, and home-reminder business logic."""
+"""Shared pair/event/quote logic plus stable entry-token selection for notification links."""
 
 import random
 from datetime import date, datetime, timedelta, timezone
@@ -195,7 +195,7 @@ def active_token_for_user(db: Session, user_id: int) -> str | None:
     tokens = (
         db.execute(
             select(DeviceToken)
-            .where(DeviceToken.user_id == user_id)
+            .where(DeviceToken.user_id == user_id, DeviceToken.source == "entry")
             .order_by(DeviceToken.created_at.desc())
         )
         .scalars()

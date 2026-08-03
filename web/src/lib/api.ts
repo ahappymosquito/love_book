@@ -1,6 +1,6 @@
 "use client";
 
-// Authenticated browser API client for profiles, timelines, received gifts, private media, plans, habits, cycles, quotes, and admin workflows.
+// Browser API client for authentication, runner rankings, profiles, timelines, private media, plans, habits, cycles, quotes, and admin workflows.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -25,8 +25,11 @@ import type {
   HabitTaskOut,
   HabitToggleOut,
   ImageOut,
+  GameLeaderboardOut,
+  GameScoreSubmitOut,
   LoginLogOut,
   LoginRecordCreate,
+  PasswordSessionOut,
   LoveReceiptOut,
   MeetingSessionOut,
   MeOut,
@@ -34,6 +37,8 @@ import type {
   PairOut,
   QuoteOut,
   QuoteSampleOut,
+  SecurityPasswordOut,
+  SecurityPasswordUpdateOut,
   TodoCategory,
   TodoCandidateOut,
   TodoClassifyOpenOut,
@@ -260,6 +265,30 @@ export const api = {
     apiRequest<LoginLogOut>("/auth/login-record", {
       method: "POST",
       json: payload,
+      silent: true,
+    }),
+  passwordLogin: (payload: { login_name: string; password: string }) =>
+    apiRequest<PasswordSessionOut>("/auth/login/password", {
+      method: "POST",
+      json: payload,
+      withAuth: false,
+      silent: true,
+    }),
+  getSecurityPassword: () => apiRequest<SecurityPasswordOut>("/auth/me/security-password"),
+  updateSecurityPassword: (payload: { login_name: string; password: string }) =>
+    apiRequest<SecurityPasswordUpdateOut>("/auth/me/security-password", {
+      method: "PUT",
+      json: payload,
+    }),
+
+  // Public login runner leaderboard
+  getGameLeaderboard: () =>
+    apiRequest<GameLeaderboardOut>("/game/leaderboard", { withAuth: false, silent: true }),
+  submitGameScore: (payload: { player_name: string; score: number }) =>
+    apiRequest<GameScoreSubmitOut>("/game/leaderboard", {
+      method: "POST",
+      json: payload,
+      withAuth: false,
       silent: true,
     }),
 

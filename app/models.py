@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair timelines, received gifts, legacy receipts, private media, plans, habits, profiles, and admin settings."""
+"""SQLAlchemy models for pair features, private media, password sessions, game scores, and admin settings."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -160,6 +160,9 @@ class User(Base):
     avatar_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     avatar_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255))
+    login_name: Mapped[str | None] = mapped_column(String(32), nullable=True, unique=True)
+    password_hash: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    password_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     location_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
     location_address: Mapped[str | None] = mapped_column(String(500), nullable=True)
     location_city: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -191,9 +194,25 @@ class DeviceToken(Base):
     token: Mapped[str] = mapped_column(String(128), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="entry", server_default="entry", index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     user: Mapped[User] = relationship()
+
+
+class GameScore(Base):
+    """A public runner score; only the global top ten rows are retained."""
+
+    __tablename__ = "game_scores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    player_name: Mapped[str] = mapped_column(String(12), nullable=False)
+    score: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False, index=True
+    )
 
 
 class Event(Base):

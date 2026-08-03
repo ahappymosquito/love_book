@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home with a lightweight 2D puppy stage, queued quotes, compact gift rows, meeting ranges, and reminders.
+// Timeline home with a queued relationship quote, static empty state, compact gift rows, meeting ranges, and reminders.
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,7 +20,6 @@ import { EventImagePreview } from "@/components/event-image-preview";
 import { LoadingScreen } from "@/components/loading-screen";
 import { MeetingEditorDialog } from "@/components/meeting-editor-dialog";
 import { AppHeader } from "@/components/app-header";
-import { TimelinePuppy } from "@/components/timeline-puppy";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { MotionCollapse } from "@/components/ui/motion-collapse";
 import { SubmissionBadge, VisibilityBadge } from "@/components/visibility-badge";
@@ -473,34 +472,23 @@ function HomeHero({
   onRefreshQuote: () => void;
 }) {
   const reducedMotion = useReducedMotion();
-  const [puppyCue, setPuppyCue] = useState(0);
-
-  function refreshQuoteWithPuppy() {
-    setPuppyCue((value) => value + 1);
-    onRefreshQuote();
-  }
 
   return (
-    <section className="timeline-home-stage mb-5 rounded-[1.5rem] px-5 py-5 sm:mb-6 sm:px-7 sm:py-6">
-      <div className="timeline-home-grid">
-        <div className="timeline-home-copy min-w-0 space-y-5">
-          <div className="flex flex-wrap gap-2.5">
-            <span className="pill inline-flex items-center gap-1.5 bg-rose/12 text-rose-deep">
-              <BookHeart className="h-3.5 w-3.5" />
-              {userName} 和 {counterpartName}
-            </span>
-            <span className="pill inline-flex items-center gap-1.5 bg-peach/22 text-ink-soft">
-              在一起第 {relationshipDays} 天
-            </span>
-          </div>
+    <section className="timeline-quote-panel mb-5 sm:mb-6">
+      <p className="timeline-quote-meta">
+        <BookHeart className="h-4 w-4 flex-none text-rose-deep" />
+        <span>{userName} 和 {counterpartName}</span>
+        <span aria-hidden="true">·</span>
+        <span>在一起第 {relationshipDays} 天</span>
+      </p>
           <motion.button
             type="button"
-            onClick={refreshQuoteWithPuppy}
+            onClick={onRefreshQuote}
             disabled={quoteRefreshing}
             layout="size"
             whileTap={reducedMotion ? undefined : { scale: 0.995 }}
             transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.state}
-            className="relative block w-full max-w-3xl overflow-hidden rounded-[1.35rem] py-1 text-left font-display text-[1.55rem] font-semibold leading-snug text-ink transition-colors hover:text-rose-deep focus-ring disabled:cursor-wait sm:text-[1.9rem]"
+            className="timeline-quote-button focus-ring"
             aria-label="刷新今日话语"
             aria-busy={quoteRefreshing}
           >
@@ -543,15 +531,6 @@ function HomeHero({
             </span>
             <span className="sr-only" aria-live="polite" aria-atomic="true">{data.message}</span>
           </motion.button>
-        </div>
-
-        <TimelinePuppy
-          cue={puppyCue}
-          cueAction="curious"
-          className="timeline-home-puppy"
-          label="和首页小狗打个招呼"
-        />
-      </div>
     </section>
   );
 }
@@ -1034,33 +1013,16 @@ function ListSkeleton() {
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
-    <section className="glass-card overflow-hidden rounded-[2rem] p-5 sm:p-6">
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
-        <div className="min-w-0">
-          <div className="inline-flex items-center gap-2 rounded-full bg-peach/24 px-3 py-1.5 font-sc text-xs font-medium text-rose-deep">
-            <BookHeart className="h-3.5 w-3.5" />
-            还没有留下第一段小事
-          </div>
-          <h2 className="mt-4 font-display text-[1.7rem] font-semibold leading-tight text-ink sm:text-[2rem]">
-            小狗已经把空白页铺好了，等你们写下今天发生的第一件甜事。
-          </h2>
-          <p className="mt-3 max-w-xl font-sc text-sm leading-relaxed text-ink-soft">
-            可以先记一顿一起吃的饭，一句想说的话，或者一次突然决定出门的小约会。写下第一笔之后，时间线就会自己长出节奏。
-          </p>
-          <button
-            type="button"
-            onClick={onCreate}
-            className="btn-primary mt-5 inline-flex min-h-12 items-center gap-2 rounded-full px-5 font-sc text-sm font-medium focus-ring"
-          >
-            <Plus className="h-4 w-4" />
-            写第一笔
-          </button>
-        </div>
-
-        <div className="timeline-empty-puppy-shell grid min-h-[220px] place-items-center overflow-hidden rounded-[1.5rem] sm:min-h-[250px]">
-          <TimelinePuppy className="h-[200px] w-[200px] sm:h-[228px] sm:w-[228px]" />
-        </div>
+    <section className="content-surface px-5 py-8 text-center sm:px-7 sm:py-10">
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-peach/22 text-rose-deep">
+        <BookHeart className="h-7 w-7" />
       </div>
+      <h2 className="mt-4 font-display text-xl font-semibold text-ink sm:text-2xl">从今天的小事开始</h2>
+      <p className="mx-auto mt-2 max-w-md font-sc text-sm leading-6 text-ink-soft">记下一顿饭、一句想说的话，或一次临时决定的小约会。</p>
+      <button type="button" onClick={onCreate} className="btn-primary mt-5 inline-flex min-h-12 items-center gap-2 rounded-full px-5 font-sc text-sm font-medium focus-ring">
+        <Plus className="h-4 w-4" />
+        记一笔
+      </button>
     </section>
   );
 }

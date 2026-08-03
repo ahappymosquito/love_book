@@ -56,7 +56,10 @@ def normalize_token_expires_at(expires_at):
 
 def pair_out(db: Session, pair: Pair) -> PairOut:
     tokens = db.execute(
-        select(DeviceToken).where(DeviceToken.user_id.in_([pair.user_a_id, pair.user_b_id]))
+        select(DeviceToken).where(
+            DeviceToken.user_id.in_([pair.user_a_id, pair.user_b_id]),
+            DeviceToken.source == "entry",
+        )
     ).scalars()
     token_by_user_id = {token.user_id: token for token in tokens}
     user_a_token = token_by_user_id.get(pair.user_a_id)
@@ -103,8 +106,8 @@ def create_pair(payload: PairCreate, db: Session = Depends(get_db)) -> PairCreat
     db.add_all(
         [
             pair,
-            DeviceToken(token=user_a_token, user_id=user_a.id, expires_at=token_expires_at),
-            DeviceToken(token=user_b_token, user_id=user_b.id, expires_at=token_expires_at),
+            DeviceToken(token=user_a_token, user_id=user_a.id, expires_at=token_expires_at, source="entry"),
+            DeviceToken(token=user_b_token, user_id=user_b.id, expires_at=token_expires_at, source="entry"),
         ]
     )
     db.flush()

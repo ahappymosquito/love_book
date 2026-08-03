@@ -14,9 +14,13 @@ cryptography = "48.0.0"
 uvicorn = { version = "0.47.0", extras = ["standard"] }
 pillow = "12.2.0"
 httpx = "0.28.1"
+argon2-cffi = "25.1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "9.0.3"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

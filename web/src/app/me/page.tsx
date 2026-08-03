@@ -1,6 +1,6 @@
 "use client";
 
-// Grouped settings surface for identity, location, shared quotes, and the app's sole visible logout action.
+// Grouped settings surface for identity, location, shared quotes, security-password access, and logout.
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -9,6 +9,9 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Eye,
+  EyeOff,
+  KeyRound,
   LocateFixed,
   Loader2,
   LogOut,
@@ -27,7 +30,7 @@ import { AvatarPicker } from "@/components/avatar-picker";
 import { TimelineHeader } from "@/components/timeline-header";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
-import type { DefaultQuoteOut, QuoteOut } from "@/lib/types";
+import type { DefaultQuoteOut, QuoteOut, SecurityPasswordOut } from "@/lib/types";
 
 function todayDateOnly(): string {
   const now = new Date();
@@ -55,6 +58,7 @@ function MeInner() {
   const me = useAppStore((s) => s.me)!;
   const setMe = useAppStore((s) => s.setMe);
   const logout = useAppStore((s) => s.logout);
+  const setToken = useAppStore((s) => s.setToken);
   const [displayName, setDisplayName] = useState(me.user.display_name);
   const [email, setEmail] = useState(me.user.email ?? "");
   const [savingProfile, setSavingProfile] = useState(false);
@@ -70,6 +74,12 @@ function MeInner() {
   const [quoteText, setQuoteText] = useState("");
   const [quoteSaving, setQuoteSaving] = useState(false);
   const [sharedOpen, setSharedOpen] = useState(true);
+  const [security, setSecurity] = useState<SecurityPasswordOut | null>(null);
+  const [loginName, setLoginName] = useState("");
+  const [securityPassword, setSecurityPassword] = useState("");
+  const [confirmSecurityPassword, setConfirmSecurityPassword] = useState("");
+  const [securityReveal, setSecurityReveal] = useState(false);
+  const [savingSecurity, setSavingSecurity] = useState(false);
   const togetherDays = useMemo(() => daysTogether(me.love_started_on), [me.love_started_on]);
 
   const profileDirty = useMemo(
@@ -90,7 +100,18 @@ function MeInner() {
   useEffect(() => {
     void loadQuotes();
     void loadDefaultQuotes();
+    void loadSecurityPassword();
   }, []);
+
+  async function loadSecurityPassword() {
+    try {
+      const current = await api.getSecurityPassword();
+      setSecurity(current);
+      setLoginName(current.login_name ?? "");
+    } catch {
+      setSecurity(null);
+    }
+  }
 
   async function loadQuotes() {
     try {
@@ -243,6 +264,39 @@ function MeInner() {
     await api.deleteQuote(id);
     toast.success("语录已删除");
     await loadQuotes();
+  }
+
+  async function saveSecurityPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (savingSecurity) return;
+    const normalizedName = loginName.trim();
+    if (normalizedName.length < 3) {
+      toast.error("登录名至少需要 3 个字符");
+      return;
+    }
+    if (securityPassword.length < 15) {
+      toast.error("安全密码至少需要 15 个字符");
+      return;
+    }
+    if (securityPassword !== confirmSecurityPassword) {
+      toast.error("两次输入的安全密码不一致");
+      return;
+    }
+    setSavingSecurity(true);
+    try {
+      const result = await api.updateSecurityPassword({ login_name: normalizedName, password: securityPassword });
+      setToken(result.access_token);
+      setSecurity(result.security);
+      setLoginName(result.security.login_name ?? normalizedName);
+      setSecurityPassword("");
+      setConfirmSecurityPassword("");
+      toast.success(security?.configured ? "安全密码已重置" : "安全密码已设置");
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : "安全密码保存失败，请稍后再试";
+      toast.error(message);
+    } finally {
+      setSavingSecurity(false);
+    }
   }
 
   function handleLogout() {
@@ -476,8 +530,45 @@ function MeInner() {
         </section>
 
         <section className="settings-group mt-5 p-5 sm:p-6">
-          <h2 className="font-display text-lg font-semibold text-ink">登录与账号</h2>
-          <p className="mt-1 font-sc text-sm text-ink-muted">退出后，需要再次使用你们的专属入口登录。</p>
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-peach/22 text-rose-deep"><KeyRound className="h-5 w-5" /></span>
+            <div className="min-w-0">
+              <h2 className="font-display text-lg font-semibold text-ink">登录与账号</h2>
+              <p className="mt-1 font-sc text-sm leading-6 text-ink-muted">设置一个好记的登录名和安全密码，入口链接仍然可以继续使用。</p>
+            </div>
+          </div>
+
+          <form onSubmit={saveSecurityPassword} className="mt-5 grid gap-3" noValidate>
+            {security?.configured ? (
+              <div className="settings-row flex items-center justify-between gap-3 px-4 py-3">
+                <div>
+                  <p className="font-sc text-xs text-ink-muted">当前登录名</p>
+                  <p className="mt-1 break-all font-sc text-sm font-semibold text-ink">{security.login_name}</p>
+                  {security.password_updated_at ? <p className="mt-1 font-sc text-xs text-ink-muted">更新于 {new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(security.password_updated_at))}</p> : null}
+                </div>
+                <span className="pill bg-sage/18 text-ink-soft">已设置</span>
+              </div>
+            ) : null}
+            <label>
+              <span className="font-sc text-sm font-medium text-ink-soft">登录名</span>
+              <input className="input-field mt-1 min-h-12 text-base" value={loginName} onChange={(event) => setLoginName(event.target.value)} minLength={3} maxLength={32} autoComplete="username" placeholder="3–32 个字符" required />
+            </label>
+            <label>
+              <span className="font-sc text-sm font-medium text-ink-soft">{security?.configured ? "新安全密码" : "安全密码"}</span>
+              <span className="relative mt-1 block"><input className="input-field min-h-12 pr-12 text-base" type={securityReveal ? "text" : "password"} value={securityPassword} onChange={(event) => setSecurityPassword(event.target.value)} minLength={15} maxLength={128} autoComplete="new-password" placeholder="至少 15 个字符" required /><button type="button" onClick={() => setSecurityReveal((value) => !value)} className="login-reveal focus-ring" aria-label={securityReveal ? "隐藏安全密码" : "显示安全密码"}>{securityReveal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span>
+            </label>
+            <label>
+              <span className="font-sc text-sm font-medium text-ink-soft">确认安全密码</span>
+              <input className="input-field mt-1 min-h-12 text-base" type={securityReveal ? "text" : "password"} value={confirmSecurityPassword} onChange={(event) => setConfirmSecurityPassword(event.target.value)} minLength={15} maxLength={128} autoComplete="new-password" required />
+            </label>
+            <button type="submit" disabled={savingSecurity || !loginName.trim() || securityPassword.length < 15 || securityPassword !== confirmSecurityPassword} className="btn-primary inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-4 font-sc text-sm font-semibold focus-ring disabled:opacity-50">
+              {savingSecurity ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              {security?.configured ? "重置安全密码" : "设置安全密码"}
+            </button>
+          </form>
+
+          <div className="mt-6 border-t border-line/60 pt-5">
+            <p className="font-sc text-sm text-ink-muted">退出后，可以使用安全密码或专属入口再次登录。</p>
           <button
             type="button"
             onClick={handleLogout}
@@ -486,6 +577,7 @@ function MeInner() {
             <LogOut className="h-4 w-4" />
             退出登录
           </button>
+          </div>
         </section>
       </main>
 

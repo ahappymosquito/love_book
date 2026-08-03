@@ -6,7 +6,7 @@ product
 
 ## Users
 
-Love Book is used by a fixed pair of partners who share private tokens and return to the app from phones and desktops to record daily memories, arrange todo plans, track personal habits together, check cycle notes, and manage their shared account setup. Admin users configure pairs, entry links, contact details, AI model settings, and operational records.
+Love Book is used by a fixed pair of partners who enter through private token links or their own short login name and security password, then return from phones and desktops to record daily memories, arrange todo plans, track personal habits together, check cycle notes, and manage their shared account setup. Before login, visitors can play a public pixel puppy runner and compare scores on a global Top 10. Admin users configure pairs, entry links, contact details, AI model settings, and operational records.
 
 ## Product Purpose
 
@@ -17,6 +17,10 @@ Meeting sessions remain an internal counting and grouping model rather than a vi
 The habits surface is a logged-in daily check-in dashboard: the bottom navigation opens `/habits`, settings remain available from the top avatar, the liquid-glass calendar shows both partners' progress with a Monday-start week view by default and an optional month view, and the personal/counterpart checklists stay as vertical collapsible panels on all viewport sizes. Habit colors are chosen from one color button during creation or explicit editing, while completed rows turn sage green with a short completion animation.
 
 Timeline's relationship quote keeps anniversary or festival copy on first load, then rotates ordinary pair/default quotes instantly from a five-item in-memory queue. The queue refills quietly when two items remain so repeated taps do not wait for network or holiday aggregation.
+
+The unauthenticated surface is a game-first pixel meadow rather than a decorative 3D login scene. Pixel Xiaohua runs, jumps, stumbles, and celebrates records while the login form stays available without dominating play: portrait places a collapsible card in the sky area, landscape keeps only a login trigger until requested. The public leaderboard retains only the global Top 10 and lets qualifying players leave a short name.
+
+Each partner may configure one unique login name and a security password from the authenticated settings page. Password login issues the same opaque Bearer session used by the rest of the application, while email and administrator entry links continue to use their existing tokens. Resetting the password requires an already authenticated token, invalidates older password-issued sessions, and does not revoke entry-link tokens.
 
 Received gifts are recorded directly by the receiver as Timeline events. Only the gift name is required; normal written feedback, up to three honest positive or complex feeling tags, an optional one-to-five-star rating, and up to six private event photos can be added without a delivery state machine. A gift received during a meeting keeps its photo-led warm gift identity while also belonging to that meeting.
 

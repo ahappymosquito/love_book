@@ -1,4 +1,4 @@
-"""Pydantic contracts for authenticated pair features, including received gifts, legacy receipts, media, plans, habits, profiles, and admin APIs."""
+"""Pydantic contracts for pair features, security-password sessions, runner scores, media, and admin APIs."""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -117,6 +117,64 @@ class MeOut(APIModel):
     counterpart: UserOut
     pair_id: int
     love_started_on: date
+
+
+class PasswordLoginIn(APIModel):
+    login_name: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class PasswordSessionOut(APIModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_at: datetime
+
+
+class SecurityPasswordOut(APIModel):
+    login_name: str | None = None
+    configured: bool
+    password_updated_at: datetime | None = None
+
+
+class SecurityPasswordUpdateIn(APIModel):
+    login_name: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class SecurityPasswordUpdateOut(PasswordSessionOut):
+    security: SecurityPasswordOut
+
+
+class GameScoreCreate(APIModel):
+    player_name: str = Field(min_length=1, max_length=12)
+    score: int = Field(ge=0, le=2_147_483_647)
+
+    @field_validator("player_name")
+    @classmethod
+    def clean_player_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Player name cannot be empty")
+        return value
+
+
+class GameScoreOut(APIModel):
+    id: int
+    player_name: str
+    score: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class LeaderboardOut(APIModel):
+    items: list[GameScoreOut]
+    threshold: int
+
+
+class LeaderboardSubmitOut(LeaderboardOut):
+    entered: bool
+    rank: int | None = None
 
 
 class ReminderItem(APIModel):

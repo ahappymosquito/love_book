@@ -1,6 +1,12 @@
-"""Authenticated user routes for editable profile details, cross-device location preferences, avatar upload, pair context, login logs, and home reminders."""
+"""User auth/profile routes including entry tokens, Argon2id password sessions, avatars, and reminders."""
+
+from datetime import datetime, timedelta
+import secrets
+import unicodedata
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile, status
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import amap_mcp
@@ -10,12 +16,131 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.login_logs import client_ip, enrich_location, record_login
 from app.media import MediaProcessingError, make_avatar_image
-from app.models import User, utc_now
-from app.schemas import AnniversaryOut, LoginLogOut, LoginRecordCreate, MeLocationUpdate, MeOut, MeUpdate, UserOut
+from app.models import DeviceToken, User, utc_now
+from app.schemas import (
+    AnniversaryOut,
+    LoginLogOut,
+    LoginRecordCreate,
+    MeLocationUpdate,
+    MeOut,
+    MeUpdate,
+    PasswordLoginIn,
+    PasswordSessionOut,
+    SecurityPasswordOut,
+    SecurityPasswordUpdateIn,
+    SecurityPasswordUpdateOut,
+    UserOut,
+)
+from app.security_credentials import (
+    PASSWORD_SESSION_DAYS,
+    hash_password,
+    normalize_login_name,
+    password_login_throttle,
+    validate_password,
+    verify_password,
+)
 from app.services import build_anniversary, counterpart, pair_love_started_on
 from app.storage import MediaStorageError, build_avatar_storage_key, write_media_file
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _password_session(user_id: int, db: Session) -> tuple[str, datetime]:
+    token = secrets.token_urlsafe(32)
+    expires_at = utc_now() + timedelta(days=PASSWORD_SESSION_DAYS)
+    db.add(DeviceToken(token=token, user_id=user_id, expires_at=expires_at, source="password"))
+    return token, expires_at
+
+
+@router.post("/login/password", response_model=PasswordSessionOut)
+def login_with_password(
+    payload: PasswordLoginIn,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> PasswordSessionOut:
+    """Exchange a normalized login name and Argon2id password for a 90-day bearer session."""
+    raw_key = unicodedata.normalize("NFKC", payload.login_name).strip().casefold()
+    try:
+        login_name = normalize_login_name(payload.login_name)
+    except ValueError:
+        login_name = None
+    account_key = f"account:{login_name or raw_key}"
+    ip_key = f"ip:{client_ip(request)}"
+    retry_after = password_login_throttle.retry_after(account_key, ip_key)
+    if retry_after:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="登录尝试过多，请稍后再试",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    user = (
+        db.execute(select(User).where(User.login_name == login_name)).scalar_one_or_none()
+        if login_name is not None
+        else None
+    )
+    if not verify_password(user.password_hash if user else None, payload.password):
+        password_login_throttle.fail(account_key, ip_key)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登录名或安全密码不正确")
+
+    password_login_throttle.succeed(account_key, ip_key)
+    token, expires_at = _password_session(user.id, db)
+    db.commit()
+    return PasswordSessionOut(access_token=token, expires_at=expires_at)
+
+
+@router.get("/me/security-password", response_model=SecurityPasswordOut)
+def read_security_password(current_user: User = Depends(get_current_user)) -> SecurityPasswordOut:
+    return SecurityPasswordOut(
+        login_name=current_user.login_name,
+        configured=bool(current_user.login_name and current_user.password_hash),
+        password_updated_at=current_user.password_updated_at,
+    )
+
+
+@router.put("/me/security-password", response_model=SecurityPasswordUpdateOut)
+def update_security_password(
+    payload: SecurityPasswordUpdateIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> SecurityPasswordUpdateOut:
+    try:
+        login_name = normalize_login_name(payload.login_name)
+        password = validate_password(payload.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    existing = db.execute(
+        select(User.id).where(User.login_name == login_name, User.id != current_user.id)
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="这个登录名已经被使用")
+
+    current_user.login_name = login_name
+    current_user.password_hash = hash_password(password)
+    current_user.password_updated_at = utc_now()
+    db.execute(
+        delete(DeviceToken).where(
+            DeviceToken.user_id == current_user.id,
+            DeviceToken.source == "password",
+        )
+    )
+    token, expires_at = _password_session(current_user.id, db)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="这个登录名已经被使用") from exc
+    db.refresh(current_user)
+    return SecurityPasswordUpdateOut(
+        access_token=token,
+        expires_at=expires_at,
+        security=SecurityPasswordOut(
+            login_name=current_user.login_name,
+            configured=True,
+            password_updated_at=current_user.password_updated_at,
+        ),
+    )
 
 
 def _clean_email(value: str | None) -> str | None:

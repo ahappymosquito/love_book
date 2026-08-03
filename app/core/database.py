@@ -1,4 +1,4 @@
-"""Database setup, lightweight schema/data migrations, and retired-feature compatibility cleanup."""
+"""Database setup, lightweight schema/index migrations, and retired-feature compatibility cleanup."""
 
 from collections.abc import Generator
 
@@ -59,6 +59,17 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         "users",
         "email",
         {"default": "VARCHAR(255) NULL"},
+    ),
+    ("users", "login_name", {"default": "VARCHAR(32) NULL"}),
+    ("users", "password_hash", {"default": "VARCHAR(500) NULL"}),
+    (
+        "users",
+        "password_updated_at",
+        {
+            "default": "TIMESTAMP WITH TIME ZONE NULL",
+            "mysql": "DATETIME NULL",
+            "mariadb": "DATETIME NULL",
+        },
     ),
     (
         "users",
@@ -122,6 +133,7 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
             "mariadb": "DATETIME NULL",
         },
     ),
+    ("device_tokens", "source", {"default": "VARCHAR(20) NOT NULL DEFAULT 'entry'"}),
     (
         "love_receipts",
         "receipt_rating",
@@ -312,6 +324,22 @@ def _ensure_columns(target_engine: Engine) -> None:
                     connection.execute(text(f"UPDATE {table_name} SET {column_name} = JSON_ARRAY() WHERE {column_name} IS NULL"))
                 else:
                     connection.execute(text(f"UPDATE {table_name} SET {column_name} = '[]' WHERE {column_name} IS NULL"))
+
+
+def _ensure_security_indexes(target_engine: Engine) -> None:
+    """Add the nullable normalized-login unique index to upgraded databases."""
+    inspector = inspect(target_engine)
+    if "users" not in set(inspector.get_table_names()):
+        return
+    indexes = {index["name"] for index in inspector.get_indexes("users")}
+    unique_columns = {
+        tuple(constraint.get("column_names") or [])
+        for constraint in inspector.get_unique_constraints("users")
+    }
+    if "uq_users_login_name" in indexes or ("login_name",) in unique_columns:
+        return
+    with target_engine.begin() as connection:
+        connection.execute(text("CREATE UNIQUE INDEX uq_users_login_name ON users (login_name)"))
 
 
 def _ensure_todo_category_enum(target_engine: Engine) -> None:
@@ -565,6 +593,7 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
     _ensure_columns(engine)
+    _ensure_security_indexes(engine)
     _ensure_todo_category_enum(engine)
     _ensure_love_receipt_mood_enum(engine)
     _ensure_received_gift_schema(engine)

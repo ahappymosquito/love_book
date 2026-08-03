@@ -1,4 +1,4 @@
-"""Habit services for pair-visible tasks, daily dashboards, check-ins, and delivery-aware reminder scans."""
+"""Habit services for pair-visible tasks, check-ins, and entry-token reminder delivery."""
 
 from __future__ import annotations
 
@@ -155,6 +155,7 @@ def active_token_for_user(db: Session, user_id: int) -> str | None:
             select(DeviceToken)
             .where(
                 DeviceToken.user_id == user_id,
+                DeviceToken.source == "entry",
                 or_(DeviceToken.expires_at.is_(None), DeviceToken.expires_at > now),
             )
             .order_by(DeviceToken.created_at.desc())

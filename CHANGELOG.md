@@ -6,19 +6,21 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ### Added
 
-- Nothing yet.
+- Added a public pixel-grassland Xiaohua runner with a global Top 10 leaderboard and record-name flow on the login page.
+- Added unique normalized login names, Argon2id security passwords, 90-day password sessions, and in-session password reset controls.
 
 ### Fixed
 
-- Fixed the Timeline puppy atlas so every animation frame keeps the same horizontal anchor instead of sliding left before each loop reset.
+- Fixed password-session rotation so resetting a credential revokes only password-issued sessions while entry and email-link tokens remain valid.
 
 ### Changed
 
-- Nothing yet.
+- Replaced the login-only 3D scene with a responsive Canvas 2D runner and removed animated puppies from Timeline quotes and empty states.
+- Redesigned the Timeline quote as a quieter single-column content surface with more readable type and spacing.
 
 ### Database
 
-- No pending schema changes.
+- Added nullable user credential fields, device-token source tracking, and the global `game_scores` Top 10 table through startup-compatible schema migration.
 
 ## [0.8.0] - 2026-07-31
 
