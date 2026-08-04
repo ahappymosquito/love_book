@@ -40,20 +40,18 @@ function obstacle(overrides: Partial<RunnerObstacle>): RunnerObstacle {
 }
 
 describe("Xiaohua runner metrics", () => {
-  it("centers a capped 16:9 stage on ultrawide screens", () => {
+  it("fills the complete desktop viewport instead of letterboxing", () => {
     const metrics = createRunnerMetrics({ width: 2048, height: 1024 });
     expect(metrics.orientation).toBe("landscape");
-    expect(metrics.frame).toEqual({ x: 304, y: 107, width: 1440, height: 810 });
-    expect(metrics.standingHeight).toBeCloseTo(160.38, 1);
+    expect(metrics.frame).toEqual({ x: 0, y: 0, width: 2048, height: 1024 });
+    expect(metrics.standingHeight).toBe(180);
   });
 
-  it("uses a centered 3:4 stage with portrait safe gutters", () => {
+  it("fills the complete portrait viewport without side gutters", () => {
     const metrics = createRunnerMetrics({ width: 430, height: 932 });
     expect(metrics.orientation).toBe("portrait");
-    expect(metrics.frame.width).toBe(414);
-    expect(metrics.frame.height).toBe(552);
-    expect(metrics.frame.x).toBe(8);
-    expect(metrics.standingHeight).toBeCloseTo(115.92, 1);
+    expect(metrics.frame).toEqual({ x: 0, y: 0, width: 430, height: 932 });
+    expect(metrics.standingHeight).toBeCloseTo(135.14, 1);
   });
 
   it("keeps landscape mobile Xiaohua within the 96px minimum", () => {

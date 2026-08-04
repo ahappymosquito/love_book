@@ -1,6 +1,6 @@
 "use client";
 
-// Game-first Love Book login with a state-locked Canvas pixel runner, token/password authentication, and public Top 3 scores.
+// Neutral, collapsed-by-default login overlay around a full-viewport Xiaohua runner, password/token authentication, and public Top 3 scores.
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -62,7 +62,7 @@ export default function LoginPage() {
   const [reveal, setReveal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [leaderboard, setLeaderboard] = useState<GameLeaderboardOut>({ items: [], threshold: 0 });
   const [scoreToName, setScoreToName] = useState<number | null>(null);
@@ -100,14 +100,6 @@ export default function LoginPage() {
   useEffect(() => {
     void api.getGameLeaderboard().then(setLeaderboard).catch(() => undefined);
     setPlayerName(window.localStorage.getItem(PLAYER_NAME_KEY) ?? "");
-  }, []);
-
-  useEffect(() => {
-    const landscape = window.matchMedia("(orientation: landscape) and (max-height: 600px)");
-    const syncPanelForOrientation = () => setPanelOpen(!landscape.matches);
-    syncPanelForOrientation();
-    landscape.addEventListener?.("change", syncPanelForOrientation);
-    return () => landscape.removeEventListener?.("change", syncPanelForOrientation);
   }, []);
 
   useEffect(() => {
@@ -217,7 +209,7 @@ export default function LoginPage() {
             <label className="block"><span className="login-field-label">入口口令</span><span className="relative mt-1 block"><input className="input-field min-h-11 pr-12 text-base" type={reveal ? "text" : "password"} autoComplete="one-time-code" value={tokenInput} onChange={(event) => setTokenInput(event.target.value)} disabled={submitting} /><button type="button" className="login-reveal focus-ring" onClick={() => setReveal((value) => !value)} aria-label={reveal ? "隐藏入口口令" : "显示入口口令"}>{reveal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span></label>
           )}
           {loginError ? <p role="alert" className="login-inline-error"><AlertCircle className="h-4 w-4 shrink-0" />{loginError}</p> : null}
-          <button type="submit" disabled={!canSubmit} className="btn-primary flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 font-sc text-sm font-semibold focus-ring disabled:opacity-50">{submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : method === "password" ? <KeyRound className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}{submitting ? "正在登录" : "进入 Love Book"}</button>
+          <button type="submit" disabled={!canSubmit} className="login-runner-submit flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 font-sc text-sm font-semibold focus-ring disabled:opacity-50">{submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : method === "password" ? <KeyRound className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}{submitting ? "正在登录" : "进入 Love Book"}</button>
         </form>
         <Link href="/admin" className="mt-3 inline-flex min-h-11 items-center gap-1.5 rounded-lg px-1 font-sc text-sm text-rose-deep focus-ring">管理员入口 <ArrowRight className="h-4 w-4" /></Link>
       </section>
@@ -234,7 +226,7 @@ export default function LoginPage() {
           <button type="button" onClick={() => setScoreToName(null)} className="runner-close focus-ring" aria-label="暂不留名"><X className="h-4 w-4" /></button>
           <p className="font-display text-lg font-semibold text-ink">新纪录，{scoreToName} 分</p>
           <label className="mt-3 block"><span className="login-field-label">留下名字</span><input autoFocus className="input-field mt-1 min-h-11 text-base" value={playerName} onChange={(event) => setPlayerName(event.target.value)} maxLength={12} required /></label>
-          <button type="submit" className="btn-primary mt-3 min-h-11 w-full rounded-xl px-4 font-sc text-sm focus-ring" disabled={!playerName.trim() || scoreSubmitting}>{scoreSubmitting ? "正在记录" : "写进排行榜"}</button>
+          <button type="submit" className="login-runner-submit mt-3 min-h-11 w-full rounded-xl px-4 font-sc text-sm focus-ring" disabled={!playerName.trim() || scoreSubmitting}>{scoreSubmitting ? "正在记录" : "写进排行榜"}</button>
         </form>
       ) : null}
     </main>

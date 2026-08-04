@@ -85,35 +85,23 @@ export function createRunnerMetrics(viewport: RunnerViewport): RunnerMetrics {
   const safeWidth = Math.max(1, viewport.width);
   const safeHeight = Math.max(1, viewport.height);
   const portrait = safeHeight > safeWidth;
-  const ratio = portrait ? 3 / 4 : 16 / 9;
-  const availableWidth = portrait ? Math.max(1, safeWidth - 16) : Math.min(1440, safeWidth);
-  const availableHeight = portrait ? safeHeight : Math.min(810, safeHeight);
-  let width = Math.min(availableWidth, availableHeight * ratio);
-  let height = width / ratio;
-  if (height > availableHeight) {
-    height = availableHeight;
-    width = height * ratio;
-  }
-  width = Math.floor(width);
-  height = Math.floor(height);
-  const x = Math.floor((safeWidth - width) / 2);
-  const y = Math.floor((safeHeight - height) / 2);
-  const shortSide = Math.min(width, height);
+  const width = Math.floor(safeWidth);
+  const height = Math.floor(safeHeight);
   const standingHeight = portrait
-    ? clamp(shortSide * 0.28, 112, 128)
-    : clamp(shortSide * 0.198, 96, 168);
+    ? clamp(height * 0.145, 104, 136)
+    : clamp(height * 0.198, 96, 180);
   const bodyUnit = standingHeight * 0.96;
   const spriteSize = standingHeight * (192 / 146);
   const worldWidth = width / bodyUnit;
   return {
     orientation: portrait ? "portrait" : "landscape",
-    frame: { x, y, width, height },
-    groundBaseline: Math.round(y + height * 0.705),
+    frame: { x: 0, y: 0, width, height },
+    groundBaseline: Math.round(height * 0.705),
     standingHeight,
     bodyUnit,
     spriteSize,
     worldWidth,
-    playerScreenX: x + RUNNER_PLAYER_X * bodyUnit,
+    playerScreenX: RUNNER_PLAYER_X * bodyUnit,
   };
 }
 

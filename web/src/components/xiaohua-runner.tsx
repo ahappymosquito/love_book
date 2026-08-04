@@ -1,9 +1,9 @@
 "use client";
 
-// Responsive Canvas renderer and accessible pointer/keyboard controller for the asset-driven Xiaohua runner.
+// Full-viewport Canvas renderer with desktop mouse, mobile touch, keyboard, help, and pause-safe controls for Xiaohua Runner.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Expand, Pause, Play, RotateCcw } from "lucide-react";
+import { CircleHelp, Expand, Pause, Play, RotateCcw, X } from "lucide-react";
 import {
   RUNNER_STEP,
   createRunnerMetrics,
@@ -45,30 +45,6 @@ export interface XiaohuaRunnerProps {
 
 function snap(value: number, dpr: number): number {
   return Math.round(value * dpr) / dpr;
-}
-
-function drawCover(
-  context: CanvasRenderingContext2D,
-  image: HTMLImageElement,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-) {
-  const sourceRatio = image.naturalWidth / image.naturalHeight;
-  const targetRatio = width / height;
-  let sourceX = 0;
-  let sourceY = 0;
-  let sourceWidth = image.naturalWidth;
-  let sourceHeight = image.naturalHeight;
-  if (sourceRatio > targetRatio) {
-    sourceWidth = sourceHeight * targetRatio;
-    sourceX = (image.naturalWidth - sourceWidth) / 2;
-  } else {
-    sourceHeight = sourceWidth / targetRatio;
-    sourceY = (image.naturalHeight - sourceHeight) / 2;
-  }
-  context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
 }
 
 function drawLoopingLayer(
@@ -138,10 +114,6 @@ function drawScene(
   dpr: number,
 ) {
   context.clearRect(0, 0, viewportWidth, viewportHeight);
-  context.imageSmoothingEnabled = true;
-  context.globalAlpha = 0.5;
-  drawCover(context, assets.far, 0, 0, viewportWidth, viewportHeight);
-  context.globalAlpha = 1;
   context.save();
   context.beginPath();
   context.rect(metrics.frame.x, metrics.frame.y, metrics.frame.width, metrics.frame.height);
@@ -193,19 +165,26 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, interac
   const pausedByPanelRef = useRef(false);
   const [status, setStatus] = useState<RunnerStatus>("idle");
   const [score, setScore] = useState(0);
+  const [crouching, setCrouching] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [assetStatus, setAssetStatus] = useState<AssetStatus>("loading");
   const [assetAttempt, setAssetAttempt] = useState(0);
   const [metrics, setMetrics] = useState<RunnerMetrics | null>(null);
   const [showHint, setShowHint] = useState(true);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [coarsePointer, setCoarsePointer] = useState(false);
+  const mobileHoldTimerRef = useRef<number | null>(null);
+  const mobileHoldActivatedRef = useRef(false);
+  const inputBlocked = interactionBlocked || helpOpen;
 
   const syncUi = useCallback((state: RunnerState) => {
     setStatus((value) => (value === state.status ? value : state.status));
     setScore((value) => (value === state.score ? value : state.score));
+    setCrouching((value) => (value === state.crouching ? value : state.crouching));
   }, []);
 
   const play = useCallback(() => {
-    if (assetStatus !== "ready" || interactionBlocked) return;
+    if (assetStatus !== "ready" || inputBlocked) return;
     const wasNewRun = stateRef.current.status === "idle" || stateRef.current.status === "gameover";
     stateRef.current = startRunner(stateRef.current);
     gameOverScoreRef.current = null;
@@ -214,10 +193,10 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, interac
       setShowHint(true);
       onStart?.();
     }
-  }, [assetStatus, interactionBlocked, onStart, syncUi]);
+  }, [assetStatus, inputBlocked, onStart, syncUi]);
 
   const jump = useCallback(() => {
-    if (assetStatus !== "ready" || interactionBlocked || stateRef.current.status === "gameover") return;
+    if (assetStatus !== "ready" || inputBlocked || stateRef.current.status === "gameover") return;
     const wasNewRun = stateRef.current.status === "idle";
     if (wasNewRun) {
       stateRef.current = startRunner(stateRef.current);
@@ -226,10 +205,16 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, interac
     }
     stateRef.current = jumpRunner(stateRef.current);
     syncUi(stateRef.current);
-  }, [assetStatus, interactionBlocked, onStart, syncUi]);
+  }, [assetStatus, inputBlocked, onStart, syncUi]);
 
   const crouch = useCallback((held: boolean) => {
-    if (assetStatus !== "ready" || interactionBlocked || stateRef.current.status === "gameover") return;
+    if (assetStatus !== "ready") return;
+    if (!held) {
+      stateRef.current = setRunnerCrouch(stateRef.current, false);
+      syncUi(stateRef.current);
+      return;
+    }
+    if (inputBlocked || stateRef.current.status === "gameover") return;
     if (held && stateRef.current.status === "idle") {
       stateRef.current = startRunner(stateRef.current);
       gameOverScoreRef.current = null;
@@ -237,7 +222,7 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, interac
     }
     stateRef.current = setRunnerCrouch(stateRef.current, held);
     syncUi(stateRef.current);
-  }, [assetStatus, interactionBlocked, onStart, syncUi]);
+  }, [assetStatus, inputBlocked, onStart, syncUi]);
 
   const markOperated = useCallback(() => setShowHint(false), []);
 
@@ -248,16 +233,17 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, interac
   }, [showHint, status]);
 
   useEffect(() => {
-    if (pauseRequested && stateRef.current.status === "playing") {
+    const shouldPause = pauseRequested || helpOpen;
+    if (shouldPause && stateRef.current.status === "playing") {
       pausedByPanelRef.current = true;
       stateRef.current = pauseRunner(stateRef.current);
       syncUi(stateRef.current);
-    } else if (!pauseRequested && pausedByPanelRef.current && stateRef.current.status === "paused") {
+    } else if (!shouldPause && pausedByPanelRef.current && stateRef.current.status === "paused") {
       pausedByPanelRef.current = false;
       stateRef.current = startRunner(stateRef.current);
       syncUi(stateRef.current);
     }
-  }, [pauseRequested, syncUi]);
+  }, [helpOpen, pauseRequested, syncUi]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -265,6 +251,18 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, interac
     update();
     media.addEventListener?.("change", update);
     return () => media.removeEventListener?.("change", update);
+  }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia("(pointer: coarse)");
+    const update = () => setCoarsePointer(media.matches);
+    update();
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
+  }, []);
+
+  useEffect(() => () => {
+    if (mobileHoldTimerRef.current != null) window.clearTimeout(mobileHoldTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -315,7 +313,7 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, interac
   useEffect(() => {
     const ignoresGameKeys = (target: EventTarget | null) => (target as HTMLElement | null)?.closest("input, textarea, button");
     const onKeyDown = (event: KeyboardEvent) => {
-      if (interactionBlocked || ignoresGameKeys(event.target)) return;
+      if (inputBlocked || ignoresGameKeys(event.target)) return;
       if (event.code === "Space" || event.code === "ArrowUp") {
         event.preventDefault();
         if (!event.repeat) {
@@ -337,7 +335,20 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, interac
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [crouch, interactionBlocked, jump, markOperated]);
+  }, [crouch, inputBlocked, jump, markOperated]);
+
+  useEffect(() => {
+    const releaseRightMouse = (event: PointerEvent) => {
+      if (event.pointerType === "mouse" && event.button === 2) crouch(false);
+    };
+    const releaseAll = () => crouch(false);
+    window.addEventListener("pointerup", releaseRightMouse);
+    window.addEventListener("blur", releaseAll);
+    return () => {
+      window.removeEventListener("pointerup", releaseRightMouse);
+      window.removeEventListener("blur", releaseAll);
+    };
+  }, [crouch]);
 
   useEffect(() => {
     let frame = 0;
@@ -393,43 +404,71 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, interac
     }
   }
 
-  const touchStyle = metrics ? {
+  const interactionStyle = metrics ? {
     top: metrics.frame.y,
     left: metrics.frame.x,
-    width: metrics.frame.width / 2,
+    width: metrics.frame.width,
     height: metrics.frame.height,
   } : undefined;
 
+  const clearMobileHold = useCallback(() => {
+    if (mobileHoldTimerRef.current != null) {
+      window.clearTimeout(mobileHoldTimerRef.current);
+      mobileHoldTimerRef.current = null;
+    }
+  }, []);
+
   return (
-    <div ref={shellRef} className="runner-stage" data-runner-status={status} data-assets={assetStatus} data-interaction-blocked={interactionBlocked ? "true" : "false"}>
-      <canvas ref={canvasRef} className="runner-canvas" role="img" aria-label="小花在春日草地上奔跑，左侧按住趴下，右侧点按跳跃" />
-      {metrics ? <div className="runner-frame-blend" style={{ top: metrics.frame.y, left: metrics.frame.x, width: metrics.frame.width, height: metrics.frame.height }} aria-hidden="true" /> : null}
-      {metrics && assetStatus === "ready" && !interactionBlocked && status !== "gameover" ? (
-        <>
-          <div
-            className="runner-touch-zone runner-touch-zone-left"
-            style={touchStyle}
-            onPointerDown={(event) => {
+    <div ref={shellRef} className="runner-stage" data-runner-status={status} data-crouching={crouching ? "true" : "false"} data-assets={assetStatus} data-interaction-blocked={inputBlocked ? "true" : "false"} data-pointer={coarsePointer ? "coarse" : "fine"}>
+      <canvas ref={canvasRef} className="runner-canvas" role="img" aria-label="小花在青青草原上奔跑，电脑左键跳跃、右键按住趴下，手机轻点跳跃、长按趴下" />
+      {metrics && assetStatus === "ready" && !inputBlocked && status !== "gameover" ? (
+        <div
+          className="runner-interaction-surface"
+          style={interactionStyle}
+          onContextMenu={(event) => event.preventDefault()}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            try {
               event.currentTarget.setPointerCapture(event.pointerId);
+            } catch {
+              // Synthetic or cancelled pointers can disappear before capture; window-level release still resets crouch.
+            }
+            if (event.pointerType === "mouse") {
+              markOperated();
+              if (event.button === 2) crouch(true);
+              else if (event.button === 0) jump();
+              return;
+            }
+            mobileHoldActivatedRef.current = false;
+            clearMobileHold();
+            mobileHoldTimerRef.current = window.setTimeout(() => {
+              mobileHoldActivatedRef.current = true;
               markOperated();
               crouch(true);
-            }}
-            onPointerUp={() => crouch(false)}
-            onPointerCancel={() => crouch(false)}
-            onLostPointerCapture={() => crouch(false)}
-            aria-hidden="true"
-          />
-          <div
-            className="runner-touch-zone runner-touch-zone-right"
-            style={{ ...touchStyle, left: metrics.frame.x + metrics.frame.width / 2 }}
-            onPointerDown={(event) => {
-              event.preventDefault();
+            }, 220);
+          }}
+          onPointerUp={(event) => {
+            if (event.pointerType === "mouse") {
+              if (event.button === 2) crouch(false);
+              return;
+            }
+            clearMobileHold();
+            if (mobileHoldActivatedRef.current) crouch(false);
+            else {
               markOperated();
               jump();
-            }}
-            aria-hidden="true"
-          />
-        </>
+            }
+          }}
+          onPointerCancel={() => {
+            clearMobileHold();
+            if (mobileHoldActivatedRef.current) crouch(false);
+          }}
+          onLostPointerCapture={() => {
+            clearMobileHold();
+            if (mobileHoldActivatedRef.current) crouch(false);
+          }}
+          aria-hidden="true"
+        />
       ) : null}
       {assetStatus === "loading" ? <div className="runner-asset-status">正在铺好春日小路…</div> : null}
       {assetStatus === "error" ? (
@@ -438,14 +477,17 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, interac
           <button type="button" className="runner-play-button focus-ring" onClick={() => setAssetAttempt((value) => value + 1)}>重新加载</button>
         </div>
       ) : null}
-      {status === "playing" && showHint ? <p className="runner-input-hint">左侧按住趴下 · 右侧点按跳跃</p> : null}
-      {status === "idle" ? <p className="runner-state-banner"><strong>准备出发</strong><span>点“开始奔跑”，或按空格起跑</span></p> : null}
+      {status === "playing" && showHint ? <p className="runner-input-hint">{coarsePointer ? "轻点跳跃 · 长按趴下" : "左键跳跃 · 右键按住趴下"}</p> : null}
+      {status === "idle" ? <p className="runner-state-banner"><strong>点击草地，马上开跑</strong><span>{coarsePointer ? "轻点跳跃，长按趴下" : "左键跳跃，右键按住趴下"}</span></p> : null}
       {status === "paused" ? <p className="runner-state-banner"><strong>已暂停</strong><span>场景会在你继续后恢复</span></p> : null}
       <div className="runner-scoreboard" aria-live="polite">
         <span>本局 {score}</span>
         {leaderboardBest != null ? <span>纪录 {leaderboardBest}</span> : null}
       </div>
       <div className="runner-controls">
+        <button type="button" className="runner-icon-button focus-ring" onClick={() => setHelpOpen((value) => !value)} aria-label="查看玩法" aria-expanded={helpOpen}>
+          <CircleHelp className="h-4 w-4" />
+        </button>
         <button type="button" className="runner-icon-button focus-ring" onClick={() => void enterLandscape()} aria-label="全屏横屏游玩">
           <Expand className="h-4 w-4" />
         </button>
@@ -462,12 +504,20 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, interac
             <Pause className="h-4 w-4" />
           </button>
         ) : (
-          <button type="button" className="runner-play-button focus-ring" onClick={play} disabled={assetStatus !== "ready"}>
+          <button type="button" className="runner-play-button focus-ring" onClick={play} disabled={assetStatus !== "ready" || inputBlocked}>
             {status === "gameover" ? <RotateCcw className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             {status === "gameover" ? "再跑一次" : status === "paused" ? "继续奔跑" : "开始奔跑"}
           </button>
         )}
       </div>
+      {helpOpen ? (
+        <aside className="runner-help-popover" aria-label="小花跑酷玩法">
+          <button type="button" className="runner-close focus-ring" onClick={() => setHelpOpen(false)} aria-label="关闭玩法"><X className="h-4 w-4" /></button>
+          <strong>怎么玩</strong>
+          <p>{coarsePointer ? "轻点任意草地跳跃，长按任意草地趴下。" : "鼠标左键跳跃，鼠标右键按住趴下；也可以用空格、↑ 与 ↓。"}</p>
+          <p>越过地面障碍，趴下躲开低飞小鸟。</p>
+        </aside>
+      ) : null}
       {status === "gameover" ? <p className="runner-state-banner runner-gameover"><strong>本局结束 · {score} 分</strong><span>点“再跑一次”开启新一局</span></p> : null}
     </div>
   );
