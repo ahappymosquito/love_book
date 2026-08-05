@@ -1,6 +1,6 @@
 "use client";
 
-// Full-viewport Canvas renderer with desktop mouse, mobile touch, keyboard, help, and pause-safe controls for Xiaohua Runner.
+// Full-viewport Canvas renderer with high-contrast obstacles, split mobile touch zones, desktop mouse/keyboard input, help, and pause-safe controls.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CircleHelp, Expand, Pause, Play, RotateCcw, X } from "lucide-react";
@@ -10,6 +10,7 @@ import {
   createRunnerState,
   jumpRunner,
   pauseRunner,
+  runnerPointerAction,
   setRunnerCrouch,
   startRunner,
   stepRunner,
@@ -30,6 +31,20 @@ const ASSET_PATHS = {
 const ACTION_ROW = { idle: 0, run: 1, jump: 2, crouch: 3, stumble: 4, celebrate: 5 } as const;
 const ACTION_FRAMES = { idle: 4, run: 8, jump: 8, crouch: 6, stumble: 6, celebrate: 6 } as const;
 const OBSTACLE_COLUMN: Record<Exclude<RunnerObstacleKind, "bird">, number> = { rock: 0, stump: 1, log: 2, bramble: 3 };
+const OBSTACLE_SOURCE: Record<Exclude<RunnerObstacleKind, "bird">, { x: number; y: number; width: number; height: number }> = {
+  rock: { x: 5, y: 90, width: 246, height: 156 },
+  stump: { x: 18, y: 38, width: 220, height: 208 },
+  log: { x: 5, y: 151, width: 246, height: 95 },
+  bramble: { x: 8, y: 110, width: 240, height: 136 },
+};
+const BIRD_SOURCE = [
+  { x: 12, y: 59, width: 167, height: 73 },
+  { x: 8, y: 60, width: 176, height: 71 },
+  { x: 9, y: 60, width: 173, height: 71 },
+  { x: 48, y: 51, width: 96, height: 89 },
+  { x: 8, y: 55, width: 175, height: 81 },
+  { x: 9, y: 60, width: 174, height: 72 },
+] as const;
 
 type RunnerAssets = Record<keyof typeof ASSET_PATHS, HTMLImageElement>;
 type AssetStatus = "loading" | "ready" | "error";
@@ -78,22 +93,51 @@ function drawObstacle(
   dpr: number,
 ) {
   const x = snap(metrics.frame.x + obstacle.x * metrics.bodyUnit, dpr);
+  const drawOutlined = (
+    image: CanvasImageSource,
+    sx: number,
+    sy: number,
+    sw: number,
+    sh: number,
+    dx: number,
+    dy: number,
+    dw: number,
+    dh: number,
+  ) => {
+    const outline = Math.max(1.5, metrics.standingHeight * 0.014);
+    context.save();
+    context.globalAlpha = 0.62;
+    context.filter = "brightness(0) saturate(100%)";
+    for (const [offsetX, offsetY] of [[-outline, 0], [outline, 0], [0, -outline], [0, outline]] as const) {
+      context.drawImage(image, sx, sy, sw, sh, dx + offsetX, dy + offsetY, dw, dh);
+    }
+    context.restore();
+    context.drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh);
+  };
   if (obstacle.kind === "bird") {
     const frame = Math.floor(state.elapsed * 10) % 6;
-    const width = metrics.bodyUnit * obstacle.width * 1.08;
-    const height = metrics.standingHeight * obstacle.height * 1.22;
+    const source = BIRD_SOURCE[frame];
+    const width = metrics.bodyUnit * obstacle.width;
+    const height = metrics.standingHeight * obstacle.height;
     const bottom = metrics.groundBaseline - obstacle.bottom * metrics.standingHeight;
-    context.drawImage(assets.bird, frame * 192, 0, 192, 192, x, snap(bottom - height, dpr), width, height);
+    drawOutlined(assets.bird, frame * 192 + source.x, source.y, source.width, source.height, x, snap(bottom - height, dpr), width, height);
     return;
   }
-  const width = obstacle.width * metrics.bodyUnit * 1.04;
-  const height = obstacle.height * metrics.standingHeight * 1.08;
-  context.drawImage(
+  const source = OBSTACLE_SOURCE[obstacle.kind];
+  const width = obstacle.width * metrics.bodyUnit;
+  const height = obstacle.height * metrics.standingHeight;
+  context.save();
+  context.fillStyle = "rgba(21, 48, 24, 0.34)";
+  context.beginPath();
+  context.ellipse(x + width / 2, metrics.groundBaseline + Math.max(2, height * 0.025), width * 0.46, Math.max(3, height * 0.055), 0, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+  drawOutlined(
     assets.obstacles,
-    OBSTACLE_COLUMN[obstacle.kind] * 256,
-    0,
-    256,
-    256,
+    OBSTACLE_COLUMN[obstacle.kind] * 256 + source.x,
+    source.y,
+    source.width,
+    source.height,
     x,
     snap(metrics.groundBaseline - height, dpr),
     width,
@@ -173,8 +217,7 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, interac
   const [showHint, setShowHint] = useState(true);
   const [helpOpen, setHelpOpen] = useState(false);
   const [coarsePointer, setCoarsePointer] = useState(false);
-  const mobileHoldTimerRef = useRef<number | null>(null);
-  const mobileHoldActivatedRef = useRef(false);
+  const touchCrouchPointerRef = useRef<number | null>(null);
   const inputBlocked = interactionBlocked || helpOpen;
 
   const syncUi = useCallback((state: RunnerState) => {
@@ -259,10 +302,6 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, interac
     update();
     media.addEventListener?.("change", update);
     return () => media.removeEventListener?.("change", update);
-  }, []);
-
-  useEffect(() => () => {
-    if (mobileHoldTimerRef.current != null) window.clearTimeout(mobileHoldTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -411,16 +450,9 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, interac
     height: metrics.frame.height,
   } : undefined;
 
-  const clearMobileHold = useCallback(() => {
-    if (mobileHoldTimerRef.current != null) {
-      window.clearTimeout(mobileHoldTimerRef.current);
-      mobileHoldTimerRef.current = null;
-    }
-  }, []);
-
   return (
     <div ref={shellRef} className="runner-stage" data-runner-status={status} data-crouching={crouching ? "true" : "false"} data-assets={assetStatus} data-interaction-blocked={inputBlocked ? "true" : "false"} data-pointer={coarsePointer ? "coarse" : "fine"}>
-      <canvas ref={canvasRef} className="runner-canvas" role="img" aria-label="小花在青青草原上奔跑，电脑左键跳跃、右键按住趴下，手机轻点跳跃、长按趴下" />
+      <canvas ref={canvasRef} className="runner-canvas" role="img" aria-label="小花在青青草原上奔跑，电脑左键或上方向键跳跃、右键或下方向键按住趴下，手机左侧按住趴下、右侧点按跳跃" />
       {metrics && assetStatus === "ready" && !inputBlocked && status !== "gameover" ? (
         <div
           className="runner-interaction-surface"
@@ -433,39 +465,41 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, interac
             } catch {
               // Synthetic or cancelled pointers can disappear before capture; window-level release still resets crouch.
             }
-            if (event.pointerType === "mouse") {
-              markOperated();
-              if (event.button === 2) crouch(true);
-              else if (event.button === 0) jump();
-              return;
-            }
-            mobileHoldActivatedRef.current = false;
-            clearMobileHold();
-            mobileHoldTimerRef.current = window.setTimeout(() => {
-              mobileHoldActivatedRef.current = true;
-              markOperated();
+            const action = runnerPointerAction({
+              pointerType: event.pointerType,
+              button: event.button,
+              clientX: event.clientX,
+              bounds: event.currentTarget.getBoundingClientRect(),
+            });
+            if (!action) return;
+            markOperated();
+            if (action === "jump") jump();
+            else {
+              if (event.pointerType !== "mouse") touchCrouchPointerRef.current = event.pointerId;
               crouch(true);
-            }, 220);
+            }
           }}
           onPointerUp={(event) => {
             if (event.pointerType === "mouse") {
               if (event.button === 2) crouch(false);
               return;
             }
-            clearMobileHold();
-            if (mobileHoldActivatedRef.current) crouch(false);
-            else {
-              markOperated();
-              jump();
+            if (touchCrouchPointerRef.current === event.pointerId) {
+              touchCrouchPointerRef.current = null;
+              crouch(false);
             }
           }}
-          onPointerCancel={() => {
-            clearMobileHold();
-            if (mobileHoldActivatedRef.current) crouch(false);
+          onPointerCancel={(event) => {
+            if (touchCrouchPointerRef.current === event.pointerId) {
+              touchCrouchPointerRef.current = null;
+              crouch(false);
+            }
           }}
-          onLostPointerCapture={() => {
-            clearMobileHold();
-            if (mobileHoldActivatedRef.current) crouch(false);
+          onLostPointerCapture={(event) => {
+            if (touchCrouchPointerRef.current === event.pointerId) {
+              touchCrouchPointerRef.current = null;
+              crouch(false);
+            }
           }}
           aria-hidden="true"
         />
@@ -477,8 +511,8 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, interac
           <button type="button" className="runner-play-button focus-ring" onClick={() => setAssetAttempt((value) => value + 1)}>重新加载</button>
         </div>
       ) : null}
-      {status === "playing" && showHint ? <p className="runner-input-hint">{coarsePointer ? "轻点跳跃 · 长按趴下" : "左键跳跃 · 右键按住趴下"}</p> : null}
-      {status === "idle" ? <p className="runner-state-banner"><strong>点击草地，马上开跑</strong><span>{coarsePointer ? "轻点跳跃，长按趴下" : "左键跳跃，右键按住趴下"}</span></p> : null}
+      {status === "playing" && showHint ? <p className="runner-input-hint">{coarsePointer ? "左侧按住趴下 · 右侧点按跳跃" : "左键 / ↑ 跳跃 · 右键 / ↓ 按住趴下"}</p> : null}
+      {status === "idle" ? <p className="runner-state-banner"><strong>点击草地，马上开跑</strong><span>{coarsePointer ? "左侧按住趴下，右侧点按跳跃" : "左键或 ↑ 跳跃，右键或 ↓ 按住趴下"}</span></p> : null}
       {status === "paused" ? <p className="runner-state-banner"><strong>已暂停</strong><span>场景会在你继续后恢复</span></p> : null}
       <div className="runner-scoreboard" aria-live="polite">
         <span>本局 {score}</span>
@@ -514,7 +548,7 @@ export function XiaohuaRunner({ leaderboardBest, pauseRequested = false, interac
         <aside className="runner-help-popover" aria-label="小花跑酷玩法">
           <button type="button" className="runner-close focus-ring" onClick={() => setHelpOpen(false)} aria-label="关闭玩法"><X className="h-4 w-4" /></button>
           <strong>怎么玩</strong>
-          <p>{coarsePointer ? "轻点任意草地跳跃，长按任意草地趴下。" : "鼠标左键跳跃，鼠标右键按住趴下；也可以用空格、↑ 与 ↓。"}</p>
+          <p>{coarsePointer ? "按住屏幕左侧趴下，松开起身；点按屏幕右侧跳跃。" : "鼠标左键或 ↑ 跳跃，鼠标右键或 ↓ 按住趴下；空格和 S 也可以使用。"}</p>
           <p>越过地面障碍，趴下躲开低飞小鸟。</p>
         </aside>
       ) : null}

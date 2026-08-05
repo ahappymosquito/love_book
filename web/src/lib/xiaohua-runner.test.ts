@@ -1,4 +1,4 @@
-// Unit coverage for responsive metrics, logical-unit physics, crouch input, collisions, scoring, and fair difficulty phases.
+// Unit coverage for responsive metrics, device-specific input mapping, logical-unit physics, collisions, scoring, and fair difficulty phases.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -7,6 +7,7 @@ import {
   RUNNER_MAX_SPEED,
   createRunnerMetrics,
   createRunnerState,
+  runnerPointerAction,
   generateObstacleGroup,
   jumpRunner,
   pauseRunner,
@@ -19,6 +20,20 @@ import {
   type RunnerObstacle,
   type RunnerState,
 } from "./xiaohua-runner";
+
+describe("Xiaohua runner pointer mapping", () => {
+  const bounds = { left: 0, width: 430 };
+
+  it("uses left hold for crouch and right tap for jump on touch screens", () => {
+    expect(runnerPointerAction({ pointerType: "touch", button: 0, clientX: 100, bounds })).toBe("crouch");
+    expect(runnerPointerAction({ pointerType: "touch", button: 0, clientX: 330, bounds })).toBe("jump");
+  });
+
+  it("uses mouse buttons independently of screen position on desktop", () => {
+    expect(runnerPointerAction({ pointerType: "mouse", button: 0, clientX: 400, bounds })).toBe("jump");
+    expect(runnerPointerAction({ pointerType: "mouse", button: 2, clientX: 20, bounds })).toBe("crouch");
+  });
+});
 
 const safePlayingState = (): RunnerState => ({
   ...startRunner(createRunnerState()),

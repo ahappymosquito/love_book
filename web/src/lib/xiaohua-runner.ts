@@ -1,4 +1,4 @@
-// Device-independent Xiaohua Runner engine: responsive metrics, fixed-step physics, silhouette collisions, and Chrome-style obstacle pacing.
+// Device-independent Xiaohua Runner engine: responsive metrics, device-specific input mapping, fixed-step physics, silhouette collisions, and Chrome-style obstacle pacing.
 
 export const RUNNER_STEP = 1 / 60;
 export const RUNNER_BASE_SPEED = 3.15;
@@ -17,6 +17,14 @@ export const RUNNER_ACTION_WINDOW = 1.08;
 export type RunnerStatus = "idle" | "playing" | "paused" | "gameover";
 export type RunnerObstacleKind = "rock" | "stump" | "log" | "bramble" | "bird";
 export type RunnerActionRequirement = "jump" | "crouch";
+export type RunnerPointerAction = "jump" | "crouch" | null;
+
+export interface RunnerPointerInput {
+  pointerType: string;
+  button: number;
+  clientX: number;
+  bounds: { left: number; width: number };
+}
 
 export interface RunnerViewport {
   width: number;
@@ -79,6 +87,16 @@ interface CollisionBox {
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+export function runnerPointerAction(input: RunnerPointerInput): RunnerPointerAction {
+  if (input.pointerType === "mouse") {
+    if (input.button === 0) return "jump";
+    if (input.button === 2) return "crouch";
+    return null;
+  }
+  const midpoint = input.bounds.left + input.bounds.width / 2;
+  return input.clientX < midpoint ? "crouch" : "jump";
 }
 
 export function createRunnerMetrics(viewport: RunnerViewport): RunnerMetrics {
