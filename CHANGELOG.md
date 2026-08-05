@@ -4,23 +4,29 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-05
+
 ### Added
 
-- Added a public pixel-grassland Xiaohua runner with a global Top 10 leaderboard and record-name flow on the login page.
+- Added a public pixel-grassland Xiaohua runner with a global Top 3 leaderboard and record-name flow on the login page.
 - Added unique normalized login names, Argon2id security passwords, 90-day password sessions, and in-session password reset controls.
 
 ### Fixed
 
 - Fixed password-session rotation so resetting a credential revokes only password-issued sessions while entry and email-link tokens remain valid.
+- Fixed the runner start control being blocked by the default-open login overlay and made every foreground panel pause gameplay reliably.
+- Fixed mobile controls to use left-side held crouch and right-side tap jump while retaining desktop mouse and keyboard controls.
+- Fixed padded obstacle atlases making visible sprites appear smaller than their collision areas.
 
 ### Changed
 
 - Replaced the login-only 3D scene with a responsive Canvas 2D runner and removed animated puppies from Timeline quotes and empty states.
+- Expanded the runner to the full viewport, added neutral collapsed login controls, and improved obstacle silhouettes with alpha-bound cropping, pixel outlines, and contact shadows.
 - Redesigned the Timeline quote as a quieter single-column content surface with more readable type and spacing.
 
 ### Database
 
-- Added nullable user credential fields, device-token source tracking, and the global `game_scores` Top 10 table through startup-compatible schema migration.
+- Added nullable user credential fields, device-token source tracking, and the global `game_scores` leaderboard table through startup-compatible schema migration.
 
 ## [0.8.0] - 2026-07-31
 
