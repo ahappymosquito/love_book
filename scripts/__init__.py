@@ -1,1 +1,1 @@
-"""Operational and migration command-line tools maintained with the Love Book application."""
+"""Development helpers shipped with Love Book: version sync and runner asset builds."""

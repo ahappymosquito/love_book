@@ -13,7 +13,7 @@ Love Book 是给两个人共同使用的私密生活手账：记录日常、见�
 - **习惯与周期**：双方可见的每日习惯进度、补打卡，以及只作记录参考的共享周期日历。
 - **收礼事件**：收礼人直接记录礼物名称，可选补充正常反馈、最多 3 个真实感受标签、五分制评分和最多 6 张照片；照片会在时间线中成为这类事件的视觉重点。
 - **个人与共享内容**：私有头像、个人资料、常用位置和情侣共享语录。
-- **可自行部署**：FastAPI + Next.js + MySQL/SQLite，生产环境支持 Docker Compose、Caddy HTTPS、媒体持久化和经过校验的备份恢复流程。
+- **可自行部署**：FastAPI + Next.js + MySQL/SQLite，生产环境使用 Docker Compose、Caddy HTTPS 和媒体持久化。
 
 ## 快速开始
 
@@ -38,8 +38,8 @@ Copy-Item .env.example .env
 love_book/
 ├─ app/                 FastAPI 后端、数据库模型与业务服务
 ├─ web/                 Next.js 前端
-├─ tests/               后端、备份与版本回归测试
-├─ scripts/             版本、迁移、备份和恢复工具
+├─ tests/               后端与版本回归测试
+├─ scripts/             版本校验和跑酷资源构建
 ├─ deploy/              Caddy 等部署配置
 ├─ docs/
 │  ├─ ai/               产品与设计约束，供开发者和 AI 协作使用
@@ -102,7 +102,7 @@ poetry run python -m pytest -q --basetemp=.pytest-tmp/local
 cmd /c npm run build
 ```
 
-根目录 `VERSION` 是唯一应用版本。只有与它完全一致的 `vX.Y.Z` 标签会触发 GitHub Actions 构建前后端镜像；两套镜像成功后会同时提升为稳定版 `latest` 并创建 GitHub Release。生产服务器后续通过 `scripts/update_production.sh` 一键检查、备份和更新，详见 [版本与发布](docs/VERSIONING.md)。
+根目录 `VERSION` 是唯一应用版本。只有与它完全一致的 `vX.Y.Z` 标签会触发 GitHub Actions 构建前后端镜像；两套镜像成功后会同时提升为稳定版 `latest` 并创建 GitHub Release。生产更新和备份工具安装在服务器部署目录，不随仓库分发，详见 [版本与发布](docs/VERSIONING.md)。
 
 ## 数据安全
 

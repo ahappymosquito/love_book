@@ -2,8 +2,7 @@
 
 这是一个基于 FastAPI 的后端接口项目，围绕“两位固定伴侣用户共同参与事件”的场景设计。每个事件只属于一对用户，双方都可以创建事件、发表评论和上传图片。事件创建者可以选择公开可见，或者选择“双方都提交过评论或图片后再互相可见”。
 
-> ⚙️ **生产部署**：docker-compose + Caddy 自动 HTTPS 一键部署到 `qrqto.club` 的完整说明见 [`DEPLOYMENT.md`](DEPLOYMENT.md)。
-> 🚀 **服务器一键部署**：使用预构建 GHCR 镜像时，可用 [`deploy_server.sh`](../deploy_server.sh) 在服务器生成 `.env` / `Caddyfile` / `docker-compose.yml` 并启动服务，后续通过 `scripts/update_production.sh` 检查稳定版 `latest`、备份并更新；真实密码只通过服务器 env 文件传入。
+> ⚙️ **生产部署**：docker-compose + Caddy 自动 HTTPS 的说明见 [`DEPLOYMENT.md`](DEPLOYMENT.md)。真实密码只放服务器 `.env`，不提交仓库。
 >
 > 🗄️ **媒体存储**：图片原图和缩略图写入 `MEDIA_ROOT`，数据库只保存相对 `storage_key`；旧 `images.data` / `images.thumb_data` 记录仍可回退读取。升级前已有的 `voices` 表和媒体文件会原样保留为不可达备份，不再通过产品接口读取。
 > 🏷️ **版本与镜像**：根目录 `VERSION` 是前后端唯一应用版本；普通提交只验证，只有与它一致的 `vX.Y.Z` 标签才发布同版本 GHCR 镜像。完整流程见 [`VERSIONING.md`](VERSIONING.md)。
@@ -50,11 +49,10 @@ tests/
   test_api.py             核心接口测试
 scripts/
   version.py                  同步并校验统一应用版本
-  migrate_images_to_media.py  手动把历史图片 BLOB 迁出到媒体目录
+  build_runner_assets.py      构建并校验跑酷图集
 VERSION                       前后端唯一应用版本
 CHANGELOG.md                  未发布与正式发布变更记录
 pyproject.toml / poetry.lock  后端直接依赖与完整锁文件
-deploy_server.sh          服务器预构建镜像一键部署脚本
 ```
 
 ## 安装依赖
@@ -718,21 +716,9 @@ curl -X POST "http://127.0.0.1:8000/events/1/images" \
 
 返回 JPEG 缩略图。接口优先读取 `images.thumb_storage_key` 指向的本地媒体文件；旧记录没有 key 时回退读取 `images.thumb_data`，如果旧图片还没有缩略图，首次请求会从 `images.data` 懒生成并写回数据库。响应会带 `Cache-Control: private` 缓存头。
 
-## 历史图片迁移
+## 历史图片与旧回执
 
-已有数据库如果仍包含 `images.data` / `images.thumb_data`，先备份数据库和媒体目录，然后执行：
-
-```powershell
-python scripts/migrate_images_to_media.py
-```
-
-脚本会把历史原图和缩略图导出到 `MEDIA_ROOT`，并回填 `storage_key` / `thumb_storage_key`，默认不清空旧 BLOB。确认接口读取正常、备份可用后，才执行可选清理：
-
-```powershell
-python scripts/migrate_images_to_media.py --clear-blobs --compact
-```
-
-Docker 生产环境迁移服务器时需要同时备份数据库和 `love_book_media` volume。
+已有数据库如果仍包含 `images.data` / `images.thumb_data`，接口会回退读取这些 BLOB；新图片只写 `MEDIA_ROOT` 和 storage key。旧 `love_receipts` 会在应用启动时幂等转换为收礼事件。迁移服务器时需要同时备份数据库和 `love_book_media` volume。
 
 ## 已停用语音数据
 
@@ -851,5 +837,5 @@ python -m pytest tests -q
 - 收礼事件返回标准 `EventDetail`，`event_kind` 为 `gift_received`，反馈复用 `description`，标签位于 `gift_feelings`，评分位于 `gift_rating`。事件摘要额外返回 `preview_image` 和 `image_count`，照片仍通过 `/images/{id}/file|thumb` 私有接口读取。
 - 创建事件及全部照片在同一事务中完成；数据库或媒体写入失败时回滚事件并清理已写文件。
 - 收礼日期落在见面范围内时仍保持 `gift_received`，同时写入 `meeting_session_id`，因此会出现在对应见面分组。
-- 启动迁移会把所有旧 `love_receipts` 幂等转换为收礼事件并复制媒体；旧心情迁入 `gift_feelings`，旧图片 ID 使用确定性目标路径和唯一映射避免重复。可先运行 `python scripts/migrate_love_receipts_to_gifts.py` 审计，再加 `--apply` 显式执行。旧 `GET /love-receipts` 与详情仅供历史跳转；旧创建、状态推进和提交回执接口返回 `410 Gone`。
+- 启动迁移会把所有旧 `love_receipts` 幂等转换为收礼事件并复制媒体；旧心情迁入 `gift_feelings`，旧图片 ID 使用确定性目标路径和唯一映射避免重复。旧 `GET /love-receipts` 与详情仅供历史跳转；旧创建、状态推进和提交回执接口返回 `410 Gone`。
 - 普通登录页面的公共标题栏不显示退出；唯一的用户退出入口位于 `/me` 设置页。管理端继续保留独立的管理员退出操作。

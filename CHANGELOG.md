@@ -4,6 +4,11 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ## [Unreleased]
 
+### Changed
+
+- Removed unused production deploy, backup, and one-off migration scripts from the repository. Local development keeps `start_dev.bat` plus version and runner-asset helpers.
+- Replaced production-specific host, account, and mailbox defaults in example env and docs with placeholders.
+
 ## [0.9.0] - 2026-08-05
 
 ### Added

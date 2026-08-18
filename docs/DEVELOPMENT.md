@@ -2,7 +2,7 @@
 
 ## 入口脚本
 
-- 脚本路径：`C:\RPA\code\love_book\start_dev.bat`
+- 脚本路径：仓库根目录 `start_dev.bat`
 - 默认行为：直接启动后端 FastAPI 和前端 Next.js 开发服务
 - 安装模式：`start_dev.bat --install`
 

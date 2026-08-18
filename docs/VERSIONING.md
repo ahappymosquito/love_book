@@ -46,40 +46,21 @@ git tag -a v0.5.0 -m "Love Book 0.5.0"
 
 ## 生产部署与验证
 
-生产首次部署默认使用同一个稳定版 `latest`：
+生产 Compose 工作目录独立于 Git 仓库，更新器和备份程序已经安装在服务器上，不随本仓库分发。日常更新拉取前后端稳定版 `latest`，确认两套镜像的 OCI 版本标签完全一致，仅在发现新版本时创建 `pre-release` 恢复点，然后启动并验证 `/api/health` 和首页。`/api/health` 返回应用版本和完整 Git SHA。
 
 ```bash
-./deploy_server.sh --env-file ./server.env up
 curl -fsS https://qrqto.club/api/health
 ```
 
-后续更新只需运行服务器已安装的更新器：
-
-```bash
-sudo bash /home/ts3/love-book/update.sh
-```
-
-脚本从自身路径定位部署目录，不受 `sudo` 将 `HOME` 改为 `/root` 的影响；root 的 Docker 凭据用于拉取私有 GHCR 镜像，备份命令仍以 `ts3` 和 `/home/ts3` 为 HOME 执行。更新器会拉取前后端 `latest`、确认两套镜像的 OCI 版本标签完全一致、仅在发现新版本时创建 `pre-release` 恢复点，然后启动并验证 `/api/health` 和首页。`/api/health` 返回应用版本和完整 Git SHA。需要更强的供应链固定时，可分别用 `BACKEND_IMAGE`、`FRONTEND_IMAGE` 传入同一次发布生成的镜像 digest。
+需要更强的供应链固定时，前后端应同时指定同一次发布生成的镜像 digest。
 
 ## 发布前备份
 
-每次包含数据库变化的发布都要先备份数据库和 `love_book_media`。生产统一使用 [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md) 中的已校验恢复点格式，备份文件放在服务器受保护目录，不提交仓库。
-
-```bash
-/home/ts3/bin/love-book-backup pre-release
-```
-
-脚本会动态解析后端 `/app/media` 的真实 volume 名，打包 MySQL、媒体和生产 `.env`，并验证 gzip、tar、MySQL 完成标记和 SHA-256。确认恢复点包含 `SUCCESS` 后再部署。当前启动迁移只允许向前兼容地增加或扩展结构，不在启动时删除业务表、旧媒体或旧字段。
+每次包含数据库变化的发布都要先备份数据库和 `love_book_media`。生产使用 [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md) 中的已校验恢复点格式，备份文件放在服务器受保护目录，不提交仓库。确认恢复点包含 `SUCCESS` 后再部署。当前启动迁移只允许向前兼容地增加或扩展结构，不在启动时删除业务表、旧媒体或旧字段。
 
 ## 显式兼容版本
 
-日常更新不自动回滚。仅在明确需要兼容旧环境时，前后端才一起指定同一版本：
-
-```bash
-LOVE_BOOK_VERSION=0.2.3 ./deploy_server.sh up
-```
-
-切换后必须验证 `/api/health`。只有旧应用确实无法读取新数据库时，才按 [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md) 在临时数据库和临时 volume 演练成功后恢复生产，避免把新数据静默覆盖。
+日常更新不自动回滚。仅在明确需要兼容旧环境时，前后端才一起指定同一版本镜像。切换后必须验证 `/api/health`。只有旧应用确实无法读取新数据库时，才按 [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md) 在临时数据库和临时 volume 演练成功后恢复生产。
 
 ## 依赖更新
 

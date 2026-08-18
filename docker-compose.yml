@@ -1,10 +1,6 @@
-                                            # 我们之间的小事 · 统一部署
-# - 后端 / 前端 / Caddy 三个容器
-# - MySQL 直连 qrqto.club:3306 (由 .env 提供凭据)
-# - Caddy 监听 80/443，自动签发 HTTPS，把 /api/ 反代到后端，其它请求转给 Next.js
-#
-# 用法：cp .env.example .env && 修改 .env && ./deploy.sh up
-# 域名：qrqto.club / www.qrqto.club，由 deploy/caddy/Caddyfile 管理
+# Love Book production compose: backend, frontend, and Caddy.
+# Copy .env.example to .env, then run: docker compose up -d --build
+# Caddy issues HTTPS for qrqto.club / www.qrqto.club and reverse-proxies /api to FastAPI.
 name: love-book
 
 x-logging: &default-logging
@@ -33,7 +29,6 @@ services:
       - "8000"
     networks:
       - love-book-net
-    # 外部 MySQL 走公网域名 qrqto.club：保证容器 DNS 能解析到当前宿主
     extra_hosts:
       - "host.docker.internal:host-gateway"
     logging: *default-logging

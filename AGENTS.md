@@ -20,8 +20,8 @@
 
 - 前端采用 Apple Liquid Glass 分层原则：玻璃只用于导航、工具条、分段控件、浮动操作和临时浮层；时间线、日历、表单、Todo 列表、设置分组和详情正文必须使用清晰实体内容层，禁止嵌套 `backdrop-filter`。
 - 新视觉 token 使用 `web/src/app/globals.css` 中的 `--lb-*` OKLCH 通道；旧 RGB token 只作为现有 Tailwind 类的兼容桥。新增玻璃控件优先复用 `GlassSurface`，视图切换优先复用 `SegmentedControl`。
-- 本地开发一键启动脚本为 [start_dev.bat](C:\RPA\code\love_book\start_dev.bat)。
-- 前端默认按 [PRODUCT.md](C:\RPA\code\love_book\docs\ai\PRODUCT.md) 和 [DESIGN.md](C:\RPA\code\love_book\docs\ai\DESIGN.md) 的 product register 设计上下文执行；整体气质为“温暖、可爱、舒服、可信”。
+- 本地开发一键启动脚本为 [start_dev.bat](start_dev.bat)。
+- 前端默认按 [PRODUCT.md](docs/ai/PRODUCT.md) 和 [DESIGN.md](docs/ai/DESIGN.md) 的 product register 设计上下文执行；整体气质为“温暖、可爱、舒服、可信”。
 - 前端视觉基线是柔和恋爱手账型产品 UI：低饱和玫瑰为主色，暖桃承载重点，鼠尾草薄荷用于完成和正向状态；避免晃眼高饱和色、清冷灰后台、装饰玻璃拟态、渐变文字和低对比彩色文本。
 - 前端可见文案必须面向用户当下任务和情绪表达，不把“优化了布局、支持了功能、现在更紧凑”等开发交付说明放到页面正文、空状态或提示语里；这类说明只写入项目文档或提交信息。
 - 未登录首页采用移动优先的全屏像素草地跑酷：像素化“小花”承担游戏主角，支持奔跑、单次跳跃、碰撞和创纪录庆祝；竖屏登录卡位于天空留白区并在开局后收起，横屏只保留登录按钮，打开表单时暂停游戏。token 自动登录和管理员入口继续保留。
@@ -47,7 +47,7 @@
 - 管理端复制入口链接由浏览器当前 `window.location.origin` 动态生成：HTTP 环境复制 HTTP，HTTPS 环境复制 HTTPS。
 - 生产 Docker 公网入口使用 Caddy 自动申请和续期 `qrqto.club` / `www.qrqto.club` HTTPS 证书；邮件链接仍由后端 `APP_WEB_URL` 生成，生产应设为 `https://qrqto.club`。
 - 生产 Docker 媒体文件持久化在 named volume `love_book_media`，迁移服务器时需要和数据库一起备份。
-- 服务器使用预构建镜像部署时，优先执行 [deploy_server.sh](C:\RPA\code\love_book\deploy_server.sh) 生成 `.env`、`Caddyfile`、`docker-compose.yml` 并启动服务；真实密码和 SMTP 授权码只放服务器 env 文件或环境变量，不提交到仓库。
+- 生产更新和备份工具已经安装在服务器部署目录，不随仓库分发。真实密码、SMTP 授权码和高德 / LLM key 只放服务器 `.env` 或环境变量，不提交到仓库。
 
 ## 首页提醒约定
 
