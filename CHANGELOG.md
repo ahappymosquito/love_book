@@ -6,6 +6,7 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ### Changed
 
+- Rebuilt the login runner into 花田拾光: chaptered day-to-night meadow, collectible petals and letters, combo scoring, two hearts with invincibility, hold-to-jump-higher on desktop, a double jump after noon, and Space/Up jumping without activating focused runner buttons.
 - Removed unused production deploy, backup, and one-off migration scripts from the repository. Local development keeps `start_dev.bat` plus version and runner-asset helpers.
 - Replaced production-specific host, account, and mailbox defaults in example env and docs with placeholders.
 

@@ -1,4 +1,4 @@
-/* Global Love Book visual system: OKLCH controls, solid content layers, lightweight 2D mascot motion, warm themes, viewport guards, and accessible fallbacks. */
+/* Love Book 全局视觉：OKLCH token、实体内容层、花田拾光 HUD、温暖主题、视口守卫和无障碍回退。 */
 
 @tailwind base;
 @tailwind components;
@@ -1310,7 +1310,28 @@
 .login-runner-submit:active { transform: scale(0.99); }
 .login-runner-submit:disabled { cursor: not-allowed; background: #b9b9b5; }
 
-.runner-scoreboard { position: absolute; z-index: 10; bottom: max(1rem, env(safe-area-inset-bottom)); left: max(1rem, env(safe-area-inset-left)); display: flex; gap: 0.75rem; border-radius: 0.75rem; padding: 0.55rem 0.75rem; font-family: ui-monospace, monospace; font-size: 0.8rem; font-weight: 700; }
+.runner-scoreboard { position: absolute; z-index: 10; bottom: max(1rem, env(safe-area-inset-bottom)); left: max(1rem, env(safe-area-inset-left)); display: flex; max-width: min(22rem, calc(100vw - 7.5rem)); flex-wrap: wrap; align-items: center; gap: 0.45rem 0.7rem; border-radius: 0.75rem; padding: 0.5rem 0.7rem; font-family: ui-monospace, monospace; font-size: 0.78rem; font-weight: 700; }
+.runner-hearts { display: inline-flex; gap: 0.12rem; letter-spacing: 0.02em; }
+.runner-hearts span { color: rgb(255 255 255 / 0.28); line-height: 1; }
+.runner-hearts span[data-filled="true"] { color: #f0a3a0; }
+.runner-chapter-label { opacity: 0.78; font-weight: 650; }
+.runner-chapter-toast {
+  position: absolute;
+  z-index: 11;
+  top: 22%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 1px solid rgb(255 255 255 / 0.62);
+  border-radius: 999px;
+  background: rgb(18 18 18 / 0.78);
+  padding: 0.45rem 0.9rem;
+  color: white;
+  font-size: 0.92rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  white-space: nowrap;
+}
 .runner-controls { position: absolute; z-index: 10; right: max(1rem, env(safe-area-inset-right)); bottom: max(1rem, env(safe-area-inset-bottom)); display: flex; gap: 0.5rem; }
 .runner-icon-button { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; border-radius: 999px; }
 .runner-play-button { display: inline-flex; min-height: 2.75rem; align-items: center; gap: 0.45rem; border-radius: 999px; padding: 0.55rem 0.9rem; font-size: 0.82rem; font-weight: 700; }
@@ -1377,5 +1398,5 @@
 }
 
 @media (prefers-contrast: more), (forced-colors: active) {
-  .login-runner-brand, .login-runner-action, .runner-scoreboard, .runner-icon-button, .runner-play-button, .login-runner-panel, .runner-leaderboard, .runner-name-score, .runner-help-popover { background: Canvas; color: CanvasText; border-color: CanvasText; backdrop-filter: none; box-shadow: none; }
+  .login-runner-brand, .login-runner-action, .runner-scoreboard, .runner-icon-button, .runner-play-button, .login-runner-panel, .runner-leaderboard, .runner-name-score, .runner-help-popover, .runner-chapter-toast { background: Canvas; color: CanvasText; border-color: CanvasText; backdrop-filter: none; box-shadow: none; }
 }

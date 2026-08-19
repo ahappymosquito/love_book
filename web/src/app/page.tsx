@@ -1,6 +1,6 @@
 "use client";
 
-// Neutral, collapsed-by-default login overlay around a full-viewport Xiaohua runner, password/token authentication, and public Top 3 scores.
+// 默认收起的中性登录叠层，覆盖全视口「花田拾光」跑酷、密码/口令登录和全站 Top 3。
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -153,7 +153,7 @@ export default function LoginPage() {
       setLeaderboard({ items: result.items, threshold: result.threshold });
       setScoreToName(null);
       setLeaderboardOpen(true);
-      toast.success(result.entered ? `小花跑进第 ${result.rank} 名啦` : "成绩已提交");
+      toast.success(result.entered ? `这段拾光排到第 ${result.rank} 名` : "成绩已提交");
     } catch {
       toast.error("排行榜暂时没有回应，继续玩也没关系");
     } finally {
@@ -215,16 +215,16 @@ export default function LoginPage() {
       </section>
 
       {leaderboardOpen ? (
-        <aside className="runner-leaderboard" aria-label="小花跑酷排行榜">
+        <aside className="runner-leaderboard" aria-label="花田拾光排行榜">
           <div className="flex items-center justify-between"><h2 className="font-display text-lg font-semibold text-ink">全站 Top 3</h2><button type="button" onClick={() => setLeaderboardOpen(false)} className="runner-close focus-ring" aria-label="关闭排行榜"><X className="h-4 w-4" /></button></div>
-          <ol className="mt-3 space-y-1.5">{leaderboard.items.length ? leaderboard.items.map((item, index) => <li key={item.id} className="runner-rank-row"><span>{index + 1}</span><strong>{item.player_name}</strong><b>{item.score}</b></li>) : <li className="py-5 text-center font-sc text-sm text-ink-muted">还没有纪录，来跑第一局吧。</li>}</ol>
+          <ol className="mt-3 space-y-1.5">{leaderboard.items.length ? leaderboard.items.map((item, index) => <li key={item.id} className="runner-rank-row"><span>{index + 1}</span><strong>{item.player_name}</strong><b>{item.score}</b></li>) : <li className="py-5 text-center font-sc text-sm text-ink-muted">花田还空着，来拾第一段光吧。</li>}</ol>
         </aside>
       ) : null}
 
       {scoreToName != null ? (
         <form className="runner-name-score" onSubmit={submitScore}>
           <button type="button" onClick={() => setScoreToName(null)} className="runner-close focus-ring" aria-label="暂不留名"><X className="h-4 w-4" /></button>
-          <p className="font-display text-lg font-semibold text-ink">新纪录，{scoreToName} 分</p>
+          <p className="font-display text-lg font-semibold text-ink">这段拾光，{scoreToName} 分</p>
           <label className="mt-3 block"><span className="login-field-label">留下名字</span><input autoFocus className="input-field mt-1 min-h-11 text-base" value={playerName} onChange={(event) => setPlayerName(event.target.value)} maxLength={12} required /></label>
           <button type="submit" className="login-runner-submit mt-3 min-h-11 w-full rounded-xl px-4 font-sc text-sm focus-ring" disabled={!playerName.trim() || scoreSubmitting}>{scoreSubmitting ? "正在记录" : "写进排行榜"}</button>
         </form>
