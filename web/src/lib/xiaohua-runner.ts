@@ -139,7 +139,7 @@ export const RUNNER_CHAPTER_LABELS: Record<RunnerChapterId, string> = {
   night: "星夜归途",
 };
 
-interface CollisionBox {
+export interface CollisionBox {
   x: number;
   bottom: number;
   width: number;
@@ -402,7 +402,7 @@ function boxesOverlap(left: CollisionBox, right: CollisionBox): boolean {
     && left.bottom + left.height > right.bottom;
 }
 
-function playerBoxes(state: RunnerState): CollisionBox[] {
+export function playerBoxes(state: RunnerState): CollisionBox[] {
   const lift = state.y;
   if (state.crouching) {
     return [{ x: RUNNER_PLAYER_X + 0.08, bottom: lift + 0.05, width: 0.78, height: 0.4 }];
@@ -414,7 +414,7 @@ function playerBoxes(state: RunnerState): CollisionBox[] {
   ];
 }
 
-function obstacleBox(obstacle: RunnerObstacle): CollisionBox {
+export function obstacleBox(obstacle: RunnerObstacle): CollisionBox {
   const horizontalInset = obstacle.kind === "rock"
     ? 0.12
     : obstacle.kind === "stump"
