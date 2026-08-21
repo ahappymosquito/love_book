@@ -1,9 +1,9 @@
 # Love Book 部署
 
-本仓库用 Docker Compose 运行后端、前端和 Caddy。公网入口由 Caddy 暴露 80/443，并为 `qrqto.club`、`www.qrqto.club` 自动申请和续期 HTTPS 证书。
+本仓库用 Docker Compose 运行后端和前端。公网 80/443 由**宿主机 Nginx** 暴露，并为 `qrqto.club`、`www.qrqto.club`、`cdn.qrqto.club` 提供 HTTPS。TLS 用 certbot webroot 续期，不要和 Docker Caddy 同时抢端口。
 
-- **域名**：`qrqto.club`（含 `www.qrqto.club`）
-- **公网入口**：Caddy 自动 HTTPS，`/api/*` 去掉 `/api` 前缀后反代到 FastAPI，其它请求反代到 Next.js
+- **域名**：`qrqto.club`（含 `www.qrqto.club`）；静态 CDN 为 `cdn.qrqto.club`
+- **公网入口**：主机 Nginx。`/api/*` 去掉 `/api` 前缀后反代 `127.0.0.1:8000`，其它请求反代 `127.0.0.1:3000`；CDN 直接读 `/var/www/cdn.qrqto.club`
 - **数据库**：由 `.env` 的 `DATABASE_URL` 提供连接信息；生产使用 MySQL，本地开发默认 SQLite
 - **媒体文件**：图片原图和缩略图保存在后端 `/app/media`，由 Docker named volume `love_book_media` 持久化
 - **管理员复制入口链接**：前端运行时读取浏览器当前 `window.location.origin`
@@ -97,12 +97,15 @@ LOVE_BOOK_SSH_HOSTS=ts3_qrqto,root_qrqto
 ```text
 .
 ├── Dockerfile                    # 后端镜像
-├── docker-compose.yml            # 后端 / 前端 / Caddy
+├── docker-compose.yml            # 后端 / 前端（loopback 8000/3000）
 ├── deploy/
+│   ├── nginx/                    # 主机 Nginx 站点与 TLS 片段
 │   └── caddy/
-│       └── Caddyfile             # 自动 HTTPS 和反向代理
+│       └── Caddyfile             # 仅作回滚对照，生产不要启用
 ├── scripts/
-│   └── deploy_host.py            # 按 LOVE_BOOK_SSH_HOSTS 做打包检查与远程发布
+│   ├── deploy_host.py            # 按 LOVE_BOOK_SSH_HOSTS 做打包检查与远程发布
+│   ├── cutover_caddy_to_nginx.sh # 授权后的 Caddy→Nginx 切换
+│   └── nginx_tls_renew.sh        # certbot webroot 续期
 ├── web/
 │   └── Dockerfile                # 前端镜像
 ├── .env                          # 实际运行配置，不提交
@@ -117,10 +120,10 @@ LOVE_BOOK_SSH_HOSTS=ts3_qrqto,root_qrqto
 | --- | --- |
 | Docker Engine | 24.x 或更新，带 `docker compose` v2 |
 | 公网 DNS | `qrqto.club`、`www.qrqto.club` 的 A / AAAA 记录指向本机 |
-| 防火墙 | 公网可访问 80 和 443，供 Caddy 完成 ACME 校验和 HTTPS 访问 |
+| 防火墙 | 公网可访问 80 和 443，供主机 Nginx 和 certbot webroot |
 | 数据库 | 生产建议 MySQL 5.7+ / 8.x；本地可用 SQLite |
 
-如果 80/443 已被其它服务占用，Caddy 无法启动或无法签发证书。
+如果 80/443 已被其它服务占用，主机 Nginx 无法启动。禁止 Docker Caddy 与主机 Nginx 同时监听这两个端口。
 
 ## 3. 配置 `.env`
 
@@ -167,14 +170,13 @@ services:
 ```bash
 docker compose ps
 docker compose logs -f
-docker compose logs -f caddy
 docker compose restart
 docker compose down
 ```
 
 `docker compose down` 会停止容器并保留 named volume。禁止对生产执行 `docker compose down -v`。
 
-首次启动时 Caddy 会自动向 Let's Encrypt 申请证书，并把证书数据持久化到 `caddy_data` / `caddy_config`；后端图片媒体文件会持久化到 `love_book_media`。
+主机 Nginx 证书目录是 `/etc/nginx/certs/<name>/{fullchain.pem,privkey.pem}`，由 certbot webroot 写入 Let's Encrypt 后再同步过去。续期：`/usr/local/sbin/love-book-nginx-renew`。后端图片媒体文件仍持久化到 `love_book_media`。CDN 文件在 `/var/www/cdn.qrqto.club`，不进 Love Book volume。
 
 ## 5. 验收地址
 
@@ -187,16 +189,16 @@ docker compose down
 
 管理后台“复制入口链接”按当前页面的协议和域名生成。Clipboard API 不可用时使用隐藏 textarea 降级复制。
 
-## 6. Caddy 反向代理
+## 6. 主机 Nginx 反向代理
 
-当前 `deploy/caddy/Caddyfile` 的关键行为：
+站点文件在 `deploy/nginx/`，安装到 `/etc/nginx/sites-available`：
 
-- `qrqto.club, www.qrqto.club` 自动启用 HTTPS。
-- `/api` 和 `/api/*` 去掉 `/api` 前缀后转发到 `backend:8000`。
-- `/docs`、`/openapi.json` 转发到后端。
-- 其它所有路由转发到 `frontend:3000`。
+- `qrqto.club` / `www.qrqto.club`：`/api/` 去前缀反代 `127.0.0.1:8000`，`/docs` 与 `/openapi.json` 同后端，其余反代 `127.0.0.1:3000`。
+- `cdn.qrqto.club`：`root /var/www/cdn.qrqto.club`，`Cache-Control: public, max-age=300`，CORS `*`。
+- `/.well-known/acme-challenge/` 都指向 `/var/www/certbot`。
+- `client_max_body_size 25m`。
 
-修改 Caddyfile 后执行 `docker compose restart caddy`。
+修改站点后：`nginx -t && systemctl reload nginx`。不要运行 `certbot --nginx`。续期脚本是 `scripts/nginx_tls_renew.sh`。从 Caddy 切过来时用 `scripts/cutover_caddy_to_nginx.sh`（只在授权后、先备份再跑）。
 
 ## 7. 数据库与媒体
 
@@ -210,9 +212,10 @@ docker compose down
 
 | 现象 | 排查 |
 | --- | --- |
-| Caddy 无法签发证书 | 确认 DNS 指向本机，公网 80/443 未被拦截 |
-| HTTPS 打不开 | 查看 `docker compose logs caddy`，确认容器和端口映射 |
-| 前端能打开但 `/api/*` 失败 | 检查 Caddyfile 的 `/api` 反代和 backend 状态 |
+| Nginx 无法签发或续期证书 | 确认 DNS 指向本机，80 上的 ACME webroot 可访问，跑 `certbot renew --dry-run` |
+| HTTPS 打不开 | `systemctl status nginx`、`nginx -t`、确认 80/443 没有 Caddy |
+| 前端能打开但 `/api/*` 失败 | 检查 `love-book-proxy.conf` 与 `curl -fsS http://127.0.0.1:8000/health` |
+| CDN 打不开 | 确认 `/var/www/cdn.qrqto.club` 和 `cdn.qrqto.club` 站点，不要改安装包文件 |
 | 邮件链接还是 localhost | 修改 `.env` 的 `APP_WEB_URL` 后重启 backend |
 | 数据库连接 timeout | 确认 MySQL 地址、端口、用户授权和安全组 |
 
@@ -225,6 +228,8 @@ docker compose down
 | 智能体打包/发布 CLI | `scripts/deploy_host.py` |
 | 图片媒体 volume | `love_book_media:/app/media` |
 | 备份与恢复说明 | [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md) |
-| Caddy HTTPS 与反代 | `deploy/caddy/Caddyfile` |
+| 主机 Nginx HTTPS 与反代 | `deploy/nginx/` |
+| TLS 续期 | `scripts/nginx_tls_renew.sh` |
+| Caddy 回滚对照 | `deploy/caddy/Caddyfile` |
 | 前端 API 同源配置 | `NEXT_PUBLIC_API_BASE=/api` |
 | 邮件入口域名 | `.env` 的 `APP_WEB_URL` |

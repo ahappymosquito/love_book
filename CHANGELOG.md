@@ -7,6 +7,7 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 ### Added
 
 - Added `LOVE_BOOK_SSH_HOSTS` and `scripts/deploy_host.py` so agents can package locally, then check or publish through named `~/.ssh/config` hosts such as `ts3_qrqto` and `root_qrqto`.
+- Added host Nginx vhosts, certbot webroot renewal, and a Caddy-to-Nginx cutover that keeps `cdn.qrqto.club` on the existing static root.
 
 ### Changed
 
@@ -14,6 +15,7 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 - Rebuilt the login runner into 花田拾光: chaptered day-to-night meadow, collectible petals and letters, combo scoring, two hearts with invincibility, hold-to-jump-higher on desktop, a double jump after noon, and Space/Up jumping without activating focused runner buttons.
 - Removed unused production deploy, backup, and one-off migration scripts from the repository. Local development keeps `start_dev.bat` plus version helpers.
 - Replaced production-specific host, account, and mailbox defaults in example env and docs with placeholders.
+- Production public HTTP(S) now uses host Nginx instead of the Love Book Caddy container, so other host sites can share 80/443.
 
 ## [0.9.0] - 2026-08-05
 

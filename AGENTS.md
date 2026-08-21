@@ -46,7 +46,7 @@
 - 邮件通知必须遵守事件解锁状态：`mutual_submit` 未解锁时，只通知有新事件或新评论，不展示事件标题、描述或评论正文。
 - 管理端复制 token / 入口链接需要保留 Clipboard API 失败后的降级复制，兼容服务器 HTTP、权限策略或浏览器剪贴板限制。
 - 管理端复制入口链接由浏览器当前 `window.location.origin` 动态生成：HTTP 环境复制 HTTP，HTTPS 环境复制 HTTPS。
-- 生产 Docker 公网入口使用 Caddy 自动申请和续期 `qrqto.club` / `www.qrqto.club` HTTPS 证书；邮件链接仍由后端 `APP_WEB_URL` 生成，生产应设为 `https://qrqto.club`。
+- 生产公网入口使用宿主机 Nginx：`qrqto.club` / `www.qrqto.club` 反代本机 loopback 上的前后端，`cdn.qrqto.club` 直接提供 `/var/www/cdn.qrqto.club`。TLS 由 certbot webroot 续期，不要再用 Docker Caddy 抢 80/443。邮件链接仍由后端 `APP_WEB_URL` 生成，生产应设为 `https://qrqto.club`。
 - 生产 Docker 媒体文件持久化在 named volume `love_book_media`，迁移服务器时需要和数据库一起备份。
 - 生产更新和备份工具已经安装在服务器部署目录，不随仓库分发。真实密码、SMTP 授权码和高德 / LLM key 只放服务器 `.env` 或环境变量，不提交到仓库。
 - 生产 SSH 只配 `LOVE_BOOK_SSH_HOSTS`，可写多个名字，例如 `ts3_qrqto,root_qrqto`。`ts3` 不能免密 sudo，也不能拉取私有 GHCR 镜像，发布走 `User=root` 的主机。

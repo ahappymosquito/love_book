@@ -1,1 +1,1 @@
-"""Development helpers shipped with Love Book: version sync and env-configured SSH release hosts."""
+"""Development helpers: version sync, SSH release hosts, and host Nginx gateway cutover."""

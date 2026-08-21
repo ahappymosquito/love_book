@@ -14,7 +14,7 @@ Love Book 是给两个人共同使用的私密生活手账：记录日常、见�
 - **收礼事件**：收礼人直接记录礼物名称，可选补充正常反馈、最多 3 个真实感受标签、五分制评分和最多 6 张照片；照片会在时间线中成为这类事件的视觉重点。
 - **个人与共享内容**：私有头像、个人资料、常用位置和情侣共享语录。
 - **花田拾光**：未登录首页的全屏代码绘制小游戏，边跑边拾花瓣，和全站 Top 3 比一比；已登录会直接进入手账。
-- **可自行部署**：FastAPI + Next.js + MySQL/SQLite，生产环境使用 Docker Compose、Caddy HTTPS 和媒体持久化。
+- **可自行部署**：FastAPI + Next.js + MySQL/SQLite，生产环境使用 Docker Compose、主机 Nginx HTTPS 和媒体持久化。
 
 ## 快速开始
 
@@ -40,8 +40,8 @@ love_book/
 ├─ app/                 FastAPI 后端、数据库模型与业务服务
 ├─ web/                 Next.js 前端
 ├─ tests/               后端与版本回归测试
-├─ scripts/             版本校验与命名 SSH 发布
-├─ deploy/              Caddy 等部署配置
+├─ scripts/             版本校验、SSH 发布与 Nginx 切换
+├─ deploy/              主机 Nginx 与回滚用 Caddy
 ├─ docs/
 │  ├─ ai/               产品与设计约束，供开发者和 AI 协作使用
 │  └─ audits/           带日期的历史审计记录

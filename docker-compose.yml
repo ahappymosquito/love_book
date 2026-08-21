@@ -1,6 +1,6 @@
-# Love Book production compose: backend, frontend, and Caddy.
+# Love Book production compose: backend and frontend on loopback.
+# Public 80/443 is host nginx (deploy/nginx). Local development uses start_dev.bat.
 # Copy .env.example to .env, then run: docker compose up -d --build
-# Caddy issues HTTPS for qrqto.club / www.qrqto.club and reverse-proxies /api to FastAPI.
 name: love-book
 
 x-logging: &default-logging
@@ -25,6 +25,8 @@ services:
       MEDIA_STORAGE: local
     volumes:
       - love_book_media:/app/media
+    ports:
+      - "127.0.0.1:8000:8000"
     expose:
       - "8000"
     networks:
@@ -38,37 +40,21 @@ services:
       context: ./web
       dockerfile: Dockerfile
       args:
-        # 生产环境通过 Caddy 同源反代 /api，管理端入口链接运行时读取浏览器 origin。
+        # 生产环境通过主机 Nginx 同源反代 /api，管理端入口链接运行时读取浏览器 origin。
         NEXT_PUBLIC_API_BASE: /api
     image: love-book/frontend:dev
     container_name: love-book-frontend
     restart: unless-stopped
     environment:
       NODE_ENV: production
+    ports:
+      - "127.0.0.1:3000:3000"
     expose:
       - "3000"
     networks:
       - love-book-net
     depends_on:
       - backend
-    logging: *default-logging
-
-  caddy:
-    image: caddy:2-alpine
-    container_name: love-book-caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - backend
-      - frontend
-    networks:
-      - love-book-net
     logging: *default-logging
 
 networks:
@@ -78,5 +64,3 @@ networks:
 
 volumes:
   love_book_media:
-  caddy_data:
-  caddy_config:

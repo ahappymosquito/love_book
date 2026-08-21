@@ -1,6 +1,6 @@
-# Caddy public entrypoint for qrqto.club.
-# It automatically provisions and renews HTTPS certificates, strips /api before proxying
-# backend API calls, and sends all other routes to the Next.js frontend.
+# Rollback-only Caddyfile. Production public 80/443 is host nginx in deploy/nginx.
+# Live servers also served cdn.qrqto.club from /var/www/cdn.qrqto.club; that vhost
+# is now deploy/nginx/sites/cdn.qrqto.club.conf. Do not start this next to host nginx.
 
 qrqto.club, www.qrqto.club {
 	encode zstd gzip

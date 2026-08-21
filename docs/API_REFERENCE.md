@@ -2,7 +2,7 @@
 
 这是一个基于 FastAPI 的后端接口项目，围绕“两位固定伴侣用户共同参与事件”的场景设计。每个事件只属于一对用户，双方都可以创建事件、发表评论和上传图片。事件创建者可以选择公开可见，或者选择“双方都提交过评论或图片后再互相可见”。
 
-> ⚙️ **生产部署**：docker-compose + Caddy 自动 HTTPS 的说明见 [`DEPLOYMENT.md`](DEPLOYMENT.md)。真实密码只放服务器 `.env`，不提交仓库。
+> ⚙️ **生产部署**：docker-compose + 主机 Nginx HTTPS 的说明见 [`DEPLOYMENT.md`](DEPLOYMENT.md)。真实密码只放服务器 `.env`，不提交仓库。
 >
 > 🗄️ **媒体存储**：图片原图和缩略图写入 `MEDIA_ROOT`，数据库只保存相对 `storage_key`；旧 `images.data` / `images.thumb_data` 记录仍可回退读取。升级前已有的 `voices` 表和媒体文件会原样保留为不可达备份，不再通过产品接口读取。
 > 🏷️ **版本与镜像**：根目录 `VERSION` 是前后端唯一应用版本；普通提交只验证，只有与它一致的 `vX.Y.Z` 标签才发布同版本 GHCR 镜像。完整流程见 [`VERSIONING.md`](VERSIONING.md)。
@@ -48,7 +48,8 @@ app/
 tests/
   test_api.py             核心接口测试
 deploy/
-  caddy/Caddyfile         生产 HTTPS 与反代
+  nginx/                  主机 Nginx 站点与 TLS 片段
+  caddy/Caddyfile         回滚用 Caddy 配置，生产不再启用
 scripts/
   version.py              同步并校验统一应用版本
   deploy_host.py          按 LOVE_BOOK_SSH_HOSTS 做打包检查和生产发布

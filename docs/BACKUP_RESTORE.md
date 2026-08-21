@@ -1,6 +1,6 @@
 # Love Book 备份与恢复
 
-生产备份和更新工具已经安装在服务器部署目录，不随本仓库分发。本文记录当前实例的备份约定和恢复步骤。Caddy 的 `caddy_data` / `caddy_config` 不在备份范围内，灾备时由 Caddy 重新签发证书。
+生产备份和更新工具已经安装在服务器部署目录，不随本仓库分发。本文记录当前实例的备份约定和恢复步骤。主机 Nginx 证书在 `/etc/nginx/certs` 与 Let's Encrypt；灾备时用 certbot webroot 重新签发。旧 Caddy volume 不在应用备份范围内。CDN 静态文件在 `/var/www/cdn.qrqto.club`，需要单独备份，不在 `love_book_media` 里。
 
 从开发机查看备份时，使用 `LOVE_BOOK_SSH_HOSTS` 里的 SSH 名字。日常用 `ts3_qrqto`，需要 root 时用 `root_qrqto`。智能体不要硬编码 IP，应执行 `python scripts/deploy_host.py check --host ts3_qrqto`。
 
@@ -75,7 +75,7 @@ YYYYMMDDTHHMMSSZ_weekly/
 正式恢复会覆盖生产数据，必须在执行前再次获得明确授权。
 
 1. 确认目标恢复点的 SHA-256、时间、应用镜像版本和恢复范围。
-2. 停止 backend，保留 frontend 与 Caddy：
+2. 停止 backend，保留 frontend 与主机 Nginx：
 
    ```bash
    cd COMPOSE_WORKING_DIR
