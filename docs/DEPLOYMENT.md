@@ -9,7 +9,7 @@
 - **管理员复制入口链接**：前端运行时读取浏览器当前 `window.location.origin`
 - **邮件通知链接**：后端使用 `.env` 的 `APP_WEB_URL`，生产应设为 `https://qrqto.club`
 
-生产更新和备份已经安装在服务器部署目录，不随本仓库分发。真实密码和 SMTP 授权码只放服务器 `.env`。
+生产更新器和备份程序已经安装在服务器部署目录，不随本仓库分发。真实密码和 SMTP 授权码只放服务器 `.env`。从开发机把一次正式发布送到生产，使用 `deploy/hosts.toml` 里的命名 SSH 主机和 `python scripts/deploy_host.py`；私钥只放本机 `~/.ssh/config`。
 
 ## 镜像构建与版本标签
 
@@ -28,6 +28,64 @@ git push origin v0.5.0
 
 未经当次明确授权，不推送标签或镜像。
 
+## 智能体：从打包到发布
+
+智能体不要手写 `ssh user@ip`。先在 `deploy/hosts.toml` 里选一个命名主机，再用 `scripts/deploy_host.py`。当前仓库预置了两个生产入口，本机 `~/.ssh/config` 需要有同名 `Host`：
+
+| 命名主机 | SSH 别名 | 远程用户 | 用途 |
+| --- | --- | --- | --- |
+| `ts3_qrqto` | `ts3_qrqto` | `ts3` | 默认检查入口：连通性、Compose 状态、备份查看 |
+| `root_qrqto` | `root_qrqto` | `root` | 生产更新入口：运行已安装的 `/home/ts3/love-book/update.sh` |
+
+`ts3` 属于 `docker` 和 `sudo` 组，但不能免密 sudo，也不能拉取私有 GHCR 镜像，`docker-compose.override.yml` 由 root 拥有。因此状态检查走 `ts3_qrqto`，真正发布走 `root_qrqto`。
+
+本机 SSH 配置示例（密钥路径按本机实际文件修改，不要提交私钥）：
+
+```sshconfig
+Host ts3_qrqto
+    HostName qrqto.group
+    User ts3
+    IdentityFile ~/.ssh/ts3_qrqto/ts3_qrqto
+    IdentitiesOnly yes
+
+Host root_qrqto
+    HostName qrqto.group
+    User root
+    IdentityFile ~/.ssh/root_qrqto/root_qrqto
+    IdentitiesOnly yes
+```
+
+常用命令：
+
+```powershell
+python scripts/deploy_host.py list
+python scripts/deploy_host.py recipe
+python scripts/deploy_host.py package --tag v0.9.0
+python scripts/deploy_host.py check --host ts3_qrqto
+python scripts/deploy_host.py status --host ts3_qrqto
+python scripts/deploy_host.py update --host root_qrqto --dry-run
+python scripts/deploy_host.py update --host root_qrqto --yes
+```
+
+从默认主入口转发到更新主机：
+
+```powershell
+python scripts/deploy_host.py update --host ts3_qrqto --follow-update-host --dry-run
+```
+
+增加更多主机时，复制 `deploy/hosts.toml` 里的一段 `[hosts.NAME]`，或在已 gitignore 的 `deploy/hosts.local.toml` 里覆盖 `default_host`、超时或追加实验室主机。`NAME` 与 `ssh_alias` 必须是 SSH 安全标识符，并与 `~/.ssh/config` 的 `Host` 一致。`update_style = "updater"` 的主机必须提供 `update_command`；没有 GHCR 权限的主机应设 `update_style = "none"`，并用 `update_host` 指向可发布的主机。
+
+完整发布顺序：
+
+1. 整理 `VERSION` 与 `CHANGELOG.md`，运行 `python scripts/version.py sync`。
+2. `python scripts/deploy_host.py package --tag vX.Y.Z`，再跑后端测试和前端生产构建。
+3. 经用户明确授权后创建并推送 `vX.Y.Z` annotated tag，等待 GitHub Actions `release-images` 成功。
+4. `python scripts/deploy_host.py check --host ts3_qrqto` 与 `status`。
+5. 再次获得授权后 `python scripts/deploy_host.py update --host root_qrqto --yes`。
+6. `curl -fsS https://qrqto.club/api/health` 确认 `version` 与 `VERSION` 一致。
+
+生产 Compose 工作目录是 `/home/ts3/love-book`。更新器会拉取前后端稳定版 `latest`、核对 OCI 版本标签、仅在发现新版本时以 `ts3` 身份做 `pre-release` 备份，再启动并验证 `/api/health` 与首页。已经是最新版时不会备份或重启。失败只输出状态和日志，不自动回滚，也绝不会执行 `docker compose down -v`。
+
 ## 1. 目录结构
 
 ```text
@@ -35,8 +93,11 @@ git push origin v0.5.0
 ├── Dockerfile                    # 后端镜像
 ├── docker-compose.yml            # 后端 / 前端 / Caddy
 ├── deploy/
+│   ├── hosts.toml                # 命名 SSH 发布主机
 │   └── caddy/
 │       └── Caddyfile             # 自动 HTTPS 和反向代理
+├── scripts/
+│   └── deploy_host.py            # 智能体打包检查与远程发布
 ├── web/
 │   └── Dockerfile                # 前端镜像
 ├── .env                          # 实际运行配置，不提交
@@ -154,6 +215,8 @@ docker compose down
 | 功能 | 文件 |
 | --- | --- |
 | Docker 编排 | `docker-compose.yml` |
+| 命名 SSH 发布主机 | `deploy/hosts.toml`，本机覆盖 `deploy/hosts.local.toml` |
+| 智能体打包/发布 CLI | `scripts/deploy_host.py` |
 | 图片媒体 volume | `love_book_media:/app/media` |
 | 备份与恢复说明 | [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md) |
 | Caddy HTTPS 与反代 | `deploy/caddy/Caddyfile` |

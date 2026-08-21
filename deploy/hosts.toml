@@ -1,0 +1,42 @@
+# Love Book 命名 SSH 主机，供智能体把本地打包接到生产发布。
+# 私钥、口令和 IdentityFile 只放本机 ~/.ssh/config，不要写入本文件。
+# 新增主机：复制一段 [hosts.NAME]，NAME 与 ssh_alias 应对应 ~/.ssh/config 的 Host。
+# 本机覆盖或额外主机写在 deploy/hosts.local.toml（已 gitignore）。
+
+default_host = "ts3_qrqto"
+
+[hosts.ts3_qrqto]
+label = "生产应用账号"
+ssh_alias = "ts3_qrqto"
+user = "ts3"
+role = "production-app"
+compose_dir = "/home/ts3/love-book"
+health_url = "https://qrqto.club/api/health"
+site_url = "https://qrqto.club/"
+backup_command = "/home/ts3/bin/love-book-backup"
+backup_root = "/home/ts3/backups/love_book"
+backend_image = "ghcr.io/ahappymosquito/love_book-backend:latest"
+frontend_image = "ghcr.io/ahappymosquito/love_book-frontend:latest"
+update_style = "none"
+update_host = "root_qrqto"
+connect_timeout = 20
+capabilities = ["check", "status", "backup", "run"]
+notes = """日常连通性和状态用此主机。ts3 在 docker 组内，但不能免密 sudo，也不能拉取私有 GHCR 镜像，更不能改 root 拥有的 docker-compose.override.yml。发布更新请改用 update_host 指向的 root_qrqto，或加 --follow-update-host。"""
+
+[hosts.root_qrqto]
+label = "生产管理员账号"
+ssh_alias = "root_qrqto"
+user = "root"
+role = "production-admin"
+compose_dir = "/home/ts3/love-book"
+health_url = "https://qrqto.club/api/health"
+site_url = "https://qrqto.club/"
+backup_command = "runuser -u ts3 -- env HOME=/home/ts3 /home/ts3/bin/love-book-backup"
+backup_root = "/home/ts3/backups/love_book"
+backend_image = "ghcr.io/ahappymosquito/love_book-backend:latest"
+frontend_image = "ghcr.io/ahappymosquito/love_book-frontend:latest"
+update_style = "updater"
+update_command = "bash /home/ts3/love-book/update.sh"
+connect_timeout = 20
+capabilities = ["check", "status", "update", "backup", "run"]
+notes = """服务器已安装的 update.sh 用此主机执行：root 可读 Docker/GHCR 凭据并改写 override，备份会降权为 ts3。未经当次明确授权不要执行 update。"""

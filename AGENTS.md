@@ -15,6 +15,7 @@
 - 需要让技术实现可追踪；修改代码文件时，需要同步更新文件开头的功能介绍注释。
 - `VERSION` 是前后端应用版本的唯一真相；普通开发提交不得修改版本。只有准备正式发布时才按 SemVer 更新一次，并运行 `python scripts/version.py sync` 同步前端清单。
 - 正式发布标签必须为与 `VERSION` 一致的 `vX.Y.Z`；生产前后端镜像必须固定为同一版本标签或对应 digest，不得使用 `latest`。
+- 智能体打包到发布使用 `deploy/hosts.toml` 的命名 SSH 主机；默认检查入口是 `ts3_qrqto`，生产更新入口是 `root_qrqto`。本机额外主机写 `deploy/hosts.local.toml`。私钥只放 `~/.ssh/config`，命令走 `python scripts/deploy_host.py`。未经当次明确授权不得 `--yes` 执行更新、push 标签或发布镜像。
 
 ## 当前约定
 
@@ -48,6 +49,7 @@
 - 生产 Docker 公网入口使用 Caddy 自动申请和续期 `qrqto.club` / `www.qrqto.club` HTTPS 证书；邮件链接仍由后端 `APP_WEB_URL` 生成，生产应设为 `https://qrqto.club`。
 - 生产 Docker 媒体文件持久化在 named volume `love_book_media`，迁移服务器时需要和数据库一起备份。
 - 生产更新和备份工具已经安装在服务器部署目录，不随仓库分发。真实密码、SMTP 授权码和高德 / LLM key 只放服务器 `.env` 或环境变量，不提交到仓库。
+- 生产 SSH 别名由 `deploy/hosts.toml` 配置，可同时存在多个，例如 `ts3_qrqto`（应用账号，查状态）和 `root_qrqto`（管理员账号，跑已安装的 `update.sh`）。`ts3` 不能免密 sudo，也不能拉取私有 GHCR 镜像。
 
 ## 首页提醒约定
 

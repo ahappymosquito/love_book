@@ -44,9 +44,23 @@ git tag -a v0.5.0 -m "Love Book 0.5.0"
 
 候选镜像必须实际启动：后端 `/health` 需要返回候选版本和构建标识，前端首页需要返回 HTTP 200。只有明确推送 `vX.Y.Z` 标签才会发布 GHCR 镜像。发布工作流会拒绝与 `VERSION` 不一致的标签，并为前后端同时生成 `0.5.0` 与 `sha-xxxxxxx` 两类不可变标签；两套镜像都成功后才会把同一版本提升为稳定版 `latest` 并创建 GitHub Release。普通 `master` push 不会移动 `latest`。
 
+## 智能体打包到生产
+
+镜像发布成功后，用命名 SSH 主机把稳定版送到生产，不要手写 IP 或把私钥放进仓库。主机表是 [`deploy/hosts.toml`](../deploy/hosts.toml)；CLI 是 `python scripts/deploy_host.py`。默认检查主机为 `ts3_qrqto`，真正跑服务器更新器的是 `root_qrqto`。更多主机写 `deploy/hosts.local.toml`。完整说明见 [`DEPLOYMENT.md`](DEPLOYMENT.md)。
+
+```powershell
+python scripts/deploy_host.py package --tag v0.5.0
+python scripts/deploy_host.py check --host ts3_qrqto
+python scripts/deploy_host.py status --host ts3_qrqto
+python scripts/deploy_host.py update --host root_qrqto --dry-run
+python scripts/deploy_host.py update --host root_qrqto --yes
+```
+
+`update --yes` 会 SSH 到具备更新能力的主机，执行已安装的 `/home/ts3/love-book/update.sh`。该脚本拉取前后端稳定版 `latest`，确认两套镜像的 OCI 版本标签完全一致，仅在发现新版本时创建 `pre-release` 恢复点，然后启动并验证 `/api/health` 和首页。未经当次明确授权不得加 `--yes`。
+
 ## 生产部署与验证
 
-生产 Compose 工作目录独立于 Git 仓库，更新器和备份程序已经安装在服务器上，不随本仓库分发。日常更新拉取前后端稳定版 `latest`，确认两套镜像的 OCI 版本标签完全一致，仅在发现新版本时创建 `pre-release` 恢复点，然后启动并验证 `/api/health` 和首页。`/api/health` 返回应用版本和完整 Git SHA。
+生产 Compose 工作目录独立于 Git 仓库，更新器和备份程序已经安装在服务器上，不随本仓库分发。`/api/health` 返回应用版本和完整 Git SHA。
 
 ```bash
 curl -fsS https://qrqto.club/api/health

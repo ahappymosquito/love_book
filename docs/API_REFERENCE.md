@@ -47,8 +47,12 @@ app/
       contents.py         评论、留言 reaction、图片和内容接口
 tests/
   test_api.py             核心接口测试
+deploy/
+  hosts.toml              命名 SSH 发布主机（ts3_qrqto / root_qrqto）
+  caddy/Caddyfile         生产 HTTPS 与反代
 scripts/
-  version.py                  同步并校验统一应用版本
+  version.py              同步并校验统一应用版本
+  deploy_host.py          按命名 SSH 主机做打包检查和生产发布
 VERSION                       前后端唯一应用版本
 CHANGELOG.md                  未发布与正式发布变更记录
 pyproject.toml / poetry.lock  后端直接依赖与完整锁文件

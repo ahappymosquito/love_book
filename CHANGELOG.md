@@ -4,6 +4,10 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ## [Unreleased]
 
+### Added
+
+- Added a named SSH host catalog and `scripts/deploy_host.py` so agents can package locally, then check or publish through `ts3_qrqto`, `root_qrqto`, or extra hosts in `deploy/hosts.local.toml`.
+
 ### Changed
 
 - Replaced the atlas-based login runner with a fully code-drawn 花田拾光: geometric Xiaohua, hashed meadow scenery, and shape obstacles, plus a start menu. Visitors with a stored or URL token skip the game and enter the app; play starts only from the menu.
