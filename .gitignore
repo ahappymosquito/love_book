@@ -9,7 +9,6 @@ media/
 *.log
 pytest-cache-files-*/
 .env
-deploy/hosts.local.toml
 .idea
 .qoder
 .codegraph/

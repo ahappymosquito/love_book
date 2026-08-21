@@ -2,7 +2,7 @@
 
 生产备份和更新工具已经安装在服务器部署目录，不随本仓库分发。本文记录当前实例的备份约定和恢复步骤。Caddy 的 `caddy_data` / `caddy_config` 不在备份范围内，灾备时由 Caddy 重新签发证书。
 
-从开发机查看或触发备份时，使用 [`deploy/hosts.toml`](../deploy/hosts.toml) 的命名 SSH 主机：日常用 `ts3_qrqto`（远程用户 `ts3`，备份命令 `/home/ts3/bin/love-book-backup`，备份目录 `/home/ts3/backups/love_book`）；需要 root 时用 `root_qrqto`。智能体不要硬编码 IP，应执行 `python scripts/deploy_host.py check --host ts3_qrqto`。
+从开发机查看或触发备份时，使用 `.env.example` / `.env` 的 `LOVE_BOOK_SSH_*` 命名主机：日常用 `ts3_qrqto`（远程用户 `ts3`，备份命令 `/home/ts3/bin/love-book-backup`，备份目录 `/home/ts3/backups/love_book`）；需要 root 时用 `root_qrqto`。智能体不要硬编码 IP，应执行 `python scripts/deploy_host.py check --host ts3_qrqto`。
 
 ## 恢复目标与已接受风险
 

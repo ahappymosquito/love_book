@@ -41,7 +41,7 @@ love_book/
 ├─ web/                 Next.js 前端
 ├─ tests/               后端与版本回归测试
 ├─ scripts/             版本校验与命名 SSH 发布
-├─ deploy/              Caddy 配置与 SSH 主机目录
+├─ deploy/              Caddy 等部署配置
 ├─ docs/
 │  ├─ ai/               产品与设计约束，供开发者和 AI 协作使用
 │  └─ audits/           带日期的历史审计记录
@@ -103,7 +103,7 @@ poetry run python -m pytest -q --basetemp=.pytest-tmp/local
 cmd /c npm run build
 ```
 
-根目录 `VERSION` 是唯一应用版本。只有与它完全一致的 `vX.Y.Z` 标签会触发 GitHub Actions 构建前后端镜像；两套镜像成功后会同时提升为稳定版 `latest` 并创建 GitHub Release。智能体打包到发布使用 `python scripts/deploy_host.py` 和 `deploy/hosts.toml` 中的命名 SSH 主机（默认 `ts3_qrqto`，更新走 `root_qrqto`）；生产更新器和备份程序仍安装在服务器上，不随仓库分发。详见 [版本与发布](docs/VERSIONING.md) 和 [生产部署](docs/DEPLOYMENT.md)。
+根目录 `VERSION` 是唯一应用版本。只有与它完全一致的 `vX.Y.Z` 标签会触发 GitHub Actions 构建前后端镜像；两套镜像成功后会同时提升为稳定版 `latest` 并创建 GitHub Release。智能体打包到发布先读 `.env.example` 的 `LOVE_BOOK_SSH_*`，再用 `python scripts/deploy_host.py`（默认 `ts3_qrqto`，更新走 `root_qrqto`）；生产更新器和备份程序仍安装在服务器上，不随仓库分发。详见 [版本与发布](docs/VERSIONING.md) 和 [生产部署](docs/DEPLOYMENT.md)。
 
 ## 数据安全
 

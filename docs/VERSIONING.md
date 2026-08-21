@@ -46,7 +46,7 @@ git tag -a v0.5.0 -m "Love Book 0.5.0"
 
 ## 智能体打包到生产
 
-镜像发布成功后，用命名 SSH 主机把稳定版送到生产，不要手写 IP 或把私钥放进仓库。主机表是 [`deploy/hosts.toml`](../deploy/hosts.toml)；CLI 是 `python scripts/deploy_host.py`。默认检查主机为 `ts3_qrqto`，真正跑服务器更新器的是 `root_qrqto`。更多主机写 `deploy/hosts.local.toml`。完整说明见 [`DEPLOYMENT.md`](DEPLOYMENT.md)。
+镜像发布成功后，用命名 SSH 主机把稳定版送到生产，不要手写 IP 或把私钥放进仓库。智能体先读 [`.env.example`](../.env.example) 的 `LOVE_BOOK_SSH_*`，本机覆盖写在 `.env`；CLI 是 `python scripts/deploy_host.py`。默认检查主机为 `ts3_qrqto`，真正跑服务器更新器的是 `root_qrqto`。更多主机加进 `LOVE_BOOK_SSH_HOSTS`。完整说明见 [`DEPLOYMENT.md`](DEPLOYMENT.md)。
 
 ```powershell
 python scripts/deploy_host.py package --tag v0.5.0

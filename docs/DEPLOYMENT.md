@@ -9,7 +9,7 @@
 - **管理员复制入口链接**：前端运行时读取浏览器当前 `window.location.origin`
 - **邮件通知链接**：后端使用 `.env` 的 `APP_WEB_URL`，生产应设为 `https://qrqto.club`
 
-生产更新器和备份程序已经安装在服务器部署目录，不随本仓库分发。真实密码和 SMTP 授权码只放服务器 `.env`。从开发机把一次正式发布送到生产，使用 `deploy/hosts.toml` 里的命名 SSH 主机和 `python scripts/deploy_host.py`；私钥只放本机 `~/.ssh/config`。
+生产更新器和备份程序已经安装在服务器部署目录，不随本仓库分发。真实密码和 SMTP 授权码只放服务器 `.env`。智能体从开发机把一次正式发布送到生产时，先读 `.env.example` 的 `LOVE_BOOK_SSH_*`，再用 `python scripts/deploy_host.py`；私钥只放本机 `~/.ssh/config`。
 
 ## 镜像构建与版本标签
 
@@ -30,7 +30,7 @@ git push origin v0.5.0
 
 ## 智能体：从打包到发布
 
-智能体不要手写 `ssh user@ip`。先在 `deploy/hosts.toml` 里选一个命名主机，再用 `scripts/deploy_host.py`。当前仓库预置了两个生产入口，本机 `~/.ssh/config` 需要有同名 `Host`：
+智能体不要手写 `ssh user@ip`。先读 `.env.example`（本机覆盖在 `.env`）里的 `LOVE_BOOK_SSH_*`，再用 `scripts/deploy_host.py`。当前预置了两个生产入口，本机 `~/.ssh/config` 需要有同名 `Host`：
 
 | 命名主机 | SSH 别名 | 远程用户 | 用途 |
 | --- | --- | --- | --- |
@@ -73,7 +73,16 @@ python scripts/deploy_host.py update --host root_qrqto --yes
 python scripts/deploy_host.py update --host ts3_qrqto --follow-update-host --dry-run
 ```
 
-增加更多主机时，复制 `deploy/hosts.toml` 里的一段 `[hosts.NAME]`，或在已 gitignore 的 `deploy/hosts.local.toml` 里覆盖 `default_host`、超时或追加实验室主机。`NAME` 与 `ssh_alias` 必须是 SSH 安全标识符，并与 `~/.ssh/config` 的 `Host` 一致。`update_style = "updater"` 的主机必须提供 `update_command`；没有 GHCR 权限的主机应设 `update_style = "none"`，并用 `update_host` 指向可发布的主机。
+增加更多主机时，把名字加进 `LOVE_BOOK_SSH_HOSTS`，再写 `LOVE_BOOK_SSH_<NAME>_*`。`<NAME>` 是主机名把非字母数字换成下划线后的大写形式，例如 `root_qrqto` → `ROOT_QRQTO`，`lab_qrqto` → `LAB_QRQTO`。主机名必须与 `~/.ssh/config` 的 `Host` 一致。能跑更新器的主机设置 `LOVE_BOOK_SSH_<NAME>_UPDATE_STYLE=updater`；没有 GHCR 权限的主机设 `none`，并用 `LOVE_BOOK_SSH_UPDATE_HOST` 指向可发布的主机。
+
+```env
+LOVE_BOOK_SSH_HOSTS=ts3_qrqto,root_qrqto,lab_qrqto
+LOVE_BOOK_SSH_LAB_QRQTO_USER=ts3
+LOVE_BOOK_SSH_LAB_QRQTO_COMPOSE_DIR=/home/ts3/love-book-lab
+LOVE_BOOK_SSH_LAB_QRQTO_HEALTH_URL=https://lab.example/api/health
+LOVE_BOOK_SSH_LAB_QRQTO_SITE_URL=https://lab.example/
+LOVE_BOOK_SSH_LAB_QRQTO_UPDATE_STYLE=none
+```
 
 完整发布顺序：
 
@@ -93,15 +102,14 @@ python scripts/deploy_host.py update --host ts3_qrqto --follow-update-host --dry
 ├── Dockerfile                    # 后端镜像
 ├── docker-compose.yml            # 后端 / 前端 / Caddy
 ├── deploy/
-│   ├── hosts.toml                # 命名 SSH 发布主机
 │   └── caddy/
 │       └── Caddyfile             # 自动 HTTPS 和反向代理
 ├── scripts/
-│   └── deploy_host.py            # 智能体打包检查与远程发布
+│   └── deploy_host.py            # 按 LOVE_BOOK_SSH_* 做打包检查与远程发布
 ├── web/
 │   └── Dockerfile                # 前端镜像
 ├── .env                          # 实际运行配置，不提交
-└── .env.example                  # 占位模板
+└── .env.example                  # 占位模板；含智能体 SSH 发布主机
 ```
 
 ## 2. 前置条件
@@ -135,8 +143,9 @@ cp .env.example .env
 | `SMTP_*` | 你自己的邮件服务 | 用于事件 / 评论通知 |
 | `AMAP_MAPS_API_KEY` | 高德 Web 服务 Key | `/todo` 搜索与附近抽奖；管理端可覆盖 |
 | `LLM_*` | 你自己的模型服务 | 管理端获取模型列表和测试连接 |
+| `LOVE_BOOK_SSH_*` | 见 `.env.example` | 开发机给智能体看的命名 SSH 主机；生产容器不读取这些变量。私钥仍放 `~/.ssh/config` |
 
-真实密钥只放 `.env` 或服务器环境变量。管理端 AI / 模型配置会写入数据库，迁移服务器时需要和业务数据一起备份。
+真实密钥只放 `.env` 或服务器环境变量。管理端 AI / 模型配置会写入数据库，迁移服务器时需要和业务数据一起备份。开发机 `.env` 里的 `LOVE_BOOK_SSH_*` 只给智能体发布流程使用，不要写进生产 Compose。
 
 ## 4. 部署命令
 
@@ -215,7 +224,7 @@ docker compose down
 | 功能 | 文件 |
 | --- | --- |
 | Docker 编排 | `docker-compose.yml` |
-| 命名 SSH 发布主机 | `deploy/hosts.toml`，本机覆盖 `deploy/hosts.local.toml` |
+| 命名 SSH 发布主机 | `.env.example` / `.env` 的 `LOVE_BOOK_SSH_*` |
 | 智能体打包/发布 CLI | `scripts/deploy_host.py` |
 | 图片媒体 volume | `love_book_media:/app/media` |
 | 备份与恢复说明 | [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md) |

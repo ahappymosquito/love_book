@@ -1,4 +1,4 @@
-"""按 deploy/hosts.toml 的命名 SSH 主机做打包检查、连通性探测和生产发布，供智能体自动走完发布流程。"""
+"""从 .env / .env.example 的 LOVE_BOOK_SSH_* 读取命名 SSH 主机，供智能体完成打包到发布。"""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,11 +18,10 @@ from urllib.request import urlopen
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_HOSTS_FILE = PROJECT_ROOT / "deploy" / "hosts.toml"
-DEFAULT_LOCAL_HOSTS_FILE = PROJECT_ROOT / "deploy" / "hosts.local.toml"
-HOSTS_ENV = "LOVE_BOOK_DEPLOY_HOSTS"
-LOCAL_HOSTS_ENV = "LOVE_BOOK_DEPLOY_HOSTS_LOCAL"
+DEFAULT_ENV_FILE = PROJECT_ROOT / ".env"
+DEFAULT_EXAMPLE_FILE = PROJECT_ROOT / ".env.example"
 VERSION_SCRIPT = PROJECT_ROOT / "scripts" / "version.py"
+ENV_PREFIX = "LOVE_BOOK_SSH_"
 
 NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 UNIX_PATH_PATTERN = re.compile(r"^/[\w./-]+$")
@@ -33,7 +33,7 @@ REQUIRED_PACKAGE_FILES = (
     "web/Dockerfile",
     "docker-compose.yml",
     "deploy/caddy/Caddyfile",
-    "deploy/hosts.toml",
+    ".env.example",
     "VERSION",
     "CHANGELOG.md",
     "pyproject.toml",
@@ -85,37 +85,67 @@ def posix_quote(value: str) -> str:
     return "'" + value.replace("'", "'\"'\"'") + "'"
 
 
-def read_toml(path: Path) -> dict[str, Any]:
-    try:
-        import tomllib
-    except ImportError as exc:  # pragma: no cover - Python 3.11+ is required
-        raise DeployHostError("Python 3.11+ is required to read deploy/hosts.toml") from exc
-    try:
-        with path.open("rb") as handle:
-            payload = tomllib.load(handle)
-    except (OSError, tomllib.TOMLDecodeError) as exc:
-        raise DeployHostError(f"Cannot read host catalog {path}: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise DeployHostError(f"{path} must contain a TOML table")
-    return payload
+def env_name_key(name: str) -> str:
+    """把主机名 ts3_qrqto 转成环境变量中的 TS3_QRQTO。"""
+    return re.sub(r"[^A-Za-z0-9]", "_", name).upper()
 
 
-def merge_catalog_dicts(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
-    merged = dict(base)
-    if "default_host" in overlay:
-        merged["default_host"] = overlay["default_host"]
-    hosts = dict(base.get("hosts") or {})
-    overlay_hosts = overlay.get("hosts") or {}
-    if not isinstance(hosts, dict) or not isinstance(overlay_hosts, dict):
-        raise DeployHostError("hosts must be a table of named SSH targets")
-    for name, spec in overlay_hosts.items():
-        if not isinstance(spec, dict):
-            raise DeployHostError(f"Host {name!r} must be a table")
-        current = dict(hosts.get(name) or {})
-        current.update(spec)
-        hosts[name] = current
-    merged["hosts"] = hosts
-    return merged
+def split_csv(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def mapping_get(env: Mapping[str, str], key: str) -> str:
+    value = env.get(key, "")
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def parse_env_file(path: Path) -> dict[str, str]:
+    """读取 KEY=VALUE 行。不执行 shell，也不把密钥打到日志。"""
+    values: dict[str, str] = {}
+    if not path.is_file():
+        return values
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        if not key:
+            continue
+        values[key] = value.strip().strip("'").strip('"')
+    return values
+
+
+def collect_ssh_env(
+    env_file: Path | None = None,
+    example_file: Path | None = None,
+    *,
+    include_process: bool | None = None,
+) -> tuple[dict[str, str], Path]:
+    """合并顺序：.env.example → .env → 进程里已有的 LOVE_BOOK_SSH_*。
+
+    显式传入 env 文件时不叠加进程环境，避免测试被本机 dotenv 污染。
+    """
+    using_defaults = env_file is None and example_file is None
+    example = example_file if example_file is not None else DEFAULT_EXAMPLE_FILE
+    local = env_file if env_file is not None else DEFAULT_ENV_FILE
+    merged: dict[str, str] = {}
+    source = example
+    if example.is_file():
+        merged.update(parse_env_file(example))
+        source = example
+    if local.is_file():
+        merged.update(parse_env_file(local))
+        source = local
+    if include_process is None:
+        include_process = using_defaults
+    if include_process:
+        for key, value in os.environ.items():
+            if key.startswith(ENV_PREFIX):
+                merged[key] = value
+    return merged, source
 
 
 def _require_name(value: str, field: str) -> str:
@@ -152,10 +182,15 @@ def parse_host(name: str, spec: dict[str, Any]) -> DeployHost:
     ssh_alias = _require_name(_optional_text(spec, "ssh_alias") or name, "ssh_alias")
     user = _optional_text(spec, "user")
     if not user:
-        raise DeployHostError(f"Host {name} is missing user")
+        raise DeployHostError(
+            f"Host {name} is missing user. Set {ENV_PREFIX}{env_name_key(name)}_USER in .env.example"
+        )
     compose_dir = _require_unix_path(_optional_text(spec, "compose_dir"), "compose_dir")
     health_url = _require_https_url(_optional_text(spec, "health_url"), "health_url")
-    site_url = _require_https_url(_optional_text(spec, "site_url") or health_url.rsplit("/", 1)[0] + "/", "site_url")
+    site_url = _require_https_url(
+        _optional_text(spec, "site_url") or health_url.rsplit("/", 1)[0] + "/",
+        "site_url",
+    )
     update_style = _optional_text(spec, "update_style") or "none"
     if update_style not in ALLOWED_UPDATE_STYLES:
         raise DeployHostError(f"Host {name} has unsupported update_style {update_style!r}")
@@ -167,7 +202,11 @@ def parse_host(name: str, spec: dict[str, Any]) -> DeployHost:
     update_host = _optional_text(spec, "update_host")
     if update_host:
         _require_name(update_host, "update_host")
+    if update_host == name:
+        update_host = ""
     capabilities_raw = spec.get("capabilities", ["check", "status", "run"])
+    if isinstance(capabilities_raw, str):
+        capabilities_raw = split_csv(capabilities_raw)
     if not isinstance(capabilities_raw, list) or not all(isinstance(item, str) for item in capabilities_raw):
         raise DeployHostError(f"Host {name} capabilities must be a list of strings")
     capabilities = tuple(item.strip() for item in capabilities_raw)
@@ -175,6 +214,8 @@ def parse_host(name: str, spec: dict[str, Any]) -> DeployHost:
     if unknown:
         raise DeployHostError(f"Host {name} has unknown capabilities: {unknown}")
     timeout = spec.get("connect_timeout", 20)
+    if isinstance(timeout, str) and timeout.isdigit():
+        timeout = int(timeout)
     if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout < 1:
         raise DeployHostError(f"Host {name} connect_timeout must be a positive integer")
     backup_root = _optional_text(spec, "backup_root")
@@ -202,29 +243,90 @@ def parse_host(name: str, spec: dict[str, Any]) -> DeployHost:
     )
 
 
-def load_catalog(hosts_file: Path | None = None, local_file: Path | None = None) -> HostCatalog:
-    source = Path(os.environ.get(HOSTS_ENV, hosts_file or DEFAULT_HOSTS_FILE))
-    if not source.is_file():
-        raise DeployHostError(f"Host catalog not found: {source}")
-    payload = read_toml(source)
-    overlay_path = Path(os.environ.get(LOCAL_HOSTS_ENV, local_file or DEFAULT_LOCAL_HOSTS_FILE))
-    if overlay_path.is_file():
-        payload = merge_catalog_dicts(payload, read_toml(overlay_path))
-    raw_hosts = payload.get("hosts")
-    if not isinstance(raw_hosts, dict) or not raw_hosts:
-        raise DeployHostError(f"{source} must define at least one [hosts.NAME] table")
+def host_spec_from_env(name: str, env: Mapping[str, str]) -> dict[str, Any]:
+    prefix = f"{ENV_PREFIX}{env_name_key(name)}_"
+    default_update_host = mapping_get(env, f"{ENV_PREFIX}UPDATE_HOST")
+
+    def host_or_shared(field: str, shared: str) -> str:
+        return mapping_get(env, prefix + field) or mapping_get(env, ENV_PREFIX + shared)
+
+    caps_raw = mapping_get(env, prefix + "CAPABILITIES")
+    update_style = mapping_get(env, prefix + "UPDATE_STYLE")
+    if not update_style:
+        if caps_raw and "update" in split_csv(caps_raw):
+            update_style = "updater"
+        elif name == default_update_host:
+            update_style = "updater"
+        else:
+            update_style = "none"
+    if caps_raw:
+        capabilities = split_csv(caps_raw)
+    elif update_style == "updater":
+        capabilities = ["check", "status", "update", "backup", "run"]
+    else:
+        capabilities = ["check", "status", "backup", "run"]
+    timeout_text = host_or_shared("CONNECT_TIMEOUT", "CONNECT_TIMEOUT") or "20"
+    if not timeout_text.isdigit():
+        raise DeployHostError(f"Host {name} connect_timeout must be a positive integer")
+    update_host = mapping_get(env, prefix + "UPDATE_HOST")
+    if not update_host and update_style == "none":
+        update_host = default_update_host
+    update_command = mapping_get(env, prefix + "UPDATE_COMMAND")
+    if update_style == "updater" and not update_command:
+        update_command = mapping_get(env, f"{ENV_PREFIX}UPDATE_COMMAND")
+    return {
+        "ssh_alias": mapping_get(env, prefix + "ALIAS") or name,
+        "user": mapping_get(env, prefix + "USER"),
+        "role": mapping_get(env, prefix + "ROLE"),
+        "label": mapping_get(env, prefix + "LABEL"),
+        "compose_dir": host_or_shared("COMPOSE_DIR", "COMPOSE_DIR"),
+        "health_url": host_or_shared("HEALTH_URL", "HEALTH_URL"),
+        "site_url": host_or_shared("SITE_URL", "SITE_URL"),
+        "update_style": update_style,
+        "update_command": update_command,
+        "update_host": update_host,
+        "backup_command": host_or_shared("BACKUP_COMMAND", "BACKUP_COMMAND"),
+        "backup_root": host_or_shared("BACKUP_ROOT", "BACKUP_ROOT"),
+        "backend_image": host_or_shared("BACKEND_IMAGE", "BACKEND_IMAGE"),
+        "frontend_image": host_or_shared("FRONTEND_IMAGE", "FRONTEND_IMAGE"),
+        "connect_timeout": int(timeout_text),
+        "capabilities": capabilities,
+        "notes": mapping_get(env, prefix + "NOTES"),
+    }
+
+
+def load_catalog(
+    env_file: Path | None = None,
+    example_file: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> HostCatalog:
+    if environ is None:
+        env, source = collect_ssh_env(env_file, example_file)
+    else:
+        env = dict(environ)
+        source = env_file or example_file or DEFAULT_EXAMPLE_FILE
+    hosts_list = split_csv(mapping_get(env, f"{ENV_PREFIX}HOSTS"))
+    if not hosts_list:
+        raise DeployHostError(
+            "LOVE_BOOK_SSH_HOSTS is missing. Agents should read the SSH block in .env.example"
+        )
+    default_host = mapping_get(env, f"{ENV_PREFIX}DEFAULT_HOST") or hosts_list[0]
     hosts: dict[str, DeployHost] = {}
-    for name, spec in raw_hosts.items():
-        if not isinstance(spec, dict):
-            raise DeployHostError(f"Host {name!r} must be a table")
-        hosts[name] = parse_host(name, spec)
-    default_host = str(payload.get("default_host") or next(iter(hosts)))
+    for name in hosts_list:
+        hosts[name] = parse_host(name, host_spec_from_env(name, env))
     if default_host not in hosts:
-        raise DeployHostError(f"default_host {default_host!r} is not defined")
+        raise DeployHostError(f"LOVE_BOOK_SSH_DEFAULT_HOST {default_host!r} is not in LOVE_BOOK_SSH_HOSTS")
     for host in hosts.values():
         if host.update_host and host.update_host not in hosts:
             raise DeployHostError(f"Host {host.name} update_host {host.update_host!r} is not defined")
     return HostCatalog(default_host=default_host, hosts=hosts, source=source)
+
+
+def catalog_update_host(catalog: HostCatalog) -> str:
+    for host in catalog.hosts.values():
+        if "update" in host.capabilities:
+            return host.name
+    return catalog.default_host
 
 
 def resolve_host(catalog: HostCatalog, name: str | None) -> DeployHost:
@@ -412,7 +514,7 @@ def run_version_check(tag: str | None = None) -> str:
     return (result.stdout or "").strip()
 
 
-def cmd_package(tag: str | None) -> int:
+def cmd_package(tag: str | None, catalog: HostCatalog) -> int:
     print("===== 打包前检查 =====")
     version_output = run_version_check(tag)
     print(version_output)
@@ -422,18 +524,22 @@ def cmd_package(tag: str | None) -> int:
     print("required_files=ok")
     version = (PROJECT_ROOT / "VERSION").read_text(encoding="utf-8").strip()
     print(f"package_version={version}")
+    update_host = catalog_update_host(catalog)
     print("下一步（推送标签和发布镜像需要当次明确授权）：")
     print(f"  git tag -a v{version} -m \"Love Book {version}\"")
     print(f"  git push origin v{version}")
     print("  等待 GitHub Actions release-images 成功")
-    print("  python scripts/deploy_host.py check --host ts3_qrqto")
-    print("  python scripts/deploy_host.py update --host root_qrqto --yes")
+    print(f"  python scripts/deploy_host.py check --host {catalog.default_host}")
+    print(f"  python scripts/deploy_host.py update --host {update_host} --yes")
     return 0
 
 
 def cmd_recipe(catalog: HostCatalog) -> int:
+    update_host = catalog_update_host(catalog)
     print(
         f"""Love Book 智能体打包到发布
+
+先读 .env.example 里的 LOVE_BOOK_SSH_* 段，本机覆盖写在 .env。不要手写 IP，不要把私钥放进 env。
 
 1. 只有正式发布才改 VERSION / CHANGELOG，并运行 python scripts/version.py sync
 2. python scripts/deploy_host.py package --tag vX.Y.Z
@@ -442,12 +548,12 @@ def cmd_recipe(catalog: HostCatalog) -> int:
 5. 等待 GitHub Actions 构建同版本前后端镜像并提升 latest
 6. python scripts/deploy_host.py check --host {catalog.default_host}
 7. python scripts/deploy_host.py status --host {catalog.default_host}
-8. python scripts/deploy_host.py update --host root_qrqto --yes
+8. python scripts/deploy_host.py update --host {update_host} --yes
    （若坚持从默认主入口发布：python scripts/deploy_host.py update --host {catalog.default_host} --follow-update-host --yes）
 9. curl -fsS https://qrqto.club/api/health  确认 version 与 VERSION 一致
 
-命名主机来自 {catalog.source}。本机额外主机写 deploy/hosts.local.toml。
-私钥只放 ~/.ssh/config 的 Host 条目，例如 ts3_qrqto、root_qrqto。
+当前主机来自 {catalog.source}。增加主机：把名字写入 LOVE_BOOK_SSH_HOSTS，并补 LOVE_BOOK_SSH_<NAME>_* 。
+私钥只放 ~/.ssh/config 的 Host 条目，名称与 LOVE_BOOK_SSH_HOSTS 一致。
 """.strip()
     )
     return 0
@@ -520,33 +626,33 @@ def cmd_run(host: DeployHost, remote_parts: list[str]) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--hosts-file", type=Path, help="override deploy/hosts.toml")
-    parser.add_argument("--local-hosts-file", type=Path, help="override deploy/hosts.local.toml")
+    parser.add_argument("--env-file", type=Path, help="覆盖本机 .env")
+    parser.add_argument("--example-file", type=Path, help="覆盖 .env.example")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("list", help="列出已配置的命名 SSH 主机")
     subparsers.add_parser("recipe", help="打印智能体打包到发布步骤")
 
     show = subparsers.add_parser("show", help="显示一个命名主机的完整参数")
-    show.add_argument("--host", help="命名主机，默认 default_host")
+    show.add_argument("--host", help="命名主机，默认 LOVE_BOOK_SSH_DEFAULT_HOST")
 
     check = subparsers.add_parser("check", help="BatchMode SSH 探测目录、Docker 和更新器")
-    check.add_argument("--host", help="命名主机，默认 default_host")
+    check.add_argument("--host", help="命名主机，默认 LOVE_BOOK_SSH_DEFAULT_HOST")
 
     status = subparsers.add_parser("status", help="查看远程 Compose 状态和健康检查")
-    status.add_argument("--host", help="命名主机，默认 default_host")
+    status.add_argument("--host", help="命名主机，默认 LOVE_BOOK_SSH_DEFAULT_HOST")
 
     package = subparsers.add_parser("package", help="本地打包前检查版本和必要文件")
     package.add_argument("--tag", help="正式发布标签，例如 v0.9.0")
 
     update = subparsers.add_parser("update", help="通过具备更新能力的主机执行生产更新器")
-    update.add_argument("--host", help="命名主机，默认 default_host")
+    update.add_argument("--host", help="命名主机，默认 LOVE_BOOK_SSH_DEFAULT_HOST")
     update.add_argument("--yes", action="store_true", help="确认执行生产更新")
     update.add_argument("--dry-run", action="store_true", help="只打印 SSH 命令，不执行")
     update.add_argument("--follow-update-host", action="store_true", help="从无更新能力的主入口跳到 update_host")
 
     run = subparsers.add_parser("run", help="在命名主机上执行一条远程命令")
-    run.add_argument("--host", help="命名主机，默认 default_host")
+    run.add_argument("--host", help="命名主机，默认 LOVE_BOOK_SSH_DEFAULT_HOST")
     run.add_argument("remote_command", nargs=argparse.REMAINDER, help="远程命令，建议写在 -- 后面")
     return parser
 
@@ -555,13 +661,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        catalog = load_catalog(args.hosts_file, args.local_hosts_file)
+        catalog = load_catalog(args.env_file, args.example_file)
         if args.command == "list":
             return cmd_list(catalog)
         if args.command == "recipe":
             return cmd_recipe(catalog)
         if args.command == "package":
-            return cmd_package(args.tag)
+            return cmd_package(args.tag, catalog)
         host = resolve_host(catalog, getattr(args, "host", None))
         if args.command == "show":
             return cmd_show(host)
