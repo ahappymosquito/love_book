@@ -6,7 +6,7 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ### Added
 
-- Added `LOVE_BOOK_SSH_*` env parameters and `scripts/deploy_host.py` so agents can package locally, then check or publish through named hosts such as `ts3_qrqto` and `root_qrqto`.
+- Added `LOVE_BOOK_SSH_HOSTS` and `scripts/deploy_host.py` so agents can package locally, then check or publish through named `~/.ssh/config` hosts such as `ts3_qrqto` and `root_qrqto`.
 
 ### Changed
 

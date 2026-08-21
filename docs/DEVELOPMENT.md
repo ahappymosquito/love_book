@@ -41,4 +41,4 @@
 - `.env` 可配置 `AMAP_MAPS_API_KEY`，用于餐厅搜索、详情解析和附近抽奖；管理端也可以单独覆盖并保存高德 key。
 - 管理端 AI 配置使用 `.env` 中的 `LLM_OPENAI_BASE_URL`、`LLM_ANTHROPIC_BASE_URL`、`LLM_API_KEY`、`LLM_PROTOCOL`、`LLM_MODEL` 作为初始默认。页面可保存协议、对应地址、token 和选中模型；获取模型列表后会在下拉框展示模型数量，选择模型会自动测试连接。
 - 本地测试使用 `poetry run python -m pytest`；如果 Windows 默认临时目录无权限，可传入 `--basetemp=.pytest-tmp/local`。
-- 生产发布不走本机 `start_dev.bat`。智能体先读 `.env.example` 的 `LOVE_BOOK_SSH_*`，步骤见 [DEPLOYMENT.md](DEPLOYMENT.md)。
+- 生产发布不走本机 `start_dev.bat`。智能体只读 `LOVE_BOOK_SSH_HOSTS`，步骤见 [DEPLOYMENT.md](DEPLOYMENT.md)。

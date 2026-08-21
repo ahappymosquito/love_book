@@ -103,7 +103,7 @@ poetry run python -m pytest -q --basetemp=.pytest-tmp/local
 cmd /c npm run build
 ```
 
-根目录 `VERSION` 是唯一应用版本。只有与它完全一致的 `vX.Y.Z` 标签会触发 GitHub Actions 构建前后端镜像；两套镜像成功后会同时提升为稳定版 `latest` 并创建 GitHub Release。智能体打包到发布先读 `.env.example` 的 `LOVE_BOOK_SSH_*`，再用 `python scripts/deploy_host.py`（默认 `ts3_qrqto`，更新走 `root_qrqto`）；生产更新器和备份程序仍安装在服务器上，不随仓库分发。详见 [版本与发布](docs/VERSIONING.md) 和 [生产部署](docs/DEPLOYMENT.md)。
+根目录 `VERSION` 是唯一应用版本。只有与它完全一致的 `vX.Y.Z` 标签会触发 GitHub Actions 构建前后端镜像；两套镜像成功后会同时提升为稳定版 `latest` 并创建 GitHub Release。智能体打包到发布只读 `LOVE_BOOK_SSH_HOSTS`，再用 `python scripts/deploy_host.py`；生产更新器和备份程序仍安装在服务器上，不随仓库分发。详见 [版本与发布](docs/VERSIONING.md) 和 [生产部署](docs/DEPLOYMENT.md)。
 
 ## 数据安全
 

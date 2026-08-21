@@ -51,8 +51,8 @@ deploy/
   caddy/Caddyfile         生产 HTTPS 与反代
 scripts/
   version.py              同步并校验统一应用版本
-  deploy_host.py          按 .env 的 LOVE_BOOK_SSH_* 做打包检查和生产发布
-.env.example                  含智能体 SSH 发布主机参数
+  deploy_host.py          按 LOVE_BOOK_SSH_HOSTS 做打包检查和生产发布
+.env.example                  含 LOVE_BOOK_SSH_HOSTS
 VERSION                       前后端唯一应用版本
 CHANGELOG.md                  未发布与正式发布变更记录
 pyproject.toml / poetry.lock  后端直接依赖与完整锁文件

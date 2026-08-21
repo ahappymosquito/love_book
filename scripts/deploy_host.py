@@ -1,4 +1,4 @@
-"""从 .env / .env.example 的 LOVE_BOOK_SSH_* 读取命名 SSH 主机，供智能体完成打包到发布。"""
+"""从 LOVE_BOOK_SSH_HOSTS 读取 ~/.ssh/config 主机名，供智能体完成打包到发布。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -24,10 +23,15 @@ VERSION_SCRIPT = PROJECT_ROOT / "scripts" / "version.py"
 ENV_PREFIX = "LOVE_BOOK_SSH_"
 
 NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
-UNIX_PATH_PATTERN = re.compile(r"^/[\w./-]+$")
-URL_PATTERN = re.compile(r"^https://[^\s]+$")
-ALLOWED_CAPABILITIES = frozenset({"check", "status", "update", "backup", "run"})
-ALLOWED_UPDATE_STYLES = frozenset({"updater", "none"})
+DEFAULT_COMPOSE_DIR = "/home/ts3/love-book"
+DEFAULT_HEALTH_URL = "https://qrqto.club/api/health"
+DEFAULT_SITE_URL = "https://qrqto.club/"
+DEFAULT_BACKUP_ROOT = "/home/ts3/backups/love_book"
+DEFAULT_BACKUP_COMMAND = "/home/ts3/bin/love-book-backup"
+DEFAULT_UPDATE_COMMAND = "bash /home/ts3/love-book/update.sh"
+DEFAULT_BACKEND_IMAGE = "ghcr.io/ahappymosquito/love_book-backend:latest"
+DEFAULT_FRONTEND_IMAGE = "ghcr.io/ahappymosquito/love_book-frontend:latest"
+DEFAULT_CONNECT_TIMEOUT = 20
 REQUIRED_PACKAGE_FILES = (
     "Dockerfile",
     "web/Dockerfile",
@@ -49,7 +53,7 @@ class DeployHostError(RuntimeError):
 
 @dataclass(frozen=True)
 class DeployHost:
-    """一份可被智能体按名字选用的 SSH 发布目标。"""
+    """一份由 SSH 主机名展开后的发布目标。"""
 
     name: str
     ssh_alias: str
@@ -73,7 +77,7 @@ class DeployHost:
 
 @dataclass(frozen=True)
 class HostCatalog:
-    """命名主机表，以及智能体未指定主机时的默认项。"""
+    """命名主机表，第一项为默认检查入口。"""
 
     default_host: str
     hosts: dict[str, DeployHost]
@@ -83,11 +87,6 @@ class HostCatalog:
 def posix_quote(value: str) -> str:
     """按 POSIX 单引号规则引用远程命令参数，避免 Windows shlex.quote 改用双引号。"""
     return "'" + value.replace("'", "'\"'\"'") + "'"
-
-
-def env_name_key(name: str) -> str:
-    """把主机名 ts3_qrqto 转成环境变量中的 TS3_QRQTO。"""
-    return re.sub(r"[^A-Za-z0-9]", "_", name).upper()
 
 
 def split_csv(value: str) -> list[str]:
@@ -124,10 +123,7 @@ def collect_ssh_env(
     *,
     include_process: bool | None = None,
 ) -> tuple[dict[str, str], Path]:
-    """合并顺序：.env.example → .env → 进程里已有的 LOVE_BOOK_SSH_*。
-
-    显式传入 env 文件时不叠加进程环境，避免测试被本机 dotenv 污染。
-    """
+    """合并顺序：.env.example → .env → 进程里已有的 LOVE_BOOK_SSH_*。"""
     using_defaults = env_file is None and example_file is None
     example = example_file if example_file is not None else DEFAULT_EXAMPLE_FILE
     local = env_file if env_file is not None else DEFAULT_ENV_FILE
@@ -148,178 +144,133 @@ def collect_ssh_env(
     return merged, source
 
 
-def _require_name(value: str, field: str) -> str:
+def host_names_from_env(env: Mapping[str, str]) -> list[str]:
+    names = split_csv(mapping_get(env, f"{ENV_PREFIX}HOSTS"))
+    if not names:
+        names = split_csv(mapping_get(env, f"{ENV_PREFIX}HOST"))
+    return names
+
+
+def _require_name(value: str) -> str:
     if not NAME_PATTERN.fullmatch(value):
-        raise DeployHostError(f"{field} must be a SSH-safe identifier, got {value!r}")
+        raise DeployHostError(f"SSH host must be a SSH-safe identifier, got {value!r}")
     return value
 
 
-def _optional_text(spec: dict[str, Any], field: str) -> str:
-    value = spec.get(field, "")
-    if value is None:
-        return ""
-    if not isinstance(value, str):
-        raise DeployHostError(f"{field} must be a string")
-    if "\n" in value and field not in {"notes"}:
-        raise DeployHostError(f"{field} cannot contain newlines")
-    return value.strip()
+def heuristic_user(alias: str) -> str:
+    """约定 Host 名为 user_site，例如 ts3_qrqto、root_qrqto。"""
+    if "_" in alias:
+        return alias.split("_", 1)[0]
+    return alias
 
 
-def _require_unix_path(value: str, field: str) -> str:
-    if not UNIX_PATH_PATTERN.fullmatch(value):
-        raise DeployHostError(f"{field} must be an absolute Unix path, got {value!r}")
-    return value
-
-
-def _require_https_url(value: str, field: str) -> str:
-    if not URL_PATTERN.fullmatch(value):
-        raise DeployHostError(f"{field} must be an https:// URL, got {value!r}")
-    return value
-
-
-def parse_host(name: str, spec: dict[str, Any]) -> DeployHost:
-    _require_name(name, "host name")
-    ssh_alias = _require_name(_optional_text(spec, "ssh_alias") or name, "ssh_alias")
-    user = _optional_text(spec, "user")
-    if not user:
-        raise DeployHostError(
-            f"Host {name} is missing user. Set {ENV_PREFIX}{env_name_key(name)}_USER in .env.example"
+def inspect_ssh_identity(alias: str) -> tuple[str, bool]:
+    """返回 (user, configured)。configured 表示 ~/.ssh/config 里有独立 HostName。"""
+    ssh = shutil.which("ssh")
+    if not ssh:
+        return heuristic_user(alias), False
+    try:
+        result = subprocess.run(
+            [ssh, "-G", alias],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=8,
+            check=False,
         )
-    compose_dir = _require_unix_path(_optional_text(spec, "compose_dir"), "compose_dir")
-    health_url = _require_https_url(_optional_text(spec, "health_url"), "health_url")
-    site_url = _require_https_url(
-        _optional_text(spec, "site_url") or health_url.rsplit("/", 1)[0] + "/",
-        "site_url",
-    )
-    update_style = _optional_text(spec, "update_style") or "none"
-    if update_style not in ALLOWED_UPDATE_STYLES:
-        raise DeployHostError(f"Host {name} has unsupported update_style {update_style!r}")
-    update_command = _optional_text(spec, "update_command")
-    if "\n" in update_command:
-        raise DeployHostError("update_command cannot contain newlines")
-    if update_style == "updater" and not update_command:
-        raise DeployHostError(f"Host {name} uses update_style=updater but has no update_command")
-    update_host = _optional_text(spec, "update_host")
-    if update_host:
-        _require_name(update_host, "update_host")
-    if update_host == name:
-        update_host = ""
-    capabilities_raw = spec.get("capabilities", ["check", "status", "run"])
-    if isinstance(capabilities_raw, str):
-        capabilities_raw = split_csv(capabilities_raw)
-    if not isinstance(capabilities_raw, list) or not all(isinstance(item, str) for item in capabilities_raw):
-        raise DeployHostError(f"Host {name} capabilities must be a list of strings")
-    capabilities = tuple(item.strip() for item in capabilities_raw)
-    unknown = [item for item in capabilities if item not in ALLOWED_CAPABILITIES]
-    if unknown:
-        raise DeployHostError(f"Host {name} has unknown capabilities: {unknown}")
-    timeout = spec.get("connect_timeout", 20)
-    if isinstance(timeout, str) and timeout.isdigit():
-        timeout = int(timeout)
-    if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout < 1:
-        raise DeployHostError(f"Host {name} connect_timeout must be a positive integer")
-    backup_root = _optional_text(spec, "backup_root")
-    if backup_root:
-        _require_unix_path(backup_root, "backup_root")
+    except (OSError, subprocess.TimeoutExpired):
+        return heuristic_user(alias), False
+    if result.returncode != 0:
+        return heuristic_user(alias), False
+    user = ""
+    hostname = alias
+    for line in result.stdout.splitlines():
+        if line.startswith("user "):
+            user = line.split(None, 1)[1].strip()
+        elif line.startswith("hostname "):
+            hostname = line.split(None, 1)[1].strip()
+    configured = bool(hostname) and hostname != alias
+    if configured and user:
+        return user, True
+    return heuristic_user(alias), configured
+
+
+def resolve_ssh_user(alias: str, ssh_users: Mapping[str, str] | None = None) -> str:
+    if ssh_users is not None:
+        if alias in ssh_users:
+            return ssh_users[alias]
+        return heuristic_user(alias)
+    user, _configured = inspect_ssh_identity(alias)
+    return user
+
+
+def is_update_user(user: str) -> bool:
+    return user == "root"
+
+
+def build_host(name: str, update_host: str, user: str) -> DeployHost:
+    updater = is_update_user(user)
+    backup_command = DEFAULT_BACKUP_COMMAND
+    if updater:
+        backup_command = f"runuser -u ts3 -- env HOME=/home/ts3 {DEFAULT_BACKUP_COMMAND}"
+    if updater:
+        capabilities = ("check", "status", "update", "backup", "run")
+        notes = "User=root，用于跑已安装的 update.sh。未经当次明确授权不要 --yes。"
+        label = "生产管理员账号"
+        role = "production-admin"
+        update_style = "updater"
+        linked = ""
+    else:
+        capabilities = ("check", "status", "backup", "run")
+        notes = "日常检查入口。发布请用 User=root 的 SSH 主机。"
+        label = "生产应用账号"
+        role = "production-app"
+        update_style = "none"
+        linked = update_host if update_host != name else ""
     return DeployHost(
         name=name,
-        ssh_alias=ssh_alias,
+        ssh_alias=name,
         user=user,
-        role=_optional_text(spec, "role") or "production",
-        label=_optional_text(spec, "label") or name,
-        compose_dir=compose_dir,
-        health_url=health_url,
-        site_url=site_url,
+        role=role,
+        label=label,
+        compose_dir=DEFAULT_COMPOSE_DIR,
+        health_url=DEFAULT_HEALTH_URL,
+        site_url=DEFAULT_SITE_URL,
         update_style=update_style,
-        update_command=update_command,
-        update_host=update_host,
-        backup_command=_optional_text(spec, "backup_command"),
-        backup_root=backup_root,
-        backend_image=_optional_text(spec, "backend_image") or "ghcr.io/ahappymosquito/love_book-backend:latest",
-        frontend_image=_optional_text(spec, "frontend_image") or "ghcr.io/ahappymosquito/love_book-frontend:latest",
-        connect_timeout=timeout,
+        update_command=DEFAULT_UPDATE_COMMAND if updater else "",
+        update_host=linked,
+        backup_command=backup_command,
+        backup_root=DEFAULT_BACKUP_ROOT,
+        backend_image=DEFAULT_BACKEND_IMAGE,
+        frontend_image=DEFAULT_FRONTEND_IMAGE,
+        connect_timeout=DEFAULT_CONNECT_TIMEOUT,
         capabilities=capabilities,
-        notes=_optional_text(spec, "notes"),
+        notes=notes,
     )
-
-
-def host_spec_from_env(name: str, env: Mapping[str, str]) -> dict[str, Any]:
-    prefix = f"{ENV_PREFIX}{env_name_key(name)}_"
-    default_update_host = mapping_get(env, f"{ENV_PREFIX}UPDATE_HOST")
-
-    def host_or_shared(field: str, shared: str) -> str:
-        return mapping_get(env, prefix + field) or mapping_get(env, ENV_PREFIX + shared)
-
-    caps_raw = mapping_get(env, prefix + "CAPABILITIES")
-    update_style = mapping_get(env, prefix + "UPDATE_STYLE")
-    if not update_style:
-        if caps_raw and "update" in split_csv(caps_raw):
-            update_style = "updater"
-        elif name == default_update_host:
-            update_style = "updater"
-        else:
-            update_style = "none"
-    if caps_raw:
-        capabilities = split_csv(caps_raw)
-    elif update_style == "updater":
-        capabilities = ["check", "status", "update", "backup", "run"]
-    else:
-        capabilities = ["check", "status", "backup", "run"]
-    timeout_text = host_or_shared("CONNECT_TIMEOUT", "CONNECT_TIMEOUT") or "20"
-    if not timeout_text.isdigit():
-        raise DeployHostError(f"Host {name} connect_timeout must be a positive integer")
-    update_host = mapping_get(env, prefix + "UPDATE_HOST")
-    if not update_host and update_style == "none":
-        update_host = default_update_host
-    update_command = mapping_get(env, prefix + "UPDATE_COMMAND")
-    if update_style == "updater" and not update_command:
-        update_command = mapping_get(env, f"{ENV_PREFIX}UPDATE_COMMAND")
-    return {
-        "ssh_alias": mapping_get(env, prefix + "ALIAS") or name,
-        "user": mapping_get(env, prefix + "USER"),
-        "role": mapping_get(env, prefix + "ROLE"),
-        "label": mapping_get(env, prefix + "LABEL"),
-        "compose_dir": host_or_shared("COMPOSE_DIR", "COMPOSE_DIR"),
-        "health_url": host_or_shared("HEALTH_URL", "HEALTH_URL"),
-        "site_url": host_or_shared("SITE_URL", "SITE_URL"),
-        "update_style": update_style,
-        "update_command": update_command,
-        "update_host": update_host,
-        "backup_command": host_or_shared("BACKUP_COMMAND", "BACKUP_COMMAND"),
-        "backup_root": host_or_shared("BACKUP_ROOT", "BACKUP_ROOT"),
-        "backend_image": host_or_shared("BACKEND_IMAGE", "BACKEND_IMAGE"),
-        "frontend_image": host_or_shared("FRONTEND_IMAGE", "FRONTEND_IMAGE"),
-        "connect_timeout": int(timeout_text),
-        "capabilities": capabilities,
-        "notes": mapping_get(env, prefix + "NOTES"),
-    }
 
 
 def load_catalog(
     env_file: Path | None = None,
     example_file: Path | None = None,
     environ: Mapping[str, str] | None = None,
+    ssh_users: Mapping[str, str] | None = None,
 ) -> HostCatalog:
     if environ is None:
         env, source = collect_ssh_env(env_file, example_file)
     else:
         env = dict(environ)
         source = env_file or example_file or DEFAULT_EXAMPLE_FILE
-    hosts_list = split_csv(mapping_get(env, f"{ENV_PREFIX}HOSTS"))
-    if not hosts_list:
+    names = [_require_name(name) for name in host_names_from_env(env)]
+    if not names:
         raise DeployHostError(
-            "LOVE_BOOK_SSH_HOSTS is missing. Agents should read the SSH block in .env.example"
+            "LOVE_BOOK_SSH_HOSTS is missing. Set SSH Host names, for example: "
+            "LOVE_BOOK_SSH_HOSTS=ts3_qrqto,root_qrqto"
         )
-    default_host = mapping_get(env, f"{ENV_PREFIX}DEFAULT_HOST") or hosts_list[0]
-    hosts: dict[str, DeployHost] = {}
-    for name in hosts_list:
-        hosts[name] = parse_host(name, host_spec_from_env(name, env))
-    if default_host not in hosts:
-        raise DeployHostError(f"LOVE_BOOK_SSH_DEFAULT_HOST {default_host!r} is not in LOVE_BOOK_SSH_HOSTS")
-    for host in hosts.values():
-        if host.update_host and host.update_host not in hosts:
-            raise DeployHostError(f"Host {host.name} update_host {host.update_host!r} is not defined")
-    return HostCatalog(default_host=default_host, hosts=hosts, source=source)
+    users = {name: resolve_ssh_user(name, ssh_users) for name in names}
+    update_host = next((name for name in names if is_update_user(users[name])), "")
+    hosts = {name: build_host(name, update_host, users[name]) for name in names}
+    return HostCatalog(default_host=names[0], hosts=hosts, source=source)
 
 
 def catalog_update_host(catalog: HostCatalog) -> str:
@@ -539,7 +490,7 @@ def cmd_recipe(catalog: HostCatalog) -> int:
     print(
         f"""Love Book 智能体打包到发布
 
-先读 .env.example 里的 LOVE_BOOK_SSH_* 段，本机覆盖写在 .env。不要手写 IP，不要把私钥放进 env。
+只配置 LOVE_BOOK_SSH_HOSTS（~/.ssh/config 的 Host 名）。第一项是检查入口，User=root 的项用来发布。
 
 1. 只有正式发布才改 VERSION / CHANGELOG，并运行 python scripts/version.py sync
 2. python scripts/deploy_host.py package --tag vX.Y.Z
@@ -549,11 +500,9 @@ def cmd_recipe(catalog: HostCatalog) -> int:
 6. python scripts/deploy_host.py check --host {catalog.default_host}
 7. python scripts/deploy_host.py status --host {catalog.default_host}
 8. python scripts/deploy_host.py update --host {update_host} --yes
-   （若坚持从默认主入口发布：python scripts/deploy_host.py update --host {catalog.default_host} --follow-update-host --yes）
 9. curl -fsS https://qrqto.club/api/health  确认 version 与 VERSION 一致
 
-当前主机来自 {catalog.source}。增加主机：把名字写入 LOVE_BOOK_SSH_HOSTS，并补 LOVE_BOOK_SSH_<NAME>_* 。
-私钥只放 ~/.ssh/config 的 Host 条目，名称与 LOVE_BOOK_SSH_HOSTS 一致。
+当前主机来自 {catalog.source}。加主机只需把名字写进 LOVE_BOOK_SSH_HOSTS。
 """.strip()
     )
     return 0
@@ -634,25 +583,25 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("recipe", help="打印智能体打包到发布步骤")
 
     show = subparsers.add_parser("show", help="显示一个命名主机的完整参数")
-    show.add_argument("--host", help="命名主机，默认 LOVE_BOOK_SSH_DEFAULT_HOST")
+    show.add_argument("--host", help="命名主机，默认 LOVE_BOOK_SSH_HOSTS 第一项")
 
     check = subparsers.add_parser("check", help="BatchMode SSH 探测目录、Docker 和更新器")
-    check.add_argument("--host", help="命名主机，默认 LOVE_BOOK_SSH_DEFAULT_HOST")
+    check.add_argument("--host", help="命名主机，默认 LOVE_BOOK_SSH_HOSTS 第一项")
 
     status = subparsers.add_parser("status", help="查看远程 Compose 状态和健康检查")
-    status.add_argument("--host", help="命名主机，默认 LOVE_BOOK_SSH_DEFAULT_HOST")
+    status.add_argument("--host", help="命名主机，默认 LOVE_BOOK_SSH_HOSTS 第一项")
 
     package = subparsers.add_parser("package", help="本地打包前检查版本和必要文件")
     package.add_argument("--tag", help="正式发布标签，例如 v0.9.0")
 
-    update = subparsers.add_parser("update", help="通过具备更新能力的主机执行生产更新器")
-    update.add_argument("--host", help="命名主机，默认 LOVE_BOOK_SSH_DEFAULT_HOST")
+    update = subparsers.add_parser("update", help="通过 User=root 的主机执行生产更新器")
+    update.add_argument("--host", help="命名主机，默认 LOVE_BOOK_SSH_HOSTS 第一项")
     update.add_argument("--yes", action="store_true", help="确认执行生产更新")
     update.add_argument("--dry-run", action="store_true", help="只打印 SSH 命令，不执行")
-    update.add_argument("--follow-update-host", action="store_true", help="从无更新能力的主入口跳到 update_host")
+    update.add_argument("--follow-update-host", action="store_true", help="从检查入口跳到 User=root 的主机")
 
     run = subparsers.add_parser("run", help="在命名主机上执行一条远程命令")
-    run.add_argument("--host", help="命名主机，默认 LOVE_BOOK_SSH_DEFAULT_HOST")
+    run.add_argument("--host", help="命名主机，默认 LOVE_BOOK_SSH_HOSTS 第一项")
     run.add_argument("remote_command", nargs=argparse.REMAINDER, help="远程命令，建议写在 -- 后面")
     return parser
 
