@@ -4,6 +4,8 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-08-22
+
 ### Added
 
 - Added `LOVE_BOOK_SSH_HOSTS` and `scripts/deploy_host.py` so agents can package locally, then check or publish through named `~/.ssh/config` hosts such as `ts3_qrqto` and `root_qrqto`.

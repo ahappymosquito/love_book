@@ -60,7 +60,7 @@ Host root_qrqto
 ```powershell
 python scripts/deploy_host.py list
 python scripts/deploy_host.py recipe
-python scripts/deploy_host.py package --tag v0.9.0
+python scripts/deploy_host.py package --tag v0.9.1
 python scripts/deploy_host.py check --host ts3_qrqto
 python scripts/deploy_host.py status --host ts3_qrqto
 python scripts/deploy_host.py update --host root_qrqto --dry-run
@@ -160,9 +160,9 @@ docker compose up -d --build --remove-orphans
 ```yaml
 services:
   backend:
-    image: ghcr.io/ahappymosquito/love_book-backend:0.9.0
+    image: ghcr.io/ahappymosquito/love_book-backend:0.9.1
   frontend:
-    image: ghcr.io/ahappymosquito/love_book-frontend:0.9.0
+    image: ghcr.io/ahappymosquito/love_book-frontend:0.9.1
 ```
 
 常用命令：
