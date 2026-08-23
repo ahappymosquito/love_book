@@ -550,7 +550,7 @@ def cmd_update(
             "Refusing to run a production update without --yes. "
             "Re-run with --dry-run to print the command, or --yes after explicit authorization."
         )
-    result = run_ssh(target, remote, timeout=max(300, target.connect_timeout + 240))
+    result = run_ssh(target, remote, timeout=max(1200, target.connect_timeout + 240))
     print_stream(result.stdout)
     require_success(result, f"Production update failed on {target.name}")
     print_stream(result.stderr)
