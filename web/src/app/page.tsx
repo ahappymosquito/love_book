@@ -1,6 +1,6 @@
 "use client";
 
-// 无 token 时全屏代码花田加开始弹窗；有 token 或入口口令时直接进入，不挂游戏。
+// 无 token 时全屏像素花田加开始弹窗；有 token 或入口口令时直接进入，不挂游戏。
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";

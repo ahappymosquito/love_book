@@ -1,17 +1,24 @@
-// 覆盖代码小狗姿态边界、动作选择，以及障碍剪影包住内缩碰撞盒。
+// 覆盖像素小狗姿态、帧选择、1-bit 描边，以及障碍剪影包住内缩碰撞盒。
 
 import { describe, expect, it } from "vitest";
 import {
+  CHAPTER_PALETTE,
+  CHAPTER_SKY,
   collisionFitsVisual,
   hashUnit,
   OBSTACLE_KINDS,
+  obstacleSprite,
   obstacleVisualBox,
+  pixelScale,
   puppyAction,
   puppyPose,
+  puppySprite,
   puppyVisualBox,
   unionBoxes,
+  withOutline,
 } from "./xiaohua-runner-draw";
 import {
+  createRunnerMetrics,
   createRunnerState,
   obstacleBox,
   playerBoxes,
@@ -97,6 +104,45 @@ describe("code-drawn obstacles", () => {
       const item = obstacle(kind);
       expect(collisionFitsVisual(obstacleVisualBox(item), obstacleBox(item))).toBe(true);
     }
+  });
+});
+
+describe("1-bit pixel sprites", () => {
+  it("wraps a filled texel with paper outline", () => {
+    expect(withOutline(["#"])).toEqual([".o.", "o#o", ".o."]);
+  });
+
+  it("picks discrete puppy frames from pose", () => {
+    const idle = playingState({ status: "idle" });
+    expect(puppySprite(idle, puppyPose(idle, 0, false, true)).some((row) => row.includes("#"))).toBe(true);
+    const running = playingState({ distance: 3.2, elapsed: 1.4 });
+    const runPose = puppyPose(running, 1.4, false, false);
+    expect(puppySprite(running, runPose).length).toBeGreaterThan(20);
+    const crouched = playingState({ crouching: true, crouchHeld: true });
+    expect(puppySprite(crouched, puppyPose(crouched, 0, false, true))[0].length).toBeGreaterThan(40);
+  });
+
+  it("covers every obstacle kind with a filled sprite", () => {
+    for (const kind of OBSTACLE_KINDS) {
+      expect(obstacleSprite(kind, 1).some((row) => row.includes("#"))).toBe(true);
+    }
+  });
+
+  it("keeps chapter color to paper, ink and one accent", () => {
+    for (const chapter of Object.keys(CHAPTER_PALETTE) as Array<keyof typeof CHAPTER_PALETTE>) {
+      expect(CHAPTER_SKY[chapter]).toBe(CHAPTER_PALETTE[chapter].paper);
+      expect(CHAPTER_PALETTE[chapter].ink).toMatch(/^#/);
+      expect(CHAPTER_PALETTE[chapter].accent).toMatch(/^#/);
+    }
+  });
+
+  it("uses an integer pixel scale of at least 2", () => {
+    const desktop = pixelScale(createRunnerMetrics({ width: 1280, height: 720 }));
+    const phone = pixelScale(createRunnerMetrics({ width: 430, height: 932 }));
+    expect(desktop).toBeGreaterThanOrEqual(2);
+    expect(phone).toBeGreaterThanOrEqual(2);
+    expect(Number.isInteger(desktop)).toBe(true);
+    expect(Number.isInteger(phone)).toBe(true);
   });
 });
 

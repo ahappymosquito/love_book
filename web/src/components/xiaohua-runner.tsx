@@ -1,6 +1,6 @@
 "use client";
 
-// 全视口「花田拾光」画布：代码绘制小狗与花田，待机呼吸，仅在开始菜单开局后接受跳蹲。
+// 全视口「花田拾光」画布：1-bit 像素小狗与地平线，待机眨眼，仅在开始菜单开局后接受跳蹲。
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { CircleHelp, Expand, Pause, X } from "lucide-react";
@@ -23,7 +23,7 @@ import {
   type RunnerState,
   type RunnerStatus,
 } from "@/lib/xiaohua-runner";
-import { CHAPTER_SKY, drawScene } from "@/lib/xiaohua-runner-draw";
+import { CHAPTER_PALETTE, CHAPTER_SKY, drawScene } from "@/lib/xiaohua-runner-draw";
 
 export interface XiaohuaRunnerHandle {
   play: () => void;
@@ -351,7 +351,13 @@ export const XiaohuaRunner = forwardRef<XiaohuaRunnerHandle, XiaohuaRunnerProps>
       data-crouching={crouching ? "true" : "false"}
       data-interaction-blocked={inputBlocked ? "true" : "false"}
       data-pointer={coarsePointer ? "coarse" : "fine"}
-      style={{ background: CHAPTER_SKY[chapter] }}
+      style={{
+        background: CHAPTER_SKY[chapter],
+        color: CHAPTER_PALETTE[chapter].ink,
+        ["--runner-paper" as string]: CHAPTER_PALETTE[chapter].paper,
+        ["--runner-ink" as string]: CHAPTER_PALETTE[chapter].ink,
+        ["--runner-accent" as string]: CHAPTER_PALETTE[chapter].accent,
+      }}
     >
       <canvas
         ref={canvasRef}
