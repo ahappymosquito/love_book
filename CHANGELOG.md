@@ -4,6 +4,8 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-24
+
 ### Changed
 
 - Redrew 花田拾光 as a Chrome T-Rex-style 1-bit pixel runner: integer-scaled silhouettes, paper outline, a scrolling horizon, and a three-color chapter palette instead of anti-aliased ellipse scenery.
