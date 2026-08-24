@@ -222,9 +222,10 @@ export function withOutline(rows: PixelSprite): string[] {
 export function puppySprite(state: RunnerState, pose: PuppyPose): PixelSprite {
   if (pose.action === "celebrate") return SPRITE_PUPPY_SIT;
   if (pose.action === "stumble") return SPRITE_PUPPY_CRASH;
-  if (pose.action === "crouch") return pose.frontPhase >= 0 ? SPRITE_PUPPY_DUCK_A : SPRITE_PUPPY_DUCK_B;
   if (pose.action === "jump") return SPRITE_PUPPY_JUMP;
-  if (pose.action === "run") return pose.frontPhase >= 0 ? SPRITE_PUPPY_RUN_A : SPRITE_PUPPY_RUN_B;
+  const runFrame = Math.floor(state.elapsed * 12) % 2 === 0;
+  if (pose.action === "crouch") return runFrame ? SPRITE_PUPPY_DUCK_A : SPRITE_PUPPY_DUCK_B;
+  if (pose.action === "run") return runFrame ? SPRITE_PUPPY_RUN_A : SPRITE_PUPPY_RUN_B;
   return pose.blink > 0.5 ? SPRITE_PUPPY_BLINK : SPRITE_PUPPY_IDLE;
 }
 
@@ -265,8 +266,8 @@ export function blitSprite(
   outlined = true,
 ) {
   const rows = outlined ? withOutline(sprite) : sprite;
-  const originX = Math.round(x);
-  const originY = Math.round(y);
+  const originX = snapToScale(x, scale);
+  const originY = snapToScale(y, scale);
   for (let row = 0; row < rows.length; row += 1) {
     const line = rows[row];
     for (let col = 0; col < line.length; col += 1) {
@@ -474,14 +475,16 @@ export function drawScene(
   context.rect(metrics.frame.x, metrics.frame.y, metrics.frame.width, metrics.frame.height);
   context.clip();
   context.imageSmoothingEnabled = false;
+  context.imageSmoothingQuality = "low";
   context.fillStyle = palette.paper;
   context.fillRect(metrics.frame.x, metrics.frame.y, metrics.frame.width, metrics.frame.height);
 
-  const scroll = state.status === "playing" || state.status === "paused"
+  const rawScroll = state.status === "playing" || state.status === "paused"
     ? state.distance * metrics.bodyUnit
     : reducedMotion
       ? 0
-      : renderTime * 18;
+      : renderTime * 28;
+  const scroll = snapToScale(rawScroll, scale);
 
   if (state.chapter === "night") {
     drawNightSky(context, metrics, palette, scale, renderTime, reducedMotion);

@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   RUNNER_AIRTIME,
+  RUNNER_BASE_SPEED,
   RUNNER_DOUBLE_JUMP_SCALE,
   RUNNER_DOUBLE_JUMP_START,
   RUNNER_HIT_IFRAMES,
@@ -74,18 +75,20 @@ describe("Xiaohua runner metrics", () => {
     const metrics = createRunnerMetrics({ width: 2048, height: 1024 });
     expect(metrics.orientation).toBe("landscape");
     expect(metrics.frame).toEqual({ x: 0, y: 0, width: 2048, height: 1024 });
-    expect(metrics.standingHeight).toBe(180);
+    expect(metrics.standingHeight).toBe(94);
+    expect(metrics.groundBaseline).toBeGreaterThan(metrics.frame.height * 0.88);
   });
 
   it("fills the complete portrait viewport without side gutters", () => {
     const metrics = createRunnerMetrics({ width: 430, height: 932 });
     expect(metrics.orientation).toBe("portrait");
     expect(metrics.frame).toEqual({ x: 0, y: 0, width: 430, height: 932 });
-    expect(metrics.standingHeight).toBeCloseTo(135.14, 1);
+    expect(metrics.standingHeight).toBeCloseTo(83.88, 1);
+    expect(metrics.groundBaseline).toBeGreaterThan(metrics.frame.height * 0.88);
   });
 
-  it("keeps landscape mobile Xiaohua within the 96px minimum", () => {
-    expect(createRunnerMetrics({ width: 932, height: 430 }).standingHeight).toBe(96);
+  it("keeps landscape mobile Xiaohua within the 64px minimum", () => {
+    expect(createRunnerMetrics({ width: 932, height: 430 }).standingHeight).toBe(64);
   });
 });
 
@@ -98,7 +101,7 @@ describe("Xiaohua runner physics and input", () => {
     expect(startRunner(paused).distance).toBe(playing.distance);
   });
 
-  it("reaches a 1.45-height apex and lands in about 0.88 seconds", () => {
+  it("reaches a 1.18-height apex and lands in about 0.56 seconds", () => {
     let state = jumpRunner(safePlayingState());
     let maximum = 0;
     let elapsed = 0;
@@ -138,8 +141,8 @@ describe("Xiaohua runner physics and input", () => {
 
   it("caps logical speed and derives stable score from logical distance", () => {
     expect(runnerSpeed(999)).toBe(RUNNER_MAX_SPEED);
-    expect(runnerScore(31.49)).toBe(99);
-    expect(runnerScore(31.5)).toBe(100);
+    expect(runnerScore(RUNNER_BASE_SPEED * 9.99)).toBe(99);
+    expect(runnerScore(RUNNER_BASE_SPEED * 10)).toBe(100);
   });
 });
 

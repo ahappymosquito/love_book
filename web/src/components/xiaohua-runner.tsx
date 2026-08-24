@@ -1,6 +1,6 @@
 "use client";
 
-// 全视口「花田拾光」画布：1-bit 像素小狗与地平线，待机眨眼，仅在开始菜单开局后接受跳蹲。
+// 全视口「花田拾光」画布：1-bit 像素小狗与地平线，HUD 与玩法浮层共用纸面墨水描边。
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { CircleHelp, Expand, Pause, X } from "lucide-react";
@@ -194,6 +194,16 @@ export const XiaohuaRunner = forwardRef<XiaohuaRunnerHandle, XiaohuaRunnerProps>
     media.addEventListener?.("change", update);
     return () => media.removeEventListener?.("change", update);
   }, []);
+
+  useEffect(() => {
+    const palette = CHAPTER_PALETTE[chapter];
+    const root = shellRef.current?.closest(".login-runner-shell") as HTMLElement | null;
+    if (!root) return;
+    root.style.setProperty("--runner-paper", palette.paper);
+    root.style.setProperty("--runner-ink", palette.ink);
+    root.style.setProperty("--runner-accent", palette.accent);
+    root.style.background = palette.paper;
+  }, [chapter]);
 
   useEffect(() => {
     const media = window.matchMedia("(pointer: coarse)");
@@ -449,7 +459,7 @@ export const XiaohuaRunner = forwardRef<XiaohuaRunnerHandle, XiaohuaRunnerProps>
         ) : null}
       </div>
       {helpOpen ? (
-        <aside className="runner-help-popover content-surface" aria-label="花田拾光玩法">
+        <aside className="runner-help-popover" aria-label="花田拾光玩法">
           <button type="button" className="runner-close focus-ring" onClick={() => setHelp(false)} aria-label="关闭玩法"><X className="h-4 w-4" /></button>
           <strong>怎么玩</strong>
           <p>{coarsePointer ? "按住屏幕左侧趴下，松开起身；点按屏幕右侧跳跃。" : "鼠标左键或 ↑ 跳跃，按住会跳得更高；右键或 ↓ 按住趴下。"}</p>

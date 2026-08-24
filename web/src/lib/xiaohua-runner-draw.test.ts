@@ -118,6 +118,9 @@ describe("1-bit pixel sprites", () => {
     const running = playingState({ distance: 3.2, elapsed: 1.4 });
     const runPose = puppyPose(running, 1.4, false, false);
     expect(puppySprite(running, runPose).length).toBeGreaterThan(20);
+    const frameA = puppySprite(playingState({ elapsed: 0 }), runPose);
+    const frameB = puppySprite(playingState({ elapsed: 1 / 12 }), runPose);
+    expect(frameA).not.toEqual(frameB);
     const crouched = playingState({ crouching: true, crouchHeld: true });
     expect(puppySprite(crouched, puppyPose(crouched, 0, false, true))[0].length).toBeGreaterThan(40);
   });

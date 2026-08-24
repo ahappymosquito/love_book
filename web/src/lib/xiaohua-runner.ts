@@ -1,12 +1,12 @@
-// 小花「花田拾光」引擎：设备无关物理、跳蹲输入、连跳与短按收跳、拾光物、连击、小心心、光景章节和剪影碰撞。
+// 小花「花田拾光」引擎：Chrome 小恐龙同款贴地比例、短跳与匀速加速，设备无关物理和剪影碰撞。
 
 export const RUNNER_STEP = 1 / 60;
-export const RUNNER_BASE_SPEED = 3.15;
-export const RUNNER_MAX_SPEED = 5.1;
-export const RUNNER_ACCELERATION = 0.015;
+export const RUNNER_BASE_SPEED = 7.5;
+export const RUNNER_MAX_SPEED = 13;
+export const RUNNER_ACCELERATION = 0.047;
 export const RUNNER_STANDING_HEIGHT = 1;
-export const RUNNER_AIRTIME = 0.88;
-export const RUNNER_JUMP_APEX = 1.45;
+export const RUNNER_AIRTIME = 0.56;
+export const RUNNER_JUMP_APEX = 1.18;
 export const RUNNER_GRAVITY = (8 * RUNNER_JUMP_APEX) / (RUNNER_AIRTIME * RUNNER_AIRTIME);
 export const RUNNER_JUMP_VELOCITY = (4 * RUNNER_JUMP_APEX) / RUNNER_AIRTIME;
 export const RUNNER_DOUBLE_JUMP_SCALE = 0.88;
@@ -167,15 +167,15 @@ export function createRunnerMetrics(viewport: RunnerViewport): RunnerMetrics {
   const width = Math.floor(safeWidth);
   const height = Math.floor(safeHeight);
   const standingHeight = portrait
-    ? clamp(height * 0.145, 104, 136)
-    : clamp(height * 0.198, 96, 180);
+    ? clamp(height * 0.09, 64, 94)
+    : clamp(height * 0.145, 64, 94);
   const bodyUnit = standingHeight * 0.96;
   const spriteSize = standingHeight * (192 / 146);
   const worldWidth = width / bodyUnit;
   return {
     orientation: portrait ? "portrait" : "landscape",
     frame: { x: 0, y: 0, width, height },
-    groundBaseline: Math.round(height * 0.705),
+    groundBaseline: height - Math.max(20, Math.round(height * 0.05)),
     standingHeight,
     bodyUnit,
     spriteSize,
