@@ -115,6 +115,8 @@ def test_heuristic_user_from_host_name_without_ssh_config() -> None:
 
 def run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     command_env = os.environ.copy()
+    command_env.setdefault("PYTHONUTF8", "1")
+    command_env.setdefault("PYTHONIOENCODING", "utf-8")
     if env:
         command_env.update(env)
     return subprocess.run(
