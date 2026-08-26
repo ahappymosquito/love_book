@@ -1,4 +1,4 @@
-"""Habit services for pair-visible tasks, check-ins, and entry-token reminder delivery."""
+"""Habit services for pair-visible tasks, check-ins, and entry-token reminder delivery. Closed pairs are skipped."""
 
 from __future__ import annotations
 
@@ -170,6 +170,8 @@ def scan_habit_reminders(db: Session, target_date: date) -> int:
     pairs = db.execute(select(Pair)).scalars().all()
     sent = 0
     for pair in pairs:
+        if pair.dissolved_at is not None:
+            continue
         for user in pair_users(pair):
             if not user.email:
                 continue

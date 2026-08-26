@@ -1,11 +1,12 @@
 "use client";
 
-// Grouped settings surface for identity, location, shared quotes, security-password access, and logout.
+// Grouped settings surface for identity, location, shared quotes, security-password access, logout, and closing the pair.
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
+  BookX,
   Check,
   ChevronDown,
   ChevronRight,
@@ -27,8 +28,9 @@ import { toast } from "sonner";
 import { AuthGate } from "@/components/auth-gate";
 import { Avatar } from "@/components/avatar";
 import { AvatarPicker } from "@/components/avatar-picker";
+import { DissolvePairDialog } from "@/components/dissolve-pair-dialog";
 import { TimelineHeader } from "@/components/timeline-header";
-import { api } from "@/lib/api";
+import { api, pairDissolvedFromError } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import type { DefaultQuoteOut, QuoteOut, SecurityPasswordOut } from "@/lib/types";
 
@@ -59,6 +61,7 @@ function MeInner() {
   const setMe = useAppStore((s) => s.setMe);
   const logout = useAppStore((s) => s.logout);
   const setToken = useAppStore((s) => s.setToken);
+  const setFarewell = useAppStore((s) => s.setFarewell);
   const [displayName, setDisplayName] = useState(me.user.display_name);
   const [email, setEmail] = useState(me.user.email ?? "");
   const [savingProfile, setSavingProfile] = useState(false);
@@ -80,6 +83,8 @@ function MeInner() {
   const [confirmSecurityPassword, setConfirmSecurityPassword] = useState("");
   const [securityReveal, setSecurityReveal] = useState(false);
   const [savingSecurity, setSavingSecurity] = useState(false);
+  const [dissolveOpen, setDissolveOpen] = useState(false);
+  const [dissolving, setDissolving] = useState(false);
   const togetherDays = useMemo(() => daysTogether(me.love_started_on), [me.love_started_on]);
 
   const profileDirty = useMemo(
@@ -303,6 +308,33 @@ function MeInner() {
     logout();
     toast.success("已退出，期待再见");
     router.replace("/");
+  }
+
+  async function handleDissolve(message: string) {
+    if (dissolving) return;
+    setDissolving(true);
+    try {
+      await api.dissolvePair({ message: message.trim() || null });
+      setFarewell({
+        code: "pair_dissolved",
+        message: message.trim() || "我们已经把这本手账合上了。",
+        from_display_name: me.user.display_name,
+      });
+      logout();
+      router.replace("/");
+    } catch (error) {
+      const farewell = pairDissolvedFromError(error);
+      if (farewell) {
+        setFarewell(farewell);
+        logout();
+        router.replace("/");
+        return;
+      }
+      const text = error instanceof Error && error.message ? error.message : "暂时合不上，请稍后再试";
+      toast.error(text);
+    } finally {
+      setDissolving(false);
+    }
   }
 
   return (
@@ -578,8 +610,31 @@ function MeInner() {
             退出登录
           </button>
           </div>
+
+          <div className="mt-6 border-t border-rose/25 pt-5">
+            <p className="font-sc text-sm font-medium text-ink">合上这本手账</p>
+            <p className="mt-1 font-sc text-sm leading-6 text-ink-muted">这会关掉你和{me.counterpart.display_name}的入口。写下的事情还留着，只是谁也进不去了。</p>
+            <button
+              type="button"
+              onClick={() => setDissolveOpen(true)}
+              className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl bg-rose-deep px-4 font-sc text-sm font-medium text-white shadow-soft transition active:scale-[0.98] focus-ring"
+            >
+              <BookX className="h-4 w-4" />
+              合上这本手账
+            </button>
+          </div>
         </section>
       </main>
+
+      <DissolvePairDialog
+        open={dissolveOpen}
+        counterpartName={me.counterpart.display_name}
+        loading={dissolving}
+        onCancel={() => {
+          if (!dissolving) setDissolveOpen(false);
+        }}
+        onConfirm={(message) => void handleDissolve(message)}
+      />
 
       <AvatarPicker
         open={avatarPickerOpen}

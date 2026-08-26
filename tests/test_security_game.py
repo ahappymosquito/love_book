@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import DeviceToken, GameScore, User, utc_now
+from app.models import DeviceToken, Event, GameScore, Quote, User, utc_now
 from app.core import database
 from app.security_credentials import normalize_login_name, password_login_throttle
 from tests.conftest import auth
@@ -233,3 +233,98 @@ def test_leaderboard_validation_and_empty_threshold(client: TestClient) -> None:
     assert client.post("/game/leaderboard", json={"player_name": "a" * 13, "score": 1}).status_code == 422
     assert client.post("/game/leaderboard", json={"player_name": "ok", "score": -1}).status_code == 422
     assert client.post("/game/leaderboard", json={"player_name": "ok", "score": 2_147_483_648}).status_code == 422
+
+
+def test_pair_dissolve_lightweight_columns() -> None:
+    engine = create_engine("sqlite://")
+    with engine.begin() as connection:
+        connection.execute(
+            text("CREATE TABLE pairs (id INTEGER PRIMARY KEY, user_a_id INTEGER NOT NULL, user_b_id INTEGER NOT NULL)")
+        )
+    database._ensure_columns(engine)
+    columns = {column["name"] for column in inspect(engine).get_columns("pairs")}
+    assert {"dissolved_at", "dissolved_by_user_id", "farewell_message"}.issubset(columns)
+
+
+def test_dissolve_pair_keeps_content_and_shows_farewell(
+    client: TestClient,
+    db_session: Session,
+    pair_tokens: dict[str, object],
+) -> None:
+    password_login_throttle.clear()
+    token_a = str(pair_tokens["user_a_token"])
+    token_b = str(pair_tokens["user_b_token"])
+    assert client.put(
+        "/auth/me/security-password",
+        headers=auth(token_b),
+        json={"login_name": "partner.b", "password": "partner b password 15"},
+    ).status_code == 200
+
+    created = client.post(
+        "/events",
+        headers=auth(token_a),
+        json={"title": "海边的一天", "visibility_mode": "public"},
+    )
+    assert created.status_code == 201
+    event_id = created.json()["id"]
+    quote = client.post("/quotes", headers=auth(token_a), json={"text": "留给以后的我们"})
+    assert quote.status_code == 201
+
+    too_long = client.post("/auth/me/dissolve", headers=auth(token_a), json={"message": "x" * 501})
+    assert too_long.status_code == 422
+
+    dissolved = client.post("/auth/me/dissolve", headers=auth(token_a), json={"message": "  谢谢你来过。  "})
+    assert dissolved.status_code == 204
+
+    db_session.expire_all()
+    event = db_session.get(Event, event_id)
+    assert event is not None
+    assert event.title == "海边的一天"
+    saved_quote = db_session.get(Quote, quote.json()["id"])
+    assert saved_quote is not None
+    assert saved_quote.text == "留给以后的我们"
+
+    me_a = client.get("/auth/me", headers=auth(token_a))
+    assert me_a.status_code == 410
+    assert me_a.json()["detail"] == {
+        "code": "pair_dissolved",
+        "message": "谢谢你来过。",
+        "from_display_name": "A",
+    }
+    me_b = client.get("/auth/me", headers=auth(token_b))
+    assert me_b.status_code == 410
+    assert me_b.json()["detail"]["message"] == "谢谢你来过。"
+    assert client.get("/events", headers=auth(token_b)).status_code == 410
+
+    login = client.post(
+        "/auth/login/password",
+        json={"login_name": "partner.b", "password": "partner b password 15"},
+    )
+    assert login.status_code == 410
+    assert login.json()["detail"]["message"] == "谢谢你来过。"
+    assert "access_token" not in login.json()
+
+    wrong = client.post(
+        "/auth/login/password",
+        json={"login_name": "partner.b", "password": "totally wrong password 1"},
+    )
+    assert wrong.status_code == 401
+
+    again = client.post("/auth/me/dissolve", headers=auth(token_a), json={"message": "again"})
+    assert again.status_code == 410
+
+    listed = client.get("/admin/pairs", headers={"X-Admin-Key": "test-admin-key"}).json()
+    this_pair = next(item for item in listed if item["pair_id"] == pair_tokens["pair_id"])
+    assert this_pair["dissolved_at"]
+
+    other = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={"user_a_display_name": "C", "user_b_display_name": "D"},
+    ).json()
+    empty = client.post("/auth/me/dissolve", headers=auth(other["user_a_token"]), json={"message": "   "})
+    assert empty.status_code == 204
+    farewell = client.get("/auth/me", headers=auth(other["user_b_token"]))
+    assert farewell.status_code == 410
+    assert farewell.json()["detail"]["message"] == "我们已经把这本手账合上了。"
+    assert client.get("/auth/me", headers=auth(str(other["user_a_token"]))).status_code == 410

@@ -1,17 +1,17 @@
-"""User auth/profile routes including entry tokens, Argon2id password sessions, avatars, and reminders."""
+"""User auth/profile routes including entry tokens, Argon2id password sessions, avatars, reminders, and closing a pair."""
 
 from datetime import datetime, timedelta
 import secrets
 import unicodedata
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import amap_mcp
 from app.ai_config import effective_amap_key
-from app.api.dependencies import get_current_user, get_pair_for_user
+from app.api.dependencies import find_pair_for_user, get_current_user, get_pair_for_user, raise_if_pair_dissolved
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.login_logs import client_ip, enrich_location, record_login
@@ -24,6 +24,7 @@ from app.schemas import (
     MeLocationUpdate,
     MeOut,
     MeUpdate,
+    PairDissolveIn,
     PasswordLoginIn,
     PasswordSessionOut,
     SecurityPasswordOut,
@@ -84,6 +85,10 @@ def login_with_password(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登录名或安全密码不正确")
 
     password_login_throttle.succeed(account_key, ip_key)
+    assert user is not None
+    pair = find_pair_for_user(db, user.id)
+    if pair is not None:
+        raise_if_pair_dissolved(pair)
     token, expires_at = _password_session(user.id, db)
     db.commit()
     return PasswordSessionOut(access_token=token, expires_at=expires_at)
@@ -166,6 +171,21 @@ def _clean_coords(value: str) -> str:
     if not (-180 <= lng <= 180 and -90 <= lat <= 90):
         raise HTTPException(status_code=422, detail="Location coords are out of range")
     return f"{lng:.6f},{lat:.6f}"
+
+
+@router.post("/me/dissolve", status_code=status.HTTP_204_NO_CONTENT)
+def dissolve_pair(
+    payload: PairDissolveIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Mark the current pair as closed so both people can only see the farewell on the next login."""
+    pair = get_pair_for_user(db, current_user.id)
+    pair.dissolved_at = utc_now()
+    pair.dissolved_by_user_id = current_user.id
+    pair.farewell_message = payload.message
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/me", response_model=MeOut)

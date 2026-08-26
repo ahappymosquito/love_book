@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authentication, runner rankings, profiles, timelines, private media, plans, habits, cycles, quotes, and admin workflows.
+// Browser API client for authentication, closed-pair farewells, runner rankings, profiles, timelines, private media, plans, habits, cycles, quotes, and admin workflows.
 // In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -34,6 +34,7 @@ import type {
   MeetingSessionOut,
   MeOut,
   PairCreated,
+  PairDissolvedOut,
   PairOut,
   QuoteOut,
   QuoteSampleOut,
@@ -70,6 +71,21 @@ export class APIError extends Error {
     this.status = status;
     this.detail = detail;
   }
+}
+
+export function pairDissolvedFromUnknown(detail: unknown): PairDissolvedOut | null {
+  if (!detail || typeof detail !== "object") return null;
+  const record = detail as Record<string, unknown>;
+  if (record.code !== "pair_dissolved" || typeof record.message !== "string") return null;
+  return {
+    code: "pair_dissolved",
+    message: record.message,
+    from_display_name: typeof record.from_display_name === "string" ? record.from_display_name : "",
+  };
+}
+
+export function pairDissolvedFromError(error: unknown): PairDissolvedOut | null {
+  return error instanceof APIError ? pairDissolvedFromUnknown(error.detail) : null;
 }
 
 interface RequestOptions {
@@ -158,11 +174,12 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       (payload && typeof payload === "object" && "detail" in (payload as Record<string, unknown>)
         ? (payload as Record<string, unknown>).detail
         : payload) ?? resp.statusText;
-    const msg = typeof detail === "string" ? detail : JSON.stringify(detail);
-    if (!silent) {
+    const dissolved = pairDissolvedFromUnknown(detail);
+    const msg = dissolved?.message ?? (typeof detail === "string" ? detail : JSON.stringify(detail));
+    if (!silent && !dissolved) {
       toast.error(`请求失败：${msg}`);
     }
-    throw new APIError(resp.status, msg, detail);
+    throw new APIError(resp.status, msg, dissolved ?? detail);
   }
 
   return payload as T;
@@ -246,6 +263,12 @@ export const api = {
 
   // Auth
   me: (options?: { silent?: boolean }) => apiRequest<MeOut>("/auth/me", { silent: options?.silent }),
+  dissolvePair: (payload?: { message?: string | null }) =>
+    apiRequest<void>("/auth/me/dissolve", {
+      method: "POST",
+      json: { message: payload?.message ?? null },
+      silent: true,
+    }),
   getAnniversary: () => apiRequest<AnniversaryOut>("/auth/anniversary", { silent: true }),
   patchMe: (payload: { display_name?: string; avatar?: string; email?: string | null }) =>
     apiRequest<UserOut>("/auth/me", { method: "PATCH", json: payload }),

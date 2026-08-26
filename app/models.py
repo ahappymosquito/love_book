@@ -182,6 +182,9 @@ class Pair(Base):
     user_a_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, unique=True)
     user_b_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, unique=True)
     love_started_on: Mapped[date | None] = mapped_column(Date)
+    dissolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dissolved_by_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    farewell_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     user_a: Mapped[User] = relationship(foreign_keys=[user_a_id])

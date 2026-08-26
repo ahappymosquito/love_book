@@ -4,6 +4,10 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ## [Unreleased]
 
+### Added
+
+- `/me` 可合上当前 pair：任意一方二次确认并可留一句话后，双方都无法再进手账。时间线、媒体和 pair 内容会保留；对方用安全密码或入口链接登录时只看到那句话。
+
 ## [0.10.0] - 2026-08-24
 
 ### Changed

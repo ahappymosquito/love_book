@@ -1,4 +1,4 @@
-"""Pydantic contracts for pair features, security-password sessions, runner scores, media, and admin APIs."""
+"""Pydantic 契约：pair 功能、合上手账、安全密码会话、跑酷成绩、媒体和管理端接口。"""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -110,6 +110,7 @@ class PairCreated(APIModel):
 
 class PairOut(PairCreated):
     created_at: datetime
+    dissolved_at: datetime | None = None
 
 
 class MeOut(APIModel):
@@ -117,6 +118,18 @@ class MeOut(APIModel):
     counterpart: UserOut
     pair_id: int
     love_started_on: date
+
+
+class PairDissolveIn(APIModel):
+    message: str | None = Field(default=None, max_length=500)
+
+    @field_validator("message")
+    @classmethod
+    def strip_optional_message(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
 
 
 class PasswordLoginIn(APIModel):

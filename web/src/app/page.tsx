@@ -1,6 +1,6 @@
 "use client";
 
-// 无 token 时全屏像素花田加纸面墨水弹窗；有 token 或入口口令时直接进入，不挂游戏。
+// 无 token 时全屏像素花田加纸面墨水弹窗；有 token 或入口口令时直接进入，不挂游戏。已合上的 pair 只展示告别那句话。
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -9,13 +9,13 @@ import { AlertCircle, ArrowRight, ChevronLeft, Eye, EyeOff, Heart, KeyRound, Lis
 import { toast } from "sonner";
 import { LoadingScreen } from "@/components/loading-screen";
 import { XiaohuaRunner, type XiaohuaRunnerHandle } from "@/components/xiaohua-runner";
-import { api, APIError } from "@/lib/api";
+import { api, APIError, pairDissolvedFromError } from "@/lib/api";
 import { RUNNER_CHAPTER_LABELS } from "@/lib/xiaohua-runner";
 import { useAppStore } from "@/lib/store";
 import type { GameLeaderboardOut } from "@/lib/types";
 
 type LoginMethod = "password" | "token";
-type Overlay = "menu" | "login" | "leaderboard" | "over" | "score" | null;
+type Overlay = "menu" | "login" | "leaderboard" | "over" | "score" | "farewell" | null;
 type Gate = "wait" | "play" | "enter";
 
 const PLAYER_NAME_KEY = "love-book:runner-player-name";
@@ -58,7 +58,7 @@ function loginErrorMessage(error: unknown, method: LoginMethod) {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { token, hydrated, setToken, setMe } = useAppStore();
+  const { token, hydrated, farewell, setToken, setMe, setFarewell } = useAppStore();
   const runnerRef = useRef<XiaohuaRunnerHandle>(null);
   const [gate, setGate] = useState<Gate>("wait");
   const [method, setMethod] = useState<LoginMethod>("password");
@@ -95,6 +95,13 @@ export default function LoginPage() {
         router.replace(sanitizeNext(next) || "/timeline");
       } catch (error) {
         setToken(null);
+        const dissolved = pairDissolvedFromError(error);
+        if (dissolved) {
+          setFarewell(dissolved);
+          setGate("play");
+          setOverlay("farewell");
+          return;
+        }
         setGate("play");
         setOverlay("login");
         setLoginError(loginErrorMessage(error, loginMethod));
@@ -102,7 +109,7 @@ export default function LoginPage() {
         setSubmitting(false);
       }
     },
-    [router, setMe, setToken],
+    [router, setFarewell, setMe, setToken],
   );
 
   useEffect(() => {
@@ -125,14 +132,37 @@ export default function LoginPage() {
       void finishLogin(incomingToken, nextParam, "token");
       return;
     }
+    if (farewell) {
+      autoRan.current = true;
+      setGate("play");
+      setOverlay("farewell");
+      return;
+    }
     if (token) {
       autoRan.current = true;
       setGate("enter");
-      router.replace(sanitizeNext(nextParam) || "/timeline");
+      void api
+        .me({ silent: true })
+        .then((me) => {
+          setMe(me);
+          router.replace(sanitizeNext(nextParam) || "/timeline");
+        })
+        .catch((error) => {
+          const dissolved = pairDissolvedFromError(error);
+          setToken(null);
+          if (dissolved) {
+            setFarewell(dissolved);
+            setGate("play");
+            setOverlay("farewell");
+            return;
+          }
+          setGate("play");
+          setOverlay("menu");
+        });
       return;
     }
     setGate("play");
-  }, [finishLogin, hydrated, router, token]);
+  }, [farewell, finishLogin, hydrated, router, setFarewell, setMe, setToken, token]);
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -147,6 +177,14 @@ export default function LoginPage() {
       const session = await api.passwordLogin({ login_name: loginName.trim(), password });
       await finishLogin(session.access_token, null, "password");
     } catch (error) {
+      const dissolved = pairDissolvedFromError(error);
+      if (dissolved) {
+        setFarewell(dissolved);
+        setSubmitting(false);
+        setGate("play");
+        setOverlay("farewell");
+        return;
+      }
       setLoginError(loginErrorMessage(error, "password"));
       setSubmitting(false);
     }
@@ -230,6 +268,25 @@ export default function LoginPage() {
               <LogIn className="h-4 w-4" /> 登录 Love Book
             </button>
           </div>
+        </section>
+      ) : null}
+
+      {overlay === "farewell" && farewell ? (
+        <section className="runner-start-menu" aria-labelledby="farewell-title">
+          <button
+            type="button"
+            className="runner-close focus-ring"
+            onClick={() => {
+              setFarewell(null);
+              openMenu();
+            }}
+            aria-label="回到开始菜单"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <p id="farewell-title" className="whitespace-pre-wrap font-display text-2xl font-bold leading-snug text-ink">
+            {farewell.message}
+          </p>
         </section>
       ) : null}
 

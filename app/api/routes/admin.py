@@ -1,4 +1,4 @@
-"""Admin routes for pair setup, tokens, contacts, login logs, and AI config with a validated enable switch, saved models, and customizable AMap-grounded tests."""
+"""管理端配对、入口 token、联系方式、登录日志和 AI 配置；列表会标出已合上的 pair。"""
 
 import secrets
 from datetime import timezone
@@ -74,6 +74,7 @@ def pair_out(db: Session, pair: Pair) -> PairOut:
         user_a_token_expires_at=user_a_token.expires_at if user_a_token else None,
         user_b_token_expires_at=user_b_token.expires_at if user_b_token else None,
         created_at=pair.created_at,
+        dissolved_at=pair.dissolved_at,
     )
 
 

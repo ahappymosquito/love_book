@@ -1,9 +1,9 @@
 "use client";
 
-// Persisted authentication state plus transient global create-window controls shared by authenticated app surfaces.
+// Persisted authentication state, a transient closed-pair farewell, and create-window controls shared by authenticated app surfaces.
 
 import { create } from "zustand";
-import type { MeOut } from "./types";
+import type { MeOut, PairDissolvedOut } from "./types";
 
 const TOKEN_KEY = "pair-events-token";
 const ADMIN_VERIFIED_KEY = "pair-events-admin-verified";
@@ -11,11 +11,13 @@ const ADMIN_VERIFIED_KEY = "pair-events-admin-verified";
 interface AppState {
   token: string | null;
   me: MeOut | null;
+  farewell: PairDissolvedOut | null;
   adminKey: string | null;
   hydrated: boolean;
   createWindowPhase: "closed" | "gathering" | "open";
   setToken: (token: string | null) => void;
   setMe: (me: MeOut | null) => void;
+  setFarewell: (farewell: PairDissolvedOut | null) => void;
   setAdminKey: (key: string | null) => void;
   logout: () => void;
   logoutAdmin: () => void;
@@ -28,6 +30,7 @@ interface AppState {
 export const useAppStore = create<AppState>((set) => ({
   token: null,
   me: null,
+  farewell: null,
   adminKey: null,
   hydrated: false,
   createWindowPhase: "closed",
@@ -44,7 +47,9 @@ export const useAppStore = create<AppState>((set) => ({
     if (!token) set({ me: null, createWindowPhase: "closed" });
   },
 
-  setMe: (me) => set({ me }),
+  setMe: (me) => set(me ? { me, farewell: null } : { me }),
+
+  setFarewell: (farewell) => set({ farewell }),
 
   setAdminKey: (key) => {
     if (typeof window !== "undefined") {

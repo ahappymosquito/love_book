@@ -205,6 +205,13 @@ export interface PairCreated {
 
 export interface PairOut extends PairCreated {
   created_at: string;
+  dissolved_at: string | null;
+}
+
+export interface PairDissolvedOut {
+  code: "pair_dissolved";
+  message: string;
+  from_display_name: string;
 }
 
 export type ContentItem =

@@ -534,6 +534,24 @@ def test_habit_reminder_scan_sends_only_unfinished_once(
     assert db_session.query(HabitReminderRun).filter_by(date=date(2026, 6, 10)).count() == 1
 
 
+def test_habit_reminder_scan_skips_dissolved_pairs(
+    client: TestClient,
+    pair_tokens: dict[str, str | int],
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token = str(pair_tokens["user_a_token"])
+    client.patch("/auth/me", headers=auth(token), json={"email": "a@example.com"})
+    client.post("/habits/tasks", headers=auth(token), json={"title": "拉伸", "color": "peach"})
+    sent: list[dict[str, object]] = []
+    monkeypatch.setattr("app.habits.notify_habit_reminder", lambda **kwargs: sent.append(kwargs) or True)
+    assert client.post("/auth/me/dissolve", headers=auth(token), json={"message": "先放下"}).status_code == 204
+    db_session.expire_all()
+    count = habits.scan_habit_reminders(db_session, date(2026, 6, 10))
+    assert count == 0
+    assert sent == []
+
+
 def test_habit_reminder_scan_retries_after_failed_delivery(
     client: TestClient,
     pair_tokens: dict[str, str | int],

@@ -154,6 +154,25 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         {"default": "DATE NULL"},
     ),
     (
+        "pairs",
+        "dissolved_at",
+        {
+            "default": "TIMESTAMP WITH TIME ZONE NULL",
+            "mysql": "DATETIME NULL",
+            "mariadb": "DATETIME NULL",
+        },
+    ),
+    (
+        "pairs",
+        "dissolved_by_user_id",
+        {"default": "INTEGER NULL", "mysql": "INT NULL", "mariadb": "INT NULL"},
+    ),
+    (
+        "pairs",
+        "farewell_message",
+        {"default": "VARCHAR(500) NULL"},
+    ),
+    (
         "events",
         "event_kind",
         {"default": "VARCHAR(50) NOT NULL DEFAULT 'memory'"},

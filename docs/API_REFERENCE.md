@@ -11,6 +11,7 @@
 
 - 管理端一次创建一对用户，并返回两个入口 token，支持默认永久有效或指定过期时间。
 - 用户可在已登录状态设置唯一登录名和安全密码，密码登录会签发 90 天有效的随机 Bearer 会话；邮件和入口链接继续使用原入口 token。
+- 任意一方可在设置里合上当前 pair 并留下一句话；合上后双方无法再进手账，时间线、媒体和 pair 内容保留，下一次登录只看到那句话。
 - 普通接口使用 `Authorization: Bearer <token>` 鉴权，每个 token 直接代表一个用户身份和确定的 pair 关系。
 - 未登录首页提供 1-bit 像素「花田拾光」与匿名全站 Top 3 排行榜；无 token 先看到开始菜单，有 token 直接进入手账。分数含路程、拾光和连击加成，达到入榜门槛后可留下 1–12 字符的 Unicode 名字。
 - 两位用户都可以创建事件、提交评论、上传图片，并对可见留言添加点赞 / 倒赞 reaction。
@@ -213,6 +214,7 @@ Authorization: Bearer <token>
 | auth | GET | `/auth/me` | `Bearer` | 获取当前用户、对方、pair_id |
 | auth | GET | `/auth/me/security-password` | `Bearer` | 获取当前用户安全密码配置状态 |
 | auth | PUT | `/auth/me/security-password` | `Bearer` | 设置或重置登录名和安全密码，返回新会话 |
+| auth | POST | `/auth/me/dissolve` | `Bearer` | 合上当前 pair，可选留一句话；内容保留，双方无法再进手账 |
 | auth | PATCH | `/auth/me` | `Bearer` | 修改自己的昵称、邮箱或 emoji 头像 |
 | auth | PATCH | `/auth/me/location` | `Bearer` | 保存当前用户常用位置，支持坐标逆地理编码或地址地理编码 |
 | auth | DELETE | `/auth/me/location` | `Bearer` | 清除当前用户常用位置 |
@@ -480,6 +482,37 @@ Content-Type: multipart/form-data
 `GET /auth/me/security-password` 返回当前用户的规范化登录名、是否已配置及更新时间。`PUT /auth/me/security-password` 只需当前 Bearer 鉴权，接收登录名和新密码，设置或重置后撤销该用户全部旧 `password` 来源会话，并在响应中返回新会话和最新 `security` 状态；`entry` 来源入口 token 不受影响。
 
 登录名会执行 NFKC、去除首尾空白和 casefold，允许 3–32 个 Unicode 字母/数字及 `._-`，并通过唯一索引避免大小写或全半角重复。密码允许 Unicode、空格和粘贴，长度为 15–128；凭据使用 Argon2id 单向哈希，接口与日志均不返回明文或哈希。
+
+### 5.3.1 合上手账
+
+`POST /auth/me/dissolve`
+
+请求头：
+
+```http
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+请求体：
+
+```json
+{ "message": "谢谢你来过。" }
+```
+
+`message` 可选，最长 500 字，空白按未留言处理。成功返回 `204`，并在响应返回前写入合上时间。时间线、媒体和 pair 内容保留，不删除。之后该 pair 双方的 Bearer 鉴权和正确密码登录都返回 `410`：
+
+```json
+{
+  "detail": {
+    "code": "pair_dissolved",
+    "message": "谢谢你来过。",
+    "from_display_name": "Alice"
+  }
+}
+```
+
+未留言时 `message` 为默认句「我们已经把这本手账合上了。」。错误密码仍返回 `401`。管理端列出 pair 时带 `dissolved_at`。习惯提醒跳过已合上的 pair。
 
 ### 5.4 共享语录库
 

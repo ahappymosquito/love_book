@@ -22,6 +22,8 @@ The unauthenticated surface is a game-first Canvas 2D runner named 花田拾光 
 
 Each partner may configure one unique login name and a security password from the authenticated settings page. Password login issues the same opaque Bearer session used by the rest of the application, while email and administrator entry links continue to use their existing tokens. Resetting the password requires an already authenticated token, invalidates older password-issued sessions, and does not revoke entry-link tokens.
 
+Either partner may close the shared book from `/me`. After a second confirmation they can leave one short message. The pair then stops admitting either person; memories, photos, and other pair content stay stored and are not deleted. The next password or entry-link login only shows that message, then returns to 花田拾光. Habit reminder mail is not sent after the book is closed.
+
 Received gifts are recorded directly by the receiver as Timeline events. Only the gift name is required; normal written feedback, up to three honest positive or complex feeling tags, an optional one-to-five-star rating, and up to six private event photos can be added without a delivery state machine. A gift received during a meeting keeps its photo-led warm gift identity while also belonging to that meeting.
 
 ## Brand Personality

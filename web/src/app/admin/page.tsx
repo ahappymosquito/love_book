@@ -1060,6 +1060,7 @@ function PairRow({
             </p>
             <p className="font-sc text-[11px] text-ink-muted">
               pair #{pair.pair_id} · {formatAbsolute(pair.created_at)}
+              {pair.dissolved_at ? " · 已合上" : ""}
             </p>
             <p className={cn("font-sc text-[11px]", tokenExpiryClass(pair.user_a_token_expires_at))}>
               token {formatTokenExpiry(pair.user_a_token_expires_at)}
