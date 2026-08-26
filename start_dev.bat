@@ -1,8 +1,5 @@
 @echo off
-REM File overview:
-REM This script is the local one-click development entrypoint for Love Book.
-REM Default behavior starts the backend and frontend directly.
-REM Pass --install to install locked Poetry and npm dependencies before startup.
+REM 本地一键启动：安装可选；后端优先 8000，若被 Windows Hyper-V 保留（WinError 10013）则改用可用端口并同步前端。
 
 setlocal EnableExtensions
 set "ROOT=%~dp0"
@@ -52,13 +49,22 @@ if "%INSTALL_DEPS%"=="1" (
     popd >nul
 )
 
+pushd "%ROOT%" >nul
+set "LB_API_PORT="
+for /f "usebackq delims=" %%p in (`poetry run python scripts\dev_backend_port.py`) do set "LB_API_PORT=%%p"
+popd >nul
+if not defined LB_API_PORT (
+    echo [ERROR] Could not pick a local backend port.
+    exit /b 1
+)
+
 echo Starting Love Book development servers...
-echo Backend:  http://127.0.0.1:8000
+echo Backend:  http://127.0.0.1:%LB_API_PORT%
 echo Frontend: http://localhost:3000
 echo.
 
-start "Love Book Backend" /D "%ROOT%" cmd /k "poetry run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload"
-start "Love Book Frontend" /D "%ROOT%web" cmd /k "npm run dev"
+start "Love Book Backend" /D "%ROOT%" cmd /k "poetry run uvicorn app.main:app --host 127.0.0.1 --port %LB_API_PORT% --reload"
+start "Love Book Frontend" /D "%ROOT%web" cmd /k "set NEXT_PUBLIC_API_BASE=http://127.0.0.1:%LB_API_PORT%&& npm run dev"
 exit /b 0
 
 :help

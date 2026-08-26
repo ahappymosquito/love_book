@@ -26,7 +26,7 @@
 
 1. `poetry sync --no-root --no-interaction`
 2. `npm ci --no-audit --no-fund`（位于 `web/` 目录）
-3. 启动后端开发服务：`http://127.0.0.1:8000`
+3. 启动后端开发服务：优先 `http://127.0.0.1:8000`；若该端口被 Windows Hyper-V 保留（`WinError 10013`），则改用 `8100` 等可用端口，并给前端设置 `NEXT_PUBLIC_API_BASE`
 4. 启动前端开发服务：`http://localhost:3000`
 
 ## 环境要求
@@ -41,4 +41,5 @@
 - `.env` 可配置 `AMAP_MAPS_API_KEY`，用于餐厅搜索、详情解析和附近抽奖；管理端也可以单独覆盖并保存高德 key。
 - 管理端 AI 配置使用 `.env` 中的 `LLM_OPENAI_BASE_URL`、`LLM_ANTHROPIC_BASE_URL`、`LLM_API_KEY`、`LLM_PROTOCOL`、`LLM_MODEL` 作为初始默认。页面可保存协议、对应地址、token 和选中模型；获取模型列表后会在下拉框展示模型数量，选择模型会自动测试连接。
 - 本地测试使用 `poetry run python -m pytest`；如果 Windows 默认临时目录无权限，可传入 `--basetemp=.pytest-tmp/local`。
+- Windows 上 `WinError 10013` 表示 8000 被 Hyper-V / WinNAT 保留，不是代码权限错误。不要手工去绑 8000；重新运行 `start_dev.bat`，看窗口里打印的后端地址。手动启动可用 `poetry run python scripts/dev_backend_port.py` 查看当前可用端口。
 - 生产发布不走本机 `start_dev.bat`。智能体只读 `LOVE_BOOK_SSH_HOSTS`，步骤见 [DEPLOYMENT.md](DEPLOYMENT.md)。

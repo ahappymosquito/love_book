@@ -33,7 +33,7 @@ npm install
 Copy-Item .env.local.example .env.local
 ```
 
-`NEXT_PUBLIC_API_BASE` 默认指向 `http://127.0.0.1:8000`，与后端 `uvicorn` 默认端口一致。
+`NEXT_PUBLIC_API_BASE` 未设置时指向 `http://127.0.0.1:8000`。仓库根目录 `start_dev.bat` 会按本机实际可绑定端口写入该变量；Windows 上 8000 被 Hyper-V 保留时常见回退是 8100。
 
 ## 开发
 
@@ -44,7 +44,7 @@ npm run dev
 打开 http://localhost:3000 。后端需要同步运行：
 
 ```powershell
-# 仓库根目录
+# 仓库根目录；端口以 start_dev.bat 或 scripts/dev_backend_port.py 为准
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 

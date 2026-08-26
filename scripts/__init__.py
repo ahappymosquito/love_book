@@ -1,1 +1,1 @@
-"""Development helpers: version sync, SSH release hosts, and host Nginx gateway cutover."""
+"""开发辅助：版本同步、SSH 发布主机、本机后端端口选择和主机 Nginx 切换。"""

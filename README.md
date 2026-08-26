@@ -28,8 +28,8 @@ Copy-Item .env.example .env
 启动后访问：
 
 - 前端：<http://localhost:3000>
-- 后端健康检查：<http://127.0.0.1:8000/health>
-- Swagger API 文档：<http://127.0.0.1:8000/docs>
+- 后端：启动脚本会打印实际地址，优先 `http://127.0.0.1:8000`；本机 8000 被 Windows 保留时改用 `8100` 等端口
+- 健康检查 / Swagger：`/health` 与 `/docs` 挂在上面打印的后端地址上
 
 依赖已安装时直接运行 `.\start_dev.bat`，不会重复安装。配置、高德和 LLM 说明见 [本地开发文档](docs/DEVELOPMENT.md)。
 

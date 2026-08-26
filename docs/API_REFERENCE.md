@@ -104,10 +104,12 @@ MEDIA_STORAGE=local
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
+本机一键启动请用 `start_dev.bat`。Windows 上 8000 可能被 Hyper-V 保留并报 `WinError 10013`，脚本会改用可用端口（常见为 8100）并同步前端。手动启动可先运行 `poetry run python scripts/dev_backend_port.py`。
+
 启动后可以访问：
 
-- Swagger 文档：`http://127.0.0.1:8000/docs`
-- OpenAPI JSON：`http://127.0.0.1:8000/openapi.json`
+- Swagger 文档：`http://127.0.0.1:<端口>/docs`
+- OpenAPI JSON：`http://127.0.0.1:<端口>/openapi.json`
 
 应用启动时会自动创建数据库表。v1 暂未接入 Alembic 迁移。
 
@@ -121,7 +123,7 @@ npm install
 npm run dev
 ```
 
-默认访问 http://localhost:3000 。前端通过 `NEXT_PUBLIC_API_BASE`（默认 `http://127.0.0.1:8000`）调用本后端，**需要同时启动后端的 `uvicorn`**。
+默认访问 http://localhost:3000 。前端通过 `NEXT_PUBLIC_API_BASE`（未设置时回落 `http://127.0.0.1:8000`）调用本后端，**需要同时启动后端的 `uvicorn`**。`start_dev.bat` 会按实际后端端口写入该变量。
 
 页面：
 
