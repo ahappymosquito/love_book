@@ -4,12 +4,17 @@
 .vscode
 .cursor
 .pytest_cache
+.pytest-tmp/
+.pytest-tmp-*/
 __pycache__
 **/__pycache__
 *.py[cod]
 *.log
 uvicorn.err.log
 uvicorn.out.log
+tmp/
+.playwright-cli/
+.playwright-mcp/
 
 # 旧的 sqlite 落地数据库不应进镜像
 pair_events.db

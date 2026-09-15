@@ -4,6 +4,10 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ## [Unreleased]
 
+### Changed
+
+- 清理本地 Playwright 快照、跑酷 QA 截图和像素草稿，并把 `tmp/`、`.playwright-mcp/` 纳入忽略规则。
+
 ## [0.11.0] - 2026-08-26
 
 ### Added

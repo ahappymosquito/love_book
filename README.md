@@ -99,7 +99,7 @@ love_book/
 
 ```powershell
 python scripts/version.py check
-poetry run python -m pytest -q --basetemp=.pytest-tmp/local
+poetry run python -m pytest -q --basetemp=.pytest-tmp-local
 cmd /c npm run build
 ```
 
@@ -107,6 +107,6 @@ cmd /c npm run build
 
 ## 数据安全
 
-- `.env`、本地数据库、媒体文件、测试输出和发布产物不会提交到 Git。
+- `.env`、本地数据库、媒体文件、`tmp/`、Playwright 快照、测试输出和发布产物不会提交到 Git。
 - 图片保存到 `MEDIA_ROOT`，数据库只保存 storage key；生产迁移时必须同时备份数据库和 `love_book_media`。
 - 周期预测仅用于个人记录参考，不提供医疗诊断或避孕建议。

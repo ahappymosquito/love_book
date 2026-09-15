@@ -1,19 +1,29 @@
+# Python / pytest
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .pytest-tmp/
 .pytest-tmp-*/
 .pytest_tmp/
+pytest-cache-files-*/
+
+# 本地运行数据，不要提交
 pair_events.db
 media/
-*.log
-pytest-cache-files-*/
 .env
+
+# 编辑器与代码智能体缓存
 .idea
 .qoder
 .codegraph/
 .codex/
+graphify-out/
+
+# 一次性验证产物：截图、像素草稿、dev 日志、浏览器快照
+tmp/
+*.log
 .playwright-cli/
+.playwright-mcp/
 output/
 release/
 
@@ -23,3 +33,6 @@ web/.next/
 web/out/
 web/.env.local
 web/*.tsbuildinfo
+web/test-results/
+web/playwright-report/
+web/blob-report/

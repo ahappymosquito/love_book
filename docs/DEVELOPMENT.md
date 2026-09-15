@@ -40,6 +40,17 @@
 - `/todo` 需要后端和前端同时启动，前端入口在 `/timeline` 首页标题区右侧。
 - `.env` 可配置 `AMAP_MAPS_API_KEY`，用于餐厅搜索、详情解析和附近抽奖；管理端也可以单独覆盖并保存高德 key。
 - 管理端 AI 配置使用 `.env` 中的 `LLM_OPENAI_BASE_URL`、`LLM_ANTHROPIC_BASE_URL`、`LLM_API_KEY`、`LLM_PROTOCOL`、`LLM_MODEL` 作为初始默认。页面可保存协议、对应地址、token 和选中模型；获取模型列表后会在下拉框展示模型数量，选择模型会自动测试连接。
-- 本地测试使用 `poetry run python -m pytest`；如果 Windows 默认临时目录无权限，可传入 `--basetemp=.pytest-tmp/local`。
+- 本地测试使用 `poetry run python -m pytest`；如果 Windows 默认临时目录无权限，可传入 `--basetemp=.pytest-tmp-local`。pytest 会自己创建这个目录，不需要预先建 `.pytest-tmp/`。
 - Windows 上 `WinError 10013` 表示 8000 被 Hyper-V / WinNAT 保留，不是代码权限错误。不要手工去绑 8000；重新运行 `start_dev.bat`，看窗口里打印的后端地址。手动启动可用 `poetry run python scripts/dev_backend_port.py` 查看当前可用端口。
 - 生产发布不走本机 `start_dev.bat`。智能体只读 `LOVE_BOOK_SSH_HOSTS`，步骤见 [DEPLOYMENT.md](DEPLOYMENT.md)。
+
+## 本地临时文件
+
+浏览器验证截图、像素草稿、开发日志和一次性脚本放到仓库根目录 `tmp/`，不要写进 `app/`、`web/src/` 或 `docs/`。下列目录都已加入 `.gitignore`，用完可直接删，不要提交：
+
+- `tmp/`：手工 QA 截图、草稿脚本、`next-dev` 日志
+- `.playwright-mcp/`、`.playwright-cli/`：Playwright 页面快照和 console 日志
+- `.pytest-tmp/`、`.pytest-tmp-local/`、`.pytest-tmp-*/`、`.pytest_cache/`：pytest 运行缓存
+- `web/.next/`、`web/out/`、`web/*.tsbuildinfo`：前端构建缓存
+
+`pair_events.db`、`.env`、`media/` 是本地数据和密钥，也不要提交；清理临时文件时不要删它们。
