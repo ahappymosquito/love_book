@@ -15,18 +15,17 @@ command -v nginx >/dev/null || { echo "nginx is not installed" >&2; exit 1; }
 [[ -d "${NGINX_SRC}/sites" ]] || { echo "Missing ${NGINX_SRC}" >&2; exit 1; }
 
 install -d -m 0755 /var/www/certbot/.well-known/acme-challenge
-install -d -m 0755 /etc/nginx/certs/qrqto.club
-install -d -m 0755 /etc/nginx/certs/www.qrqto.club
-install -d -m 0755 /etc/nginx/certs/cdn.qrqto.club
+install -d -m 0755 /etc/nginx/certs/tingle272.xyz
 install -d -m 0755 /etc/nginx/snippets
 
 install -m 0644 "${NGINX_SRC}/snippets/love-book-ssl.conf" /etc/nginx/snippets/love-book-ssl.conf
+install -m 0644 "${NGINX_SRC}/snippets/love-book-proxy-headers.conf" /etc/nginx/snippets/love-book-proxy-headers.conf
 install -m 0644 "${NGINX_SRC}/snippets/love-book-proxy.conf" /etc/nginx/snippets/love-book-proxy.conf
-install -m 0644 "${NGINX_SRC}/sites/qrqto.club.conf" /etc/nginx/sites-available/qrqto.club
-install -m 0644 "${NGINX_SRC}/sites/cdn.qrqto.club.conf" /etc/nginx/sites-available/cdn.qrqto.club
+install -m 0644 "${NGINX_SRC}/sites/tingle272.xyz.conf" /etc/nginx/sites-available/tingle272.xyz
+install -m 0644 "${NGINX_SRC}/sites/cdn.tingle272.xyz.conf" /etc/nginx/sites-available/cdn.tingle272.xyz
 
-ln -sfn /etc/nginx/sites-available/qrqto.club /etc/nginx/sites-enabled/qrqto.club
-ln -sfn /etc/nginx/sites-available/cdn.qrqto.club /etc/nginx/sites-enabled/cdn.qrqto.club
+ln -sfn /etc/nginx/sites-available/tingle272.xyz /etc/nginx/sites-enabled/tingle272.xyz
+ln -sfn /etc/nginx/sites-available/cdn.tingle272.xyz /etc/nginx/sites-enabled/cdn.tingle272.xyz
 
 if [[ -L /etc/nginx/sites-enabled/love || -e /etc/nginx/sites-enabled/love ]]; then
     rm -f /etc/nginx/sites-enabled/love

@@ -22,11 +22,7 @@ fi
 
 certbot certonly --webroot -w "${WEBROOT}" --non-interactive \
     "${email_args[@]}" --keep-until-expiring \
-    -d qrqto.club -d www.qrqto.club
-
-certbot certonly --webroot -w "${WEBROOT}" --non-interactive \
-    "${email_args[@]}" --keep-until-expiring \
-    -d cdn.qrqto.club
+    -d tingle272.xyz -d www.tingle272.xyz -d cdn.tingle272.xyz
 
 sync_pair() {
     local live="$1"
@@ -36,9 +32,7 @@ sync_pair() {
     install -m 0600 "${live}/privkey.pem" "${dest}/privkey.pem"
 }
 
-sync_pair /etc/letsencrypt/live/qrqto.club /etc/nginx/certs/qrqto.club
-sync_pair /etc/letsencrypt/live/qrqto.club /etc/nginx/certs/www.qrqto.club
-sync_pair /etc/letsencrypt/live/cdn.qrqto.club /etc/nginx/certs/cdn.qrqto.club
+sync_pair /etc/letsencrypt/live/tingle272.xyz /etc/nginx/certs/tingle272.xyz
 
 nginx -t
 systemctl reload nginx

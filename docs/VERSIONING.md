@@ -50,10 +50,10 @@ git tag -a v0.5.0 -m "Love Book 0.5.0"
 
 ```powershell
 python scripts/deploy_host.py package --tag v0.5.0
-python scripts/deploy_host.py check --host ts3_qrqto
-python scripts/deploy_host.py status --host ts3_qrqto
-python scripts/deploy_host.py update --host root_qrqto --dry-run
-python scripts/deploy_host.py update --host root_qrqto --yes
+python scripts/deploy_host.py check --host cn-ts3
+python scripts/deploy_host.py status --host cn-ts3
+python scripts/deploy_host.py update --host cn --dry-run
+python scripts/deploy_host.py update --host cn --yes
 ```
 
 `update --yes` 会 SSH 到具备更新能力的主机，执行已安装的 `/home/ts3/love-book/update.sh`。该脚本拉取前后端稳定版 `latest`，确认两套镜像的 OCI 版本标签完全一致，仅在发现新版本时创建 `pre-release` 恢复点，然后启动并验证 `/api/health` 和首页。未经当次明确授权不得加 `--yes`。
@@ -63,7 +63,7 @@ python scripts/deploy_host.py update --host root_qrqto --yes
 生产 Compose 工作目录独立于 Git 仓库，更新器和备份程序已经安装在服务器上，不随本仓库分发。`/api/health` 返回应用版本和完整 Git SHA。
 
 ```bash
-curl -fsS https://qrqto.club/api/health
+curl -fsS https://tingle272.xyz/api/health
 ```
 
 需要更强的供应链固定时，前后端应同时指定同一次发布生成的镜像 digest。

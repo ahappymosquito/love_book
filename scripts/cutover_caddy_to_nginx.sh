@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 一次性把 qrqto.club / www / cdn 从 Docker Caddy 切到主机 Nginx。
+# 一次性把公网站点从 Docker Caddy 切到主机 Nginx。
+# 此脚本用于 2026-08 的首次切换，当前生产域名是 tingle272.xyz，不要再对现网执行。
 # 失败会停 Nginx 并重新拉起 Caddy。禁止 docker compose down -v。
 
 set -euo pipefail
@@ -9,9 +10,9 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP_ROOT="${BACKUP_ROOT:-/root/love-book-nginx-cutover-${STAMP}}"
 CADDY_CERT_ROOT="/data/caddy/certificates/acme-v02.api.letsencrypt.org-directory"
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-HEALTH_URL="${HEALTH_URL:-https://qrqto.club/api/health}"
-CDN_URL="${CDN_URL:-https://cdn.qrqto.club/packages.json}"
-WWW_URL="${WWW_URL:-https://www.qrqto.club/}"
+HEALTH_URL="${HEALTH_URL:-https://tingle272.xyz/api/health}"
+CDN_URL="${CDN_URL:-https://cdn.tingle272.xyz/packages.json}"
+WWW_URL="${WWW_URL:-https://www.tingle272.xyz/}"
 
 log() { printf '[cutover] %s\n' "$*"; }
 fail() { printf '[cutover] FAIL %s\n' "$*" >&2; exit 1; }
@@ -167,11 +168,11 @@ ss -ltnp | grep -E ':80|:443' | grep -q nginx || fail "nginx is not listening on
 ss -ltnp | grep -E ':80|:443' | grep -q caddy && fail "Caddy is still bound to 80/443"
 
 expect_200 "${HEALTH_URL}"
-expect_200 "https://qrqto.club/"
+expect_200 "https://tingle272.xyz/"
 expect_200 "${WWW_URL}"
 expect_200 "${CDN_URL}"
-expect_200 "https://cdn.qrqto.club/"
-expect_200 "https://cdn.qrqto.club/app/latest.json"
+expect_200 "https://cdn.tingle272.xyz/"
+expect_200 "https://cdn.tingle272.xyz/app/latest.json"
 
 log "Removing Caddy from compose (keep volume and image)"
 python3 - "${COMPOSE_DIR}/docker-compose.yml" <<'PY'

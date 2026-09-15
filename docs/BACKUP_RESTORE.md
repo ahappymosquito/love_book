@@ -2,7 +2,7 @@
 
 生产备份和更新工具已经安装在服务器部署目录，不随本仓库分发。本文记录当前实例的备份约定和恢复步骤。主机 Nginx 证书在 `/etc/nginx/certs` 与 Let's Encrypt；灾备时用 certbot webroot 重新签发。旧 Caddy volume 不在应用备份范围内。CDN 静态文件在 `/var/www/cdn.qrqto.club`，需要单独备份，不在 `love_book_media` 里。
 
-从开发机查看备份时，使用 `LOVE_BOOK_SSH_HOSTS` 里的 SSH 名字。日常用 `ts3_qrqto`，需要 root 时用 `root_qrqto`。智能体不要硬编码 IP，应执行 `python scripts/deploy_host.py check --host ts3_qrqto`。
+从开发机查看备份时，使用 `LOVE_BOOK_SSH_HOSTS` 里的 SSH 名字。日常用 `cn-ts3`，需要 root 时用 `cn`。智能体不要硬编码 IP，应执行 `python scripts/deploy_host.py check --host cn-ts3`。
 
 ## 恢复目标与已接受风险
 

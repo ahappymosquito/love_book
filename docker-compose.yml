@@ -32,6 +32,7 @@ services:
     networks:
       - love-book-net
     extra_hosts:
+      # 同机 MySQL 用 host.docker.internal，不要把会过期的公网主机名写进 DATABASE_URL。
       - "host.docker.internal:host-gateway"
     logging: *default-logging
 

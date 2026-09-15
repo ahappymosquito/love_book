@@ -15,7 +15,7 @@
 - 需要让技术实现可追踪；修改代码文件时，需要同步更新文件开头的功能介绍注释。
 - `VERSION` 是前后端应用版本的唯一真相；普通开发提交不得修改版本。只有准备正式发布时才按 SemVer 更新一次，并运行 `python scripts/version.py sync` 同步前端清单。
 - 正式发布标签必须为与 `VERSION` 一致的 `vX.Y.Z`；生产前后端镜像必须固定为同一版本标签或对应 digest，不得使用 `latest`。
-- 智能体打包到发布只读 `LOVE_BOOK_SSH_HOSTS`（`~/.ssh/config` 的 Host 名，例如 `ts3_qrqto,root_qrqto`）。第一项做检查，`User=root` 的项做发布。路径和命令由脚本内置，不要让用户填一堆 SSH 参数。私钥只放 `~/.ssh/config`，命令走 `python scripts/deploy_host.py`。未经当次明确授权不得 `--yes` 执行更新、push 标签或发布镜像。
+- 智能体打包到发布只读 `LOVE_BOOK_SSH_HOSTS`（`~/.ssh/config` 的 Host 名，例如 `cn-ts3,cn`）。第一项做检查，`User=root` 的项做发布。路径和命令由脚本内置，不要让用户填一堆 SSH 参数。私钥只放 `~/.ssh/config`，命令走 `python scripts/deploy_host.py`。未经当次明确授权不得 `--yes` 执行更新、push 标签或发布镜像。
 
 ## 当前约定
 
@@ -47,10 +47,10 @@
 - 邮件通知必须遵守事件解锁状态：`mutual_submit` 未解锁时，只通知有新事件或新评论，不展示事件标题、描述或评论正文。
 - 管理端复制 token / 入口链接需要保留 Clipboard API 失败后的降级复制，兼容服务器 HTTP、权限策略或浏览器剪贴板限制。
 - 管理端复制入口链接由浏览器当前 `window.location.origin` 动态生成：HTTP 环境复制 HTTP，HTTPS 环境复制 HTTPS。
-- 生产公网入口使用宿主机 Nginx：`qrqto.club` / `www.qrqto.club` 反代本机 loopback 上的前后端，`cdn.qrqto.club` 直接提供 `/var/www/cdn.qrqto.club`。TLS 由 certbot webroot 续期，不要再用 Docker Caddy 抢 80/443。邮件链接仍由后端 `APP_WEB_URL` 生成，生产应设为 `https://qrqto.club`。
+- 生产公网入口使用宿主机 Nginx：`tingle272.xyz` / `www.tingle272.xyz` 反代本机 loopback 上的前后端，`cdn.tingle272.xyz` 直接提供 `/var/www/cdn.qrqto.club`（主机上已有静态根目录，不要因改名搬家）。TLS 由 certbot webroot 续期，不要再用 Docker Caddy 抢 80/443。邮件链接仍由后端 `APP_WEB_URL` 生成，生产应设为 `https://tingle272.xyz`。同机 MySQL 必须走 `host.docker.internal`，不要把已过期的公网主机名写进 `DATABASE_URL`。
 - 生产 Docker 媒体文件持久化在 named volume `love_book_media`，迁移服务器时需要和数据库一起备份。
 - 生产更新和备份工具已经安装在服务器部署目录，不随仓库分发。真实密码、SMTP 授权码和高德 / LLM key 只放服务器 `.env` 或环境变量，不提交到仓库。
-- 生产 SSH 只配 `LOVE_BOOK_SSH_HOSTS`，可写多个名字，例如 `ts3_qrqto,root_qrqto`。`ts3` 不能免密 sudo，也不能拉取私有 GHCR 镜像，发布走 `User=root` 的主机。
+- 生产 SSH 只配 `LOVE_BOOK_SSH_HOSTS`，可写多个名字，例如 `cn-ts3,cn`。`ts3` 不能免密 sudo，也不能拉取私有 GHCR 镜像，发布走 `User=root` 的主机。
 
 ## 首页提醒约定
 

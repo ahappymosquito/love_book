@@ -1,8 +1,8 @@
 # Rollback-only Caddyfile. Production public 80/443 is host nginx in deploy/nginx.
-# Live servers also served cdn.qrqto.club from /var/www/cdn.qrqto.club; that vhost
-# is now deploy/nginx/sites/cdn.qrqto.club.conf. Do not start this next to host nginx.
+# Live CDN files remain in /var/www/cdn.qrqto.club; the public name is cdn.tingle272.xyz.
+# Do not start this next to host nginx.
 
-qrqto.club, www.qrqto.club {
+tingle272.xyz, www.tingle272.xyz {
 	encode zstd gzip
 
 	@api path /api /api/*

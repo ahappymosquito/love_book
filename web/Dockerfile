@@ -1,5 +1,5 @@
 # Frontend production image for the Next.js app; build-time API routing points to /api
-# so Caddy can serve the UI and reverse-proxy backend requests from the same origin.
+# so host Nginx can serve the UI and reverse-proxy backend requests from the same origin.
 
 ARG NODE_MAJOR=22
 

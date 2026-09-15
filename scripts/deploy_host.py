@@ -24,8 +24,8 @@ ENV_PREFIX = "LOVE_BOOK_SSH_"
 
 NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 DEFAULT_COMPOSE_DIR = "/home/ts3/love-book"
-DEFAULT_HEALTH_URL = "https://qrqto.club/api/health"
-DEFAULT_SITE_URL = "https://qrqto.club/"
+DEFAULT_HEALTH_URL = "https://tingle272.xyz/api/health"
+DEFAULT_SITE_URL = "https://tingle272.xyz/"
 DEFAULT_BACKUP_ROOT = "/home/ts3/backups/love_book"
 DEFAULT_BACKUP_COMMAND = "/home/ts3/bin/love-book-backup"
 DEFAULT_UPDATE_COMMAND = "bash /home/ts3/love-book/update.sh"
@@ -36,8 +36,8 @@ REQUIRED_PACKAGE_FILES = (
     "Dockerfile",
     "web/Dockerfile",
     "docker-compose.yml",
-    "deploy/nginx/sites/qrqto.club.conf",
-    "deploy/nginx/sites/cdn.qrqto.club.conf",
+    "deploy/nginx/sites/tingle272.xyz.conf",
+    "deploy/nginx/sites/cdn.tingle272.xyz.conf",
     ".env.example",
     "VERSION",
     "CHANGELOG.md",
@@ -159,7 +159,7 @@ def _require_name(value: str) -> str:
 
 
 def heuristic_user(alias: str) -> str:
-    """约定 Host 名为 user_site，例如 ts3_qrqto、root_qrqto。"""
+    """约定 Host 名为 user_site，例如 ts3_tingle、root_tingle。真实发布主机以 ~/.ssh/config 为准。"""
     if "_" in alias:
         return alias.split("_", 1)[0]
     return alias
@@ -266,7 +266,7 @@ def load_catalog(
     if not names:
         raise DeployHostError(
             "LOVE_BOOK_SSH_HOSTS is missing. Set SSH Host names, for example: "
-            "LOVE_BOOK_SSH_HOSTS=ts3_qrqto,root_qrqto"
+            "LOVE_BOOK_SSH_HOSTS=cn-ts3,cn"
         )
     users = {name: resolve_ssh_user(name, ssh_users) for name in names}
     update_host = next((name for name in names if is_update_user(users[name])), "")
@@ -501,7 +501,7 @@ def cmd_recipe(catalog: HostCatalog) -> int:
 6. python scripts/deploy_host.py check --host {catalog.default_host}
 7. python scripts/deploy_host.py status --host {catalog.default_host}
 8. python scripts/deploy_host.py update --host {update_host} --yes
-9. curl -fsS https://qrqto.club/api/health  确认 version 与 VERSION 一致
+9. curl -fsS https://tingle272.xyz/api/health  确认 version 与 VERSION 一致
 
 当前主机来自 {catalog.source}。加主机只需把名字写进 LOVE_BOOK_SSH_HOSTS。
 """.strip()

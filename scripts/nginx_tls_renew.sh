@@ -26,7 +26,7 @@ sync_live_cert() {
 
 certbot renew --webroot -w /var/www/certbot --quiet --deploy-hook true
 
-for name in qrqto.club www.qrqto.club cdn.qrqto.club; do
+for name in tingle272.xyz; do
     sync_live_cert "${name}"
 done
 

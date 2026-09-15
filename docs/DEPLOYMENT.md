@@ -1,13 +1,13 @@
 # Love Book 部署
 
-本仓库用 Docker Compose 运行后端和前端。公网 80/443 由**宿主机 Nginx** 暴露，并为 `qrqto.club`、`www.qrqto.club`、`cdn.qrqto.club` 提供 HTTPS。TLS 用 certbot webroot 续期，不要和 Docker Caddy 同时抢端口。
+本仓库用 Docker Compose 运行后端和前端。公网 80/443 由**宿主机 Nginx** 暴露，并为 `tingle272.xyz`、`www.tingle272.xyz`、`cdn.tingle272.xyz` 提供 HTTPS。TLS 用 certbot webroot 续期，不要和 Docker Caddy 同时抢端口。
 
-- **域名**：`qrqto.club`（含 `www.qrqto.club`）；静态 CDN 为 `cdn.qrqto.club`
+- **域名**：`tingle272.xyz`（含 `www.tingle272.xyz`）；静态 CDN 为 `cdn.tingle272.xyz`
 - **公网入口**：主机 Nginx。`/api/*` 去掉 `/api` 前缀后反代 `127.0.0.1:8000`，其它请求反代 `127.0.0.1:3000`；CDN 直接读 `/var/www/cdn.qrqto.club`
 - **数据库**：由 `.env` 的 `DATABASE_URL` 提供连接信息；生产使用 MySQL，本地开发默认 SQLite
 - **媒体文件**：图片原图和缩略图保存在后端 `/app/media`，由 Docker named volume `love_book_media` 持久化
 - **管理员复制入口链接**：前端运行时读取浏览器当前 `window.location.origin`
-- **邮件通知链接**：后端使用 `.env` 的 `APP_WEB_URL`，生产应设为 `https://qrqto.club`
+- **邮件通知链接**：后端使用 `.env` 的 `APP_WEB_URL`，生产应设为 `https://tingle272.xyz`
 
 生产更新器和备份程序已经安装在服务器部署目录，不随本仓库分发。真实密码和 SMTP 授权码只放服务器 `.env`。智能体从开发机发布时，只读 `LOVE_BOOK_SSH_HOSTS`，再用 `python scripts/deploy_host.py`；私钥只放本机 `~/.ssh/config`。
 
@@ -34,22 +34,22 @@ git push origin v0.5.0
 
 | 命名主机 | SSH 别名 | 远程用户 | 用途 |
 | --- | --- | --- | --- |
-| `ts3_qrqto` | `ts3_qrqto` | `ts3` | 默认检查入口：连通性、Compose 状态、备份查看 |
-| `root_qrqto` | `root_qrqto` | `root` | 生产更新入口：运行已安装的 `/home/ts3/love-book/update.sh` |
+| `cn-ts3` | `cn-ts3` | `ts3` | 默认检查入口：连通性、Compose 状态、备份查看 |
+| `cn` | `cn` | `root` | 生产更新入口：运行已安装的 `/home/ts3/love-book/update.sh` |
 
-`ts3` 属于 `docker` 和 `sudo` 组，但不能免密 sudo，也不能拉取私有 GHCR 镜像，`docker-compose.override.yml` 由 root 拥有。因此状态检查走 `ts3_qrqto`，真正发布走 `root_qrqto`。
+`ts3` 属于 `docker` 和 `sudo` 组，但不能免密 sudo，也不能拉取私有 GHCR 镜像，`docker-compose.override.yml` 由 root 拥有。因此状态检查走 `cn-ts3`，真正发布走 `cn`。
 
 本机 SSH 配置示例（密钥路径按本机实际文件修改，不要提交私钥）：
 
 ```sshconfig
-Host ts3_qrqto
-    HostName qrqto.group
+Host cn-ts3
+    HostName 111.229.87.40
     User ts3
     IdentityFile ~/.ssh/ts3_qrqto/ts3_qrqto
     IdentitiesOnly yes
 
-Host root_qrqto
-    HostName qrqto.group
+Host cn
+    HostName 111.229.87.40
     User root
     IdentityFile ~/.ssh/root_qrqto/root_qrqto
     IdentitiesOnly yes
@@ -61,34 +61,34 @@ Host root_qrqto
 python scripts/deploy_host.py list
 python scripts/deploy_host.py recipe
 python scripts/deploy_host.py package --tag v0.9.1
-python scripts/deploy_host.py check --host ts3_qrqto
-python scripts/deploy_host.py status --host ts3_qrqto
-python scripts/deploy_host.py update --host root_qrqto --dry-run
-python scripts/deploy_host.py update --host root_qrqto --yes
+python scripts/deploy_host.py check --host cn-ts3
+python scripts/deploy_host.py status --host cn-ts3
+python scripts/deploy_host.py update --host cn --dry-run
+python scripts/deploy_host.py update --host cn --yes
 ```
 
 从默认主入口转发到更新主机：
 
 ```powershell
-python scripts/deploy_host.py update --host ts3_qrqto --follow-update-host --dry-run
+python scripts/deploy_host.py update --host cn-ts3 --follow-update-host --dry-run
 ```
 
 用户只需配置：
 
 ```env
-LOVE_BOOK_SSH_HOSTS=ts3_qrqto,root_qrqto
+LOVE_BOOK_SSH_HOSTS=cn-ts3,cn
 ```
 
-第一项是默认检查入口。`~/.ssh/config` 里 `User=root` 的主机用来发布。远程目录、备份命令、健康检查地址由脚本内置，不必再配。再加一台只把名字写进去，例如 `LOVE_BOOK_SSH_HOSTS=ts3_qrqto,root_qrqto,lab_qrqto`。
+第一项是默认检查入口。`~/.ssh/config` 里 `User=root` 的主机用来发布。远程目录、备份命令、健康检查地址由脚本内置，不必再配。再加一台只把名字写进去，例如 `LOVE_BOOK_SSH_HOSTS=cn-ts3,cn,lab_tingle`。
 
 完整发布顺序：
 
 1. 整理 `VERSION` 与 `CHANGELOG.md`，运行 `python scripts/version.py sync`。
 2. `python scripts/deploy_host.py package --tag vX.Y.Z`，再跑后端测试和前端生产构建。
 3. 经用户明确授权后创建并推送 `vX.Y.Z` annotated tag，等待 GitHub Actions `release-images` 成功。
-4. `python scripts/deploy_host.py check --host ts3_qrqto` 与 `status`。
-5. 再次获得授权后 `python scripts/deploy_host.py update --host root_qrqto --yes`。
-6. `curl -fsS https://qrqto.club/api/health` 确认 `version` 与 `VERSION` 一致。
+4. `python scripts/deploy_host.py check --host cn-ts3` 与 `status`。
+5. 再次获得授权后 `python scripts/deploy_host.py update --host cn --yes`。
+6. `curl -fsS https://tingle272.xyz/api/health` 确认 `version` 与 `VERSION` 一致。
 
 生产 Compose 工作目录是 `/home/ts3/love-book`。更新器会拉取前后端稳定版 `latest`、核对 OCI 版本标签、仅在发现新版本时以 `ts3` 身份做 `pre-release` 备份，再启动并验证 `/api/health` 与首页。已经是最新版时不会备份或重启。失败只输出状态和日志，不自动回滚，也绝不会执行 `docker compose down -v`。
 
@@ -119,7 +119,7 @@ LOVE_BOOK_SSH_HOSTS=ts3_qrqto,root_qrqto
 | 组件 | 要求 |
 | --- | --- |
 | Docker Engine | 24.x 或更新，带 `docker compose` v2 |
-| 公网 DNS | `qrqto.club`、`www.qrqto.club` 的 A / AAAA 记录指向本机 |
+| 公网 DNS | `tingle272.xyz`、`www.tingle272.xyz` 的 A / AAAA 记录指向本机 |
 | 防火墙 | 公网可访问 80 和 443，供主机 Nginx 和 certbot webroot |
 | 数据库 | 生产建议 MySQL 5.7+ / 8.x；本地可用 SQLite |
 
@@ -136,14 +136,14 @@ cp .env.example .env
 | 变量 | 推荐值 | 说明 |
 | --- | --- | --- |
 | `ADMIN_KEY` | 32 位以上随机字符串 | 管理后台密钥 |
-| `DATABASE_URL` | `mysql+pymysql://user:pass@host:3306/love_book?charset=utf8mb4` | 数据库连接，密码特殊字符需 URL 编码 |
-| `APP_WEB_URL` | `https://qrqto.club` | 邮件通知中的前端入口链接 |
+| `DATABASE_URL` | `mysql+pymysql://user:pass@host.docker.internal:3306/love_book?charset=utf8mb4` | 同机 MySQL 必须走 Docker 网关；不要写已过期的公网主机名 |
+| `APP_WEB_URL` | `https://tingle272.xyz` | 邮件通知中的前端入口链接 |
 | `MEDIA_ROOT` | `/app/media` | 图片媒体根目录 |
 | `MEDIA_STORAGE` | `local` | 当前图片存储后端 |
 | `SMTP_*` | 你自己的邮件服务 | 用于事件 / 评论通知 |
 | `AMAP_MAPS_API_KEY` | 高德 Web 服务 Key | `/todo` 搜索与附近抽奖；管理端可覆盖 |
 | `LLM_*` | 你自己的模型服务 | 管理端获取模型列表和测试连接 |
-| `LOVE_BOOK_SSH_HOSTS` | `ts3_qrqto,root_qrqto` | 开发机给智能体看的 SSH Host 名；生产容器不读取。私钥仍放 `~/.ssh/config` |
+| `LOVE_BOOK_SSH_HOSTS` | `cn-ts3,cn` | 开发机给智能体看的 SSH Host 名；生产容器不读取。私钥仍放 `~/.ssh/config` |
 
 真实密钥只放 `.env` 或服务器环境变量。管理端 AI / 模型配置会写入数据库，迁移服务器时需要和业务数据一起备份。开发机 `.env` 里的 `LOVE_BOOK_SSH_HOSTS` 只给智能体发布流程使用，不要写进生产 Compose。
 
@@ -182,10 +182,10 @@ docker compose down
 
 | 地址 | 期望 |
 | --- | --- |
-| `https://qrqto.club/` | Next.js 登录页 |
-| `https://qrqto.club/admin` | 管理控制台 |
-| `https://qrqto.club/docs` | FastAPI Swagger UI |
-| `https://qrqto.club/api/auth/me`（带 token） | 返回当前用户 JSON |
+| `https://tingle272.xyz/` | Next.js 登录页 |
+| `https://tingle272.xyz/admin` | 管理控制台 |
+| `https://tingle272.xyz/docs` | FastAPI Swagger UI |
+| `https://tingle272.xyz/api/auth/me`（带 token） | 返回当前用户 JSON |
 
 管理后台“复制入口链接”按当前页面的协议和域名生成。Clipboard API 不可用时使用隐藏 textarea 降级复制。
 
@@ -193,8 +193,8 @@ docker compose down
 
 站点文件在 `deploy/nginx/`，安装到 `/etc/nginx/sites-available`：
 
-- `qrqto.club` / `www.qrqto.club`：`/api/` 去前缀反代 `127.0.0.1:8000`，`/docs` 与 `/openapi.json` 同后端，其余反代 `127.0.0.1:3000`。
-- `cdn.qrqto.club`：`root /var/www/cdn.qrqto.club`，`Cache-Control: public, max-age=300`，CORS `*`。
+- `tingle272.xyz` / `www.tingle272.xyz`：`/api/` 去前缀反代 `127.0.0.1:8000`，`/docs` 与 `/openapi.json` 同后端，其余反代 `127.0.0.1:3000`。每个 `proxy_pass` location 都要带 `Host` 与 `X-Forwarded-*`。
+- `cdn.tingle272.xyz`：`root /var/www/cdn.qrqto.club`，`Cache-Control: public, max-age=300`，CORS `*`。
 - `/.well-known/acme-challenge/` 都指向 `/var/www/certbot`。
 - `client_max_body_size 25m`。
 
@@ -215,7 +215,8 @@ docker compose down
 | Nginx 无法签发或续期证书 | 确认 DNS 指向本机，80 上的 ACME webroot 可访问，跑 `certbot renew --dry-run` |
 | HTTPS 打不开 | `systemctl status nginx`、`nginx -t`、确认 80/443 没有 Caddy |
 | 前端能打开但 `/api/*` 失败 | 检查 `love-book-proxy.conf` 与 `curl -fsS http://127.0.0.1:8000/health` |
-| CDN 打不开 | 确认 `/var/www/cdn.qrqto.club` 和 `cdn.qrqto.club` 站点，不要改安装包文件 |
+| CDN 打不开 | 确认 `/var/www/cdn.qrqto.club` 和 `cdn.tingle272.xyz` 站点，不要改安装包文件 |
+| 页面能开但登录/时间线/Todo 全超时 | 后端 `DATABASE_URL` 必须指向本机 MySQL（`host.docker.internal`），不要再用已过期的 `qrqto.group` |
 | 邮件链接还是 localhost | 修改 `.env` 的 `APP_WEB_URL` 后重启 backend |
 | 数据库连接 timeout | 确认 MySQL 地址、端口、用户授权和安全组 |
 

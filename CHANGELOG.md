@@ -4,8 +4,13 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ## [Unreleased]
 
+### Fixed
+
+- 生产后端改连本机 MySQL（`host.docker.internal`）。`qrqto.group` DNS 已指向阿里云，查库接口会超时，页面虽能打开但登录后交互全部失败。
+
 ### Changed
 
+- 公网域名与发布主机改为 `tingle272.xyz` / `cn-ts3,cn`，Nginx 反代补上 `Host` 与 `X-Forwarded-*`。
 - 清理本地 Playwright 快照、跑酷 QA 截图和像素草稿，并把 `tmp/`、`.playwright-mcp/` 纳入忽略规则。
 
 ## [0.11.0] - 2026-08-26

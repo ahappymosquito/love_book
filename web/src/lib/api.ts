@@ -1,7 +1,7 @@
 "use client";
 
 // Browser API client for authentication, closed-pair farewells, runner rankings, profiles, timelines, private media, plans, habits, cycles, quotes, and admin workflows.
-// In production it uses the Caddy same-origin /api reverse proxy; in development it can fall back locally.
+// In production it uses the host Nginx same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
 import { useAppStore } from "./store";
@@ -55,7 +55,7 @@ import type {
   VisibilityMode,
 } from "./types";
 
-// 生产环境下通过 Caddy 反代，前端使用相对路径（NEXT_PUBLIC_API_BASE="/api"）。
+// 生产环境下通过主机 Nginx 同源反代，前端使用相对路径（NEXT_PUBLIC_API_BASE="/api"）。
 // 开发环境若未设置该变量则回落到本地后端 127.0.0.1:8000。
 // 注意：空字符串视为「同源相对路径」，不再回退到 localhost。
 const RAW_API_BASE =
