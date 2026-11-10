@@ -15,7 +15,7 @@
 - 需要让技术实现可追踪；修改代码文件时，需要同步更新文件开头的功能介绍注释。
 - `VERSION` 是前后端应用版本的唯一真相；普通开发提交不得修改版本。只有准备正式发布时才按 SemVer 更新一次，并运行 `python scripts/version.py sync` 同步前端清单。
 - 正式发布标签必须为与 `VERSION` 一致的 `vX.Y.Z`；生产前后端镜像必须固定为同一版本标签或对应 digest，不得使用 `latest`。
-- 智能体打包到发布只读 `LOVE_BOOK_SSH_HOSTS`（`~/.ssh/config` 的 Host 名，例如 `cn-ts3,cn`）。第一项做检查，`User=root` 的项做发布。路径和命令由脚本内置，不要让用户填一堆 SSH 参数。私钥只放 `~/.ssh/config`，命令走 `python scripts/deploy_host.py`。未经当次明确授权不得 `--yes` 执行更新、push 标签或发布镜像。
+- 智能体打包到发布只读 `LOVE_BOOK_SSH_HOSTS`（`~/.ssh/config` 的 Host 名，例如 `cn-ts3,cn`）。第一项做检查，`User=root` 的项做发布。未配置 SSH Host 时，`cn-ts3` 按 `ts3`、`cn` 按 `root` 理解。路径和命令由脚本内置，不要让用户填一堆 SSH 参数。私钥只放 `~/.ssh/config`，命令走 `python scripts/deploy_host.py`。未经当次明确授权不得 `--yes` 执行更新、push 标签或发布镜像。
 
 ## 当前约定
 

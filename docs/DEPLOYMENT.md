@@ -37,7 +37,7 @@ git push origin v0.5.0
 | `cn-ts3` | `cn-ts3` | `ts3` | 默认检查入口：连通性、Compose 状态、备份查看 |
 | `cn` | `cn` | `root` | 生产更新入口：运行已安装的 `/home/ts3/love-book/update.sh` |
 
-`ts3` 属于 `docker` 和 `sudo` 组，但不能免密 sudo，也不能拉取私有 GHCR 镜像，`docker-compose.override.yml` 由 root 拥有。因此状态检查走 `cn-ts3`，真正发布走 `cn`。
+`ts3` 属于 `docker` 和 `sudo` 组，但不能免密 sudo，也不能拉取私有 GHCR 镜像，`docker-compose.override.yml` 由 root 拥有。因此状态检查走 `cn-ts3`，真正发布走 `cn`。`~/.ssh/config` 没有单独写出这两个 Host 时，脚本仍把 `cn-ts3` 当作 `ts3`、把 `cn` 当作 `root`，打包提示里的更新命令保持 `--host cn`。
 
 本机 SSH 配置示例（密钥路径按本机实际文件修改，不要提交私钥）：
 
