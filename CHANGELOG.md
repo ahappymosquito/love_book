@@ -4,10 +4,16 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-11-10
+
+### Added
+
+- 公开首页底部居中展示备案号「浙ICP备2025205478号-2」，链接到 https://beian.miit.gov.cn/ 。
+
 ### Fixed
 
-- 生产后端改连本机 MySQL（`host.docker.internal`）。`qrqto.group` DNS 已指向阿里云，查库接口会超时，页面虽能打开但登录后交互全部失败。
 - 未配置 SSH Host 时，`cn` 仍是 root 发布入口，`cn-ts3` 仍是检查入口，打包命令不再把检查主机当成更新目标。
+- 生产后端改连本机 MySQL（`host.docker.internal`）。`qrqto.group` DNS 已指向阿里云，查库接口会超时，页面虽能打开但登录后交互全部失败。
 
 ### Changed
 
