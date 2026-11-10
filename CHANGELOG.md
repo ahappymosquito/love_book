@@ -7,6 +7,7 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 ### Fixed
 
 - 生产后端改连本机 MySQL（`host.docker.internal`）。`qrqto.group` DNS 已指向阿里云，查库接口会超时，页面虽能打开但登录后交互全部失败。
+- 未配置 SSH Host 时，`cn` 仍是 root 发布入口，`cn-ts3` 仍是检查入口，打包命令不再把检查主机当成更新目标。
 
 ### Changed
 

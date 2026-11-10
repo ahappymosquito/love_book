@@ -1,4 +1,4 @@
-"""从 LOVE_BOOK_SSH_HOSTS 读取 ~/.ssh/config 主机名，供智能体完成打包到发布。"""
+"""从 LOVE_BOOK_SSH_HOSTS 读取 ~/.ssh/config 主机名，供智能体完成打包到发布。未配置 Host 时，cn-ts3 按 ts3 检查、cn 按 root 发布。"""
 
 from __future__ import annotations
 
@@ -158,8 +158,18 @@ def _require_name(value: str) -> str:
     return value
 
 
+# ~/.ssh/config 没有单独 Host 块时使用。cn 是发布入口，cn-ts3 只做检查。
+DOCUMENTED_SSH_USERS = {
+    "cn-ts3": "ts3",
+    "cn": "root",
+}
+
+
 def heuristic_user(alias: str) -> str:
-    """约定 Host 名为 user_site，例如 ts3_tingle、root_tingle。真实发布主机以 ~/.ssh/config 为准。"""
+    """未写入 SSH config 时推断用户。文档主机优先，其余约定 Host 名为 user_site。"""
+    documented = DOCUMENTED_SSH_USERS.get(alias)
+    if documented:
+        return documented
     if "_" in alias:
         return alias.split("_", 1)[0]
     return alias

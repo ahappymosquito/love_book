@@ -14,6 +14,7 @@ from scripts.deploy_host import (
     DEFAULT_EXAMPLE_FILE,
     DeployHostError,
     build_ssh_argv,
+    heuristic_user,
     load_catalog,
     posix_quote,
     resolve_host,
@@ -112,6 +113,24 @@ def test_heuristic_user_from_host_name_without_ssh_config() -> None:
     assert catalog.hosts["ts3_tingle"].user == "ts3"
     assert catalog.hosts["root_tingle"].user == "root"
     assert catalog.hosts["root_tingle"].update_style == "updater"
+
+
+def test_documented_hosts_without_ssh_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "scripts.deploy_host.inspect_ssh_identity",
+        lambda alias: (heuristic_user(alias), False),
+    )
+
+    catalog = load_catalog(
+        example_file=DEFAULT_EXAMPLE_FILE,
+        env_file=Path("does-not-exist.env"),
+    )
+
+    assert catalog.hosts["cn-ts3"].user == "ts3"
+    assert catalog.hosts["cn-ts3"].update_host == "cn"
+    assert "update" not in catalog.hosts["cn-ts3"].capabilities
+    assert catalog.hosts["cn"].user == "root"
+    assert catalog.hosts["cn"].update_style == "updater"
 
 
 def run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:

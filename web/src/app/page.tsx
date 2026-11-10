@@ -1,6 +1,6 @@
 "use client";
 
-// 无 token 时全屏像素花田加纸面墨水弹窗；有 token 或入口口令时直接进入，不挂游戏。已合上的 pair 只展示告别那句话。
+// 无 token 时全屏像素花田加纸面墨水弹窗，底部居中展示备案号链接；有 token 或入口口令时直接进入，不挂游戏。已合上的 pair 只展示告别那句话。
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -19,6 +19,16 @@ type Overlay = "menu" | "login" | "leaderboard" | "over" | "score" | "farewell" 
 type Gate = "wait" | "play" | "enter";
 
 const PLAYER_NAME_KEY = "love-book:runner-player-name";
+const ICP_NUMBER = "浙ICP备2025205478号-2";
+const ICP_URL = "https://beian.miit.gov.cn/";
+
+function IcpFilingLink() {
+  return (
+    <footer className="login-icp">
+      <a href={ICP_URL} target="_blank" rel="noopener noreferrer">{ICP_NUMBER}</a>
+    </footer>
+  );
+}
 
 function sanitizeNext(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -232,7 +242,12 @@ export default function LoginPage() {
   }
 
   if (!hydrated || gate !== "play") {
-    return <LoadingScreen label={gate === "enter" ? "正在回家…" : "正在加载…"} />;
+    return (
+      <main className="login-runner-shell viewport-guard">
+        <LoadingScreen embedded label={gate === "enter" ? "正在回家…" : "正在加载…"} />
+        <IcpFilingLink />
+      </main>
+    );
   }
 
   const overlayOpen = overlay !== null;
@@ -360,6 +375,8 @@ export default function LoginPage() {
           </div>
         </section>
       ) : null}
+
+      <IcpFilingLink />
     </main>
   );
 }
