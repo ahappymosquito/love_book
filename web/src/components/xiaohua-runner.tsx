@@ -1,6 +1,6 @@
 "use client";
 
-// 全视口「花田拾光」画布：1-bit 像素小狗与地平线，HUD 与玩法浮层共用纸面墨水描边。
+// 登录页「花田拾光」画布：填满备案条上方的舞台，1-bit 像素小狗与地平线，HUD 与玩法浮层共用纸面墨水描边。
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { CircleHelp, Expand, Pause, X } from "lucide-react";
