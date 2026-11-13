@@ -1,14 +1,15 @@
 "use client";
 
-// 登录页「花田拾光」画布：填满备案条上方的舞台，1-bit 像素小狗与地平线，HUD 与玩法浮层共用纸面墨水描边。
+// 登录页「花田拾光」画布：填满备案条上方的舞台，1-bit 像素小狗与连续天色视差花田，粒子特效池随固定步进更新；页面隐藏或窗口失焦会暂停并调用 onPause 打开继续菜单，无外部菜单时显示继续按钮；HUD 与玩法浮层共用纸面墨水描边。
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { CircleHelp, Expand, Pause, X } from "lucide-react";
+import { CircleHelp, Expand, Pause, Play, X } from "lucide-react";
 import {
   RUNNER_CHAPTER_LABELS,
   RUNNER_MAX_LIVES,
   RUNNER_STARTING_LIVES,
   RUNNER_STEP,
+  autoPauseRunner,
   createRunnerMetrics,
   createRunnerState,
   jumpRunner,
@@ -24,6 +25,7 @@ import {
   type RunnerStatus,
 } from "@/lib/xiaohua-runner";
 import { CHAPTER_PALETTE, CHAPTER_SKY, drawScene } from "@/lib/xiaohua-runner-draw";
+import { createRunnerFx, stepRunnerFx } from "@/lib/xiaohua-runner-fx";
 
 export interface XiaohuaRunnerHandle {
   play: () => void;
@@ -70,6 +72,8 @@ export const XiaohuaRunner = forwardRef<XiaohuaRunnerHandle, XiaohuaRunnerProps>
   const shellRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef(createRunnerState());
+  const fxRef = useRef(createRunnerFx(1));
+  const runSeedRef = useRef(1);
   const gameOverScoreRef = useRef<number | null>(null);
   const pausedByPanelRef = useRef(false);
   const lastChapterRef = useRef<RunnerChapterId>("dawn");
@@ -110,6 +114,8 @@ export const XiaohuaRunner = forwardRef<XiaohuaRunnerHandle, XiaohuaRunnerProps>
     gameOverScoreRef.current = null;
     pausedByPanelRef.current = false;
     if (wasNewRun) {
+      runSeedRef.current += 1;
+      fxRef.current = createRunnerFx(runSeedRef.current);
       lastChapterRef.current = "dawn";
       setChapterToast(null);
       setShowHint(true);
@@ -122,6 +128,16 @@ export const XiaohuaRunner = forwardRef<XiaohuaRunnerHandle, XiaohuaRunnerProps>
     pausedByPanelRef.current = false;
     stateRef.current = pauseRunner(stateRef.current);
     syncUi(stateRef.current);
+    onPause?.();
+  }, [onPause, syncUi]);
+
+  const autoPause = useCallback(() => {
+    const result = autoPauseRunner(stateRef.current);
+    stateRef.current = result.state;
+    touchCrouchPointerRef.current = null;
+    syncUi(result.state);
+    if (!result.paused) return;
+    pausedByPanelRef.current = false;
     onPause?.();
   }, [onPause, syncUi]);
 
@@ -228,14 +244,15 @@ export const XiaohuaRunner = forwardRef<XiaohuaRunnerHandle, XiaohuaRunnerProps>
 
   useEffect(() => {
     const onVisibility = () => {
-      if (document.hidden) {
-        stateRef.current = pauseRunner(stateRef.current);
-        syncUi(stateRef.current);
-      }
+      if (document.hidden) autoPause();
     };
     document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [syncUi]);
+    window.addEventListener("blur", autoPause);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("blur", autoPause);
+    };
+  }, [autoPause]);
 
   useEffect(() => {
     const ignoresGameKeys = (target: EventTarget | null) => (target as HTMLElement | null)?.closest("input, textarea, button");
@@ -273,16 +290,8 @@ export const XiaohuaRunner = forwardRef<XiaohuaRunnerHandle, XiaohuaRunnerProps>
       if (event.pointerType === "mouse" && event.button === 2) crouch(false);
       if (event.pointerType === "mouse" && event.button === 0) releaseJump();
     };
-    const releaseAll = () => {
-      crouch(false);
-      releaseJump();
-    };
     window.addEventListener("pointerup", releaseRightMouse);
-    window.addEventListener("blur", releaseAll);
-    return () => {
-      window.removeEventListener("pointerup", releaseRightMouse);
-      window.removeEventListener("blur", releaseAll);
-    };
+    return () => window.removeEventListener("pointerup", releaseRightMouse);
   }, [crouch, releaseJump]);
 
   useEffect(() => {
@@ -306,13 +315,15 @@ export const XiaohuaRunner = forwardRef<XiaohuaRunnerHandle, XiaohuaRunnerProps>
         previous = now;
         accumulator += delta;
         while (accumulator >= RUNNER_STEP) {
-          stateRef.current = stepRunner(stateRef.current, RUNNER_STEP, currentMetrics.worldWidth);
+          const previousState = stateRef.current;
+          stateRef.current = stepRunner(previousState, RUNNER_STEP, currentMetrics.worldWidth);
+          stepRunnerFx(fxRef.current, previousState, stateRef.current, RUNNER_STEP, reducedMotion);
           accumulator -= RUNNER_STEP;
         }
         const context = canvas.getContext("2d");
         if (context) {
           context.setTransform(dpr, 0, 0, dpr, 0, 0);
-          drawScene(context, rect.width, rect.height, stateRef.current, currentMetrics, reducedMotion, celebrating, now / 1000, dpr);
+          drawScene(context, rect.width, rect.height, stateRef.current, currentMetrics, reducedMotion, celebrating, now / 1000, dpr, fxRef.current);
         }
         syncUi(stateRef.current);
         if (stateRef.current.status === "gameover" && gameOverScoreRef.current !== stateRef.current.score) {
@@ -455,6 +466,16 @@ export const XiaohuaRunner = forwardRef<XiaohuaRunnerHandle, XiaohuaRunnerProps>
             aria-label="暂停游戏"
           >
             <Pause className="h-4 w-4" />
+          </button>
+        ) : status === "paused" && !inputBlocked ? (
+          <button
+            type="button"
+            className="runner-icon-button focus-ring"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={play}
+            aria-label="继续游戏"
+          >
+            <Play className="h-4 w-4" />
           </button>
         ) : null}
       </div>

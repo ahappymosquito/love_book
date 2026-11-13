@@ -1,4 +1,4 @@
-// 小花「花田拾光」引擎：Chrome 小恐龙同款贴地比例、短跳与匀速加速，设备无关物理和剪影碰撞。
+// 小花「花田拾光」引擎：Chrome 小恐龙同款贴地比例、短跳与匀速加速，设备无关物理和剪影碰撞；页面隐藏/失焦的自动暂停会松开按键并告知界面需要展示继续入口。
 
 export const RUNNER_STEP = 1 / 60;
 export const RUNNER_BASE_SPEED = 7.5;
@@ -249,6 +249,12 @@ export function startRunner(state: RunnerState): RunnerState {
 
 export function pauseRunner(state: RunnerState): RunnerState {
   return state.status === "playing" ? { ...state, status: "paused", crouching: false } : state;
+}
+
+export function autoPauseRunner(state: RunnerState): { state: RunnerState; paused: boolean } {
+  const released = state.jumpHeld || state.crouchHeld ? { ...state, jumpHeld: false, crouchHeld: false, crouching: false } : state;
+  if (released.status !== "playing") return { state: released, paused: false };
+  return { state: pauseRunner(released), paused: true };
 }
 
 function launchJump(state: RunnerState, velocity: number, remaining: number): RunnerState {

@@ -1,22 +1,29 @@
-// 覆盖像素小狗姿态、帧选择、1-bit 描边，以及障碍剪影包住内缩碰撞盒。
+// 覆盖像素小狗姿态、帧选择、摇尾/耳朵/眨眼变体、1-bit 描边、日晕与心盾像素环、减弱动效禁用轻震，以及障碍剪影包住内缩碰撞盒。
 
 import { describe, expect, it } from "vitest";
 import {
   CHAPTER_PALETTE,
   CHAPTER_SKY,
   collisionFitsVisual,
+  diskCells,
   hashUnit,
   OBSTACLE_KINDS,
   obstacleSprite,
   obstacleVisualBox,
   pixelScale,
   puppyAction,
+  puppyFrame,
+  puppyFrameFlags,
   puppyPose,
   puppySprite,
   puppyVisualBox,
+  ringCells,
+  shakeOffset,
   unionBoxes,
   withOutline,
 } from "./xiaohua-runner-draw";
+import { createRunnerFx } from "./xiaohua-runner-fx";
+import { PUPPY_FLAG_BLINK, PUPPY_FLAG_EARS, PUPPY_FLAG_TAIL, puppyVariant } from "./xiaohua-runner-sprites";
 import {
   createRunnerMetrics,
   createRunnerState,
@@ -146,6 +153,68 @@ describe("1-bit pixel sprites", () => {
     expect(phone).toBeGreaterThanOrEqual(2);
     expect(Number.isInteger(desktop)).toBe(true);
     expect(Number.isInteger(phone)).toBe(true);
+  });
+});
+
+describe("puppy animation variants", () => {
+  function filled(sprite: readonly string[]): number {
+    return sprite.join("").replace(/[^#*]/g, "").length;
+  }
+
+  it("wags the tail, bounces ears and blinks without changing the frame size", () => {
+    const running = playingState({ elapsed: 0, distance: 1 });
+    const pose = puppyPose(running, 0.05, false, false);
+    const base = puppySprite(running, pose);
+    for (const flags of [PUPPY_FLAG_TAIL, PUPPY_FLAG_EARS, PUPPY_FLAG_BLINK]) {
+      const variant = puppyVariant(base, flags);
+      expect(variant).not.toEqual(base);
+      expect(variant.length).toBe(base.length);
+      expect(variant.every((row, index) => row.length === base[index].length)).toBe(true);
+    }
+    expect(filled(puppyVariant(base, PUPPY_FLAG_TAIL))).toBe(filled(base));
+    expect(filled(puppyVariant(base, PUPPY_FLAG_BLINK))).toBeGreaterThan(filled(base));
+    expect(puppyVariant(base, PUPPY_FLAG_TAIL)).toBe(puppyVariant(base, PUPPY_FLAG_TAIL));
+    expect(puppyVariant(base, 0)).toBe(base);
+  });
+
+  it("alternates run frame flags and stays still under reduced motion", () => {
+    const strideA = playingState({ elapsed: 0 });
+    const strideB = playingState({ elapsed: 1 / 12 });
+    const pose = puppyPose(strideA, 1, false, false);
+    expect(puppyFrameFlags(strideA, pose, 1, false) & PUPPY_FLAG_TAIL).toBe(PUPPY_FLAG_TAIL);
+    expect(puppyFrameFlags(strideB, pose, 1, false) & PUPPY_FLAG_EARS).toBe(PUPPY_FLAG_EARS);
+    expect(puppyFrameFlags(strideA, pose, 1, true)).toBe(0);
+    expect(puppyFrame(strideA, pose, 1, true)).toBe(puppySprite(strideA, pose));
+  });
+});
+
+describe("pixel glow and rings", () => {
+  it("builds a solid disk with dithered glow outside it", () => {
+    const disk = diskCells(5);
+    expect(disk.spans.length).toBe(11 * 2);
+    expect(disk.innerGlow.length).toBeGreaterThan(0);
+    expect(disk.outerGlow.length).toBeGreaterThan(0);
+    for (let index = 0; index < disk.innerGlow.length; index += 2) {
+      expect(Math.hypot(disk.innerGlow[index], disk.innerGlow[index + 1])).toBeGreaterThan(5.5);
+    }
+    expect(diskCells(5)).toBe(disk);
+  });
+
+  it("builds a closed shield ring at the requested radius", () => {
+    const ring = ringCells(8);
+    expect(ring.length).toBeGreaterThan(8 * 2 * 4);
+    for (let index = 0; index < ring.length; index += 2) {
+      expect(Math.abs(Math.hypot(ring[index], ring[index + 1]) - 8)).toBeLessThan(0.5);
+    }
+  });
+
+  it("disables screen shake under reduced motion", () => {
+    const fx = { ...createRunnerFx(1), shake: 0.2, time: 1.3 };
+    expect(shakeOffset(fx, 3, true)).toEqual({ x: 0, y: 0 });
+    expect(shakeOffset(null, 3, false)).toEqual({ x: 0, y: 0 });
+    const offset = shakeOffset(fx, 3, false);
+    expect(Math.abs(offset.x % 3)).toBe(0);
+    expect(Math.abs(offset.y % 3)).toBe(0);
   });
 });
 

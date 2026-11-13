@@ -1,6 +1,62 @@
-// 花田拾光 1-bit 像素稿：只存填色与少量点缀，纸色描边由绘制层生成。不加载任何图片图集。
+// 花田拾光 1-bit 像素稿：只存填色与少量点缀，纸色描边由绘制层生成；小狗摇尾、耳朵弹跳与眨眼由像素块平移/填格派生并缓存。不加载任何图片图集。
 
 export type PixelSprite = readonly string[];
+
+export const PUPPY_FLAG_TAIL = 1;
+export const PUPPY_FLAG_EARS = 2;
+export const PUPPY_FLAG_BLINK = 4;
+
+type SpriteBlock = readonly [rowStart: number, rowEnd: number, colStart: number, colEnd: number];
+
+interface PuppyRig {
+  tail: SpriteBlock;
+  ears: SpriteBlock | null;
+  eye: ReadonlyArray<readonly [number, number]> | null;
+}
+
+const STANDING_RIG: PuppyRig = {
+  tail: [7, 10, 0, 7],
+  ears: [0, 5, 22, 38],
+  eye: [[12, 31], [12, 32], [12, 33], [14, 31], [14, 32], [14, 33]],
+};
+const DUCK_RIG: PuppyRig = { tail: [3, 4, 0, 7], ears: null, eye: null };
+const VARIANT_CACHE = new WeakMap<PixelSprite, Map<number, PixelSprite>>();
+
+function shiftBlock(grid: string[][], [rowStart, rowEnd, colStart, colEnd]: SpriteBlock, dx: number, dy: number) {
+  const moved: Array<[number, number, string]> = [];
+  for (let row = rowStart; row <= rowEnd; row += 1) {
+    for (let col = colStart; col <= colEnd; col += 1) {
+      const cell = grid[row]?.[col];
+      if (cell !== "#" && cell !== "*") continue;
+      moved.push([row + dy, col + dx, cell]);
+      grid[row][col] = ".";
+    }
+  }
+  for (const [row, col, cell] of moved) {
+    if (grid[row] && col >= 0 && col < grid[row].length) grid[row][col] = cell;
+  }
+}
+
+export function puppyVariant(base: PixelSprite, flags: number): PixelSprite {
+  if (flags === 0) return base;
+  let variants = VARIANT_CACHE.get(base);
+  if (!variants) {
+    variants = new Map();
+    VARIANT_CACHE.set(base, variants);
+  }
+  const cached = variants.get(flags);
+  if (cached) return cached;
+  const rig = base === SPRITE_PUPPY_DUCK_A || base === SPRITE_PUPPY_DUCK_B ? DUCK_RIG : STANDING_RIG;
+  const grid = base.map((row) => row.split(""));
+  if (flags & PUPPY_FLAG_TAIL) shiftBlock(grid, rig.tail, 1, 0);
+  if (flags & PUPPY_FLAG_EARS && rig.ears) shiftBlock(grid, rig.ears, 0, 1);
+  if (flags & PUPPY_FLAG_BLINK && rig.eye) {
+    for (const [row, col] of rig.eye) if (grid[row]?.[col] === ".") grid[row][col] = "#";
+  }
+  const variant = grid.map((row) => row.join(""));
+  variants.set(flags, variant);
+  return variant;
+}
 
 export const SPRITE_PUPPY_IDLE = [
   ".............................*....###......",

@@ -1,7 +1,8 @@
-// 覆盖响应式度量、输入映射、物理、碰撞、拾光计分、连跳、小心心和光景章节。
+// 覆盖响应式度量、输入映射、物理、碰撞、拾光计分、连跳、小心心、光景章节，以及页面隐藏/失焦自动暂停。
 
 import { describe, expect, it } from "vitest";
 import {
+  autoPauseRunner,
   RUNNER_AIRTIME,
   RUNNER_BASE_SPEED,
   RUNNER_DOUBLE_JUMP_SCALE,
@@ -69,6 +70,34 @@ function obstacle(overrides: Partial<RunnerObstacle>): RunnerObstacle {
     ...overrides,
   };
 }
+
+describe("Xiaohua runner auto pause", () => {
+  it("pauses a running game, releases held input, and asks the UI to offer resume", () => {
+    const running = { ...jumpRunner(setRunnerCrouch(safePlayingState(), true)), crouchHeld: true };
+    const result = autoPauseRunner(running);
+    expect(result.paused).toBe(true);
+    expect(result.state.status).toBe("paused");
+    expect(result.state.jumpHeld).toBe(false);
+    expect(result.state.crouchHeld).toBe(false);
+    expect(result.state.crouching).toBe(false);
+    expect(startRunner(result.state).status).toBe("playing");
+  });
+
+  it("does not re-notify when already paused, idle or over", () => {
+    for (const status of ["paused", "idle", "gameover"] as const) {
+      const state = { ...safePlayingState(), status };
+      const result = autoPauseRunner(state);
+      expect(result.paused).toBe(false);
+      expect(result.state.status).toBe(status);
+    }
+  });
+
+  it("still releases held keys when the game is not running", () => {
+    const held = { ...createRunnerState(), jumpHeld: true, crouchHeld: true };
+    expect(autoPauseRunner(held).state.jumpHeld).toBe(false);
+    expect(autoPauseRunner(held).state.crouchHeld).toBe(false);
+  });
+});
 
 describe("Xiaohua runner metrics", () => {
   it("fills the complete desktop viewport instead of letterboxing", () => {
