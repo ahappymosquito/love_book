@@ -1,4 +1,4 @@
-"""Normalize login credentials, hash passwords with Argon2id, and throttle repeated failures."""
+"""Normalize login credentials, hash passwords with Argon2id, and throttle repeated failures per account and IP (15-minute failure window)."""
 
 from dataclasses import dataclass
 from threading import Lock
@@ -62,14 +62,18 @@ def verify_password(encoded: str | None, candidate: str) -> bool:
         return False
 
 
+FAILURE_WINDOW_SECONDS = 15 * 60
+
+
 @dataclass
 class _FailureBucket:
     failures: int = 0
     blocked_until: float = 0.0
+    last_failure_at: float = 0.0
 
 
 class LoginThrottle:
-    """Small process-local account/IP throttle with exponential cooldowns."""
+    """Process-local account/IP throttle: from the 5th failure within 15 minutes, exponential cooldowns apply."""
 
     def __init__(self) -> None:
         self._buckets: dict[str, _FailureBucket] = {}
@@ -86,7 +90,10 @@ class LoginThrottle:
         with self._lock:
             for key in keys:
                 bucket = self._buckets.setdefault(key, _FailureBucket())
+                if now - bucket.last_failure_at > FAILURE_WINDOW_SECONDS and bucket.blocked_until <= now:
+                    bucket.failures = 0
                 bucket.failures += 1
+                bucket.last_failure_at = now
                 if bucket.failures >= 5:
                     cooldown = min(30 * (2 ** (bucket.failures - 5)), 15 * 60)
                     bucket.blocked_until = max(bucket.blocked_until, now + cooldown)

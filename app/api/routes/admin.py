@@ -1,4 +1,4 @@
-"""管理端配对、入口 token、联系方式、登录日志和 AI 配置；列表会标出已合上的 pair。"""
+"""管理端配对、入口 token、联系方式、登录日志和 AI 配置；列表会标出已合上的 pair，所有写操作在响应前提交。"""
 
 import secrets
 from datetime import timezone
@@ -26,20 +26,9 @@ from app.schemas import (
     PairUpdate,
     UserOut,
 )
-from app.services import local_today, pair_love_started_on
+from app.services import clean_email, local_today, pair_love_started_on
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-
-
-def _clean_email(value: str | None) -> str | None:
-    if value is None:
-        return None
-    value = value.strip()
-    if not value:
-        return None
-    if "@" not in value or len(value) > 255:
-        raise HTTPException(status_code=422, detail="邮箱格式不正确")
-    return value
 
 
 def normalize_token_expires_at(expires_at):
@@ -90,12 +79,12 @@ def create_pair(payload: PairCreate, db: Session = Depends(get_db)) -> PairCreat
     user_a = User(
         display_name=payload.user_a_display_name,
         avatar=payload.user_a_avatar or "",
-        email=_clean_email(payload.user_a_email),
+        email=clean_email(payload.user_a_email),
     )
     user_b = User(
         display_name=payload.user_b_display_name,
         avatar=payload.user_b_avatar or "",
-        email=_clean_email(payload.user_b_email),
+        email=clean_email(payload.user_b_email),
     )
     db.add_all([user_a, user_b])
     db.flush()
@@ -111,7 +100,7 @@ def create_pair(payload: PairCreate, db: Session = Depends(get_db)) -> PairCreat
             DeviceToken(token=user_b_token, user_id=user_b.id, expires_at=token_expires_at, source="entry"),
         ]
     )
-    db.flush()
+    db.commit()
     db.refresh(pair)
     return PairCreated(
         pair_id=pair.id,
@@ -132,12 +121,12 @@ def update_pair(pair_id: int, payload: PairUpdate, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="Pair not found")
     data = payload.model_dump(exclude_unset=True)
     if "user_a_email" in data:
-        pair.user_a.email = _clean_email(data["user_a_email"])
+        pair.user_a.email = clean_email(data["user_a_email"])
     if "user_b_email" in data:
-        pair.user_b.email = _clean_email(data["user_b_email"])
+        pair.user_b.email = clean_email(data["user_b_email"])
     if "love_started_on" in data:
         pair.love_started_on = data["love_started_on"] or pair.love_started_on
-    db.flush()
+    db.commit()
     db.refresh(pair)
     return pair_out(db, pair)
 

@@ -1,41 +1,30 @@
-"""Pair-private love-receipt CRUD with honest moods, optional ratings, atomic media, and timeline completion."""
+"""Read-only legacy love receipts: pair-private list/detail and private images.
+
+Create, status-update, and response endpoints are retired and always answer 410 (received gifts now live
+on the timeline); they send no email and write nothing.
+"""
 
 from datetime import date, datetime, time, timezone
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import ColumnElement, Select
 
 from app.api.dependencies import get_current_user, get_pair_for_user
-from app.core.config import get_settings
 from app.core.database import get_db
-from app.emailer import notify_love_receipt_completed, notify_love_receipt_created
-from app.media import MediaProcessingError, make_image_thumbnail
 from app.models import (
-    Event,
-    EventKind,
     LoveReceipt,
     LoveReceiptImage,
     LoveReceiptImageKind,
-    LoveReceiptMood,
     LoveReceiptStatus,
     LoveReceiptType,
     User,
-    VisibilityMode,
     utc_now,
 )
-from app.schemas import LoveReceiptImageOut, LoveReceiptListOut, LoveReceiptOut, LoveReceiptStatusUpdate, UserOut
-from app.services import active_token_for_user, counterpart
-from app.storage import (
-    PRIVATE_MEDIA_CACHE_HEADERS,
-    MediaStorageError,
-    build_love_receipt_image_storage_keys,
-    delete_media_file,
-    read_media_file,
-    write_media_file,
-)
+from app.schemas import LoveReceiptImageOut, LoveReceiptListOut, LoveReceiptOut, UserOut
+from app.storage import PRIVATE_MEDIA_CACHE_HEADERS, read_media_file
 
 router = APIRouter(prefix="/love-receipts", tags=["love-receipts"])
 image_router = APIRouter(prefix="/love-receipt-images", tags=["love-receipt-images"])
@@ -78,92 +67,6 @@ def _receipt_out(receipt: LoveReceipt, current_user: User) -> LoveReceiptOut:
         created_at=receipt.created_at,
         updated_at=receipt.updated_at,
     )
-
-
-def _validate_upload(file: UploadFile) -> tuple[bytes, bytes, str]:
-    settings = get_settings()
-    content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
-    if content_type not in settings.allowed_image_mime_types:
-        raise HTTPException(status_code=415, detail="Unsupported image mime type")
-    body = file.file.read(settings.max_image_bytes + 1)
-    if len(body) > settings.max_image_bytes:
-        raise HTTPException(status_code=413, detail="Image file is too large")
-    try:
-        thumb = make_image_thumbnail(body)
-    except MediaProcessingError as exc:
-        raise HTTPException(status_code=422, detail=f"Image thumbnail could not be generated: {exc}") from exc
-    return body, thumb, content_type
-
-
-def _write_image(
-    *,
-    db: Session,
-    receipt: LoveReceipt,
-    author: User,
-    upload: UploadFile,
-    kind: LoveReceiptImageKind,
-    sort_order: int,
-) -> tuple[LoveReceiptImage, list[str]]:
-    body, thumb, content_type = _validate_upload(upload)
-    storage_key, thumb_key = build_love_receipt_image_storage_keys(
-        receipt.pair_id, receipt.id, kind.value, content_type
-    )
-    written: list[str] = []
-    try:
-        write_media_file(storage_key, body)
-        written.append(storage_key)
-        write_media_file(thumb_key, thumb)
-        written.append(thumb_key)
-    except (MediaStorageError, OSError) as exc:
-        for key in written:
-            try:
-                delete_media_file(key)
-            except (MediaStorageError, OSError):
-                pass
-        raise HTTPException(status_code=500, detail=f"Image file could not be saved: {exc}") from exc
-    image = LoveReceiptImage(
-        love_receipt_id=receipt.id,
-        author_id=author.id,
-        kind=kind,
-        sort_order=sort_order,
-        storage_key=storage_key,
-        thumb_storage_key=thumb_key,
-        storage_backend=get_settings().media_storage,
-        mime_type=content_type,
-        size_bytes=len(body),
-        thumb_mime_type="image/jpeg",
-        thumb_size_bytes=len(thumb),
-    )
-    db.add(image)
-    return image, written
-
-
-def _cleanup(keys: list[str]) -> None:
-    for key in keys:
-        try:
-            delete_media_file(key)
-        except (MediaStorageError, OSError):
-            pass
-
-
-def _create_timeline_memory(db: Session, receipt: LoveReceipt, actor: User) -> None:
-    if receipt.timeline_event_id is not None:
-        return
-    response = receipt.receipt_content.strip() if receipt.receipt_content else "已经认真收到这份心意。"
-    rating = f"\n\n这份心意得到了 {receipt.receipt_rating} 颗星。" if receipt.receipt_rating else ""
-    description = f"{receipt.sender.display_name} 送来的心意，被 {receipt.receiver.display_name} 好好接住了。\n\n{response}{rating}"
-    event = Event(
-        pair_id=receipt.pair_id,
-        creator_id=actor.id,
-        title=f"爱的回执：{receipt.title}",
-        description=description,
-        occurred_at=receipt.completed_at,
-        event_kind=EventKind.memory,
-        visibility_mode=VisibilityMode.public,
-    )
-    db.add(event)
-    db.flush()
-    receipt.timeline_event_id = event.id
 
 
 def _love_receipt_list_query(conditions: list[ColumnElement[bool]]) -> Select[tuple[LoveReceipt]]:
@@ -261,70 +164,12 @@ def list_love_receipts(
     )
 
 
-@router.post("", response_model=LoveReceiptOut, status_code=status.HTTP_201_CREATED)
-def create_love_receipt(
-    background: BackgroundTasks,
-    receipt_type: LoveReceiptType = Form(...),
-    title: str = Form(...),
-    message: str = Form(default=""),
-    expected_arrival_at: datetime | None = Form(default=None),
-    require_receipt: bool = Form(default=True),
-    cover: UploadFile | None = File(default=None),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> LoveReceiptOut:
+@router.post("", status_code=status.HTTP_410_GONE)
+def create_love_receipt(current_user: User = Depends(get_current_user)) -> None:
     raise HTTPException(
         status_code=status.HTTP_410_GONE,
         detail="Love receipts have moved to received-gift timeline events",
     )
-    clean_title = title.strip()
-    clean_message = message.strip()
-    if not clean_title or len(clean_title) > 200:
-        raise HTTPException(status_code=422, detail="Title must contain 1 to 200 characters")
-    if len(clean_message) > 2000:
-        raise HTTPException(status_code=422, detail="Message must be at most 2000 characters")
-    pair = get_pair_for_user(db, current_user.id)
-    other = counterpart(pair, current_user)
-    receipt = LoveReceipt(
-        pair_id=pair.id,
-        sender_id=current_user.id,
-        receiver_id=other.id,
-        receipt_type=receipt_type,
-        title=clean_title,
-        message=clean_message,
-        expected_arrival_at=expected_arrival_at,
-        require_receipt=require_receipt,
-    )
-    written: list[str] = []
-    try:
-        db.add(receipt)
-        db.flush()
-        if cover is not None:
-            _, keys = _write_image(
-                db=db, receipt=receipt, author=current_user, upload=cover, kind=LoveReceiptImageKind.cover, sort_order=0
-            )
-            written.extend(keys)
-        recipient_token = active_token_for_user(db, other.id)
-        db.commit()
-    except HTTPException:
-        db.rollback()
-        _cleanup(written)
-        raise
-    except Exception:
-        db.rollback()
-        _cleanup(written)
-        raise
-    db.refresh(receipt)
-    background.add_task(
-        notify_love_receipt_created,
-        recipient_email=other.email,
-        recipient_name=other.display_name,
-        recipient_token=recipient_token,
-        actor_name=current_user.display_name,
-        receipt_id=receipt.id,
-        receipt_title=receipt.title,
-    )
-    return _receipt_out(receipt, current_user)
 
 
 @router.get("/{receipt_id}", response_model=LoveReceiptOut)
@@ -337,135 +182,20 @@ def get_love_receipt(
     return _receipt_out(_ensure_receipt(db, receipt_id, pair.id), current_user)
 
 
-@router.patch("/{receipt_id}/status", response_model=LoveReceiptOut)
-def update_love_receipt_status(
-    receipt_id: int,
-    payload: LoveReceiptStatusUpdate,
-    background: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> LoveReceiptOut:
+@router.patch("/{receipt_id}/status", status_code=status.HTTP_410_GONE)
+def update_love_receipt_status(receipt_id: int, current_user: User = Depends(get_current_user)) -> None:
     raise HTTPException(
         status_code=status.HTTP_410_GONE,
         detail="Love receipt status updates have been retired",
     )
-    pair = get_pair_for_user(db, current_user.id)
-    receipt = _ensure_receipt(db, receipt_id, pair.id)
-    if receipt.status == LoveReceiptStatus.completed:
-        raise HTTPException(status_code=409, detail="Love receipt is already completed")
-    now = utc_now()
-    completed_now = False
-    if payload.status in {LoveReceiptStatus.delivering, LoveReceiptStatus.delivered}:
-        if receipt.sender_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Only the sender can update delivery status")
-        allowed = {
-            LoveReceiptStatus.created: {LoveReceiptStatus.delivering, LoveReceiptStatus.delivered},
-            LoveReceiptStatus.delivering: {LoveReceiptStatus.delivered},
-        }
-        if payload.status not in allowed.get(receipt.status, set()):
-            raise HTTPException(status_code=409, detail="Invalid love receipt status transition")
-        receipt.status = LoveReceiptStatus(payload.status)
-        if receipt.status == LoveReceiptStatus.delivered:
-            receipt.delivered_at = now
-    else:
-        if receipt.receiver_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Only the receiver can confirm this gesture")
-        receipt.received_at = receipt.received_at or now
-        receipt.delivered_at = receipt.delivered_at or now
-        if receipt.require_receipt:
-            receipt.status = LoveReceiptStatus.waiting_receipt
-        else:
-            receipt.status = LoveReceiptStatus.completed
-            receipt.completed_at = now
-            _create_timeline_memory(db, receipt, current_user)
-            completed_now = True
-    sender_token = active_token_for_user(db, receipt.sender_id) if completed_now else None
-    db.commit()
-    db.refresh(receipt)
-    if completed_now:
-        background.add_task(
-            notify_love_receipt_completed,
-            recipient_email=receipt.sender.email,
-            recipient_name=receipt.sender.display_name,
-            recipient_token=sender_token,
-            actor_name=receipt.receiver.display_name,
-            receipt_id=receipt.id,
-            receipt_title=receipt.title,
-        )
-    return _receipt_out(receipt, current_user)
 
 
-@router.post("/{receipt_id}/receipt", response_model=LoveReceiptOut)
-def submit_love_receipt(
-    receipt_id: int,
-    background: BackgroundTasks,
-    content: str = Form(...),
-    mood: LoveReceiptMood | None = Form(default=None),
-    rating: int | None = Form(default=None, ge=1, le=5),
-    files: list[UploadFile] = File(...),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> LoveReceiptOut:
+@router.post("/{receipt_id}/receipt", status_code=status.HTTP_410_GONE)
+def submit_love_receipt(receipt_id: int, current_user: User = Depends(get_current_user)) -> None:
     raise HTTPException(
         status_code=status.HTTP_410_GONE,
         detail="Love receipt responses have moved to received-gift timeline events",
     )
-    pair = get_pair_for_user(db, current_user.id)
-    receipt = _ensure_receipt(db, receipt_id, pair.id)
-    if receipt.receiver_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Only the receiver can submit a receipt")
-    if receipt.status == LoveReceiptStatus.completed:
-        raise HTTPException(status_code=409, detail="Love receipt is already completed")
-    if receipt.status != LoveReceiptStatus.waiting_receipt or not receipt.require_receipt:
-        raise HTTPException(status_code=409, detail="Love receipt is not ready for a photo response")
-    clean_content = content.strip()
-    if not clean_content or len(clean_content) > 100:
-        raise HTTPException(status_code=422, detail="Receipt response must contain 1 to 100 characters")
-    if not 1 <= len(files) <= 3:
-        raise HTTPException(status_code=422, detail="Receipt requires 1 to 3 images")
-
-    written: list[str] = []
-    try:
-        for index, upload in enumerate(files):
-            _, keys = _write_image(
-                db=db,
-                receipt=receipt,
-                author=current_user,
-                upload=upload,
-                kind=LoveReceiptImageKind.receipt,
-                sort_order=index,
-            )
-            written.extend(keys)
-        now = utc_now()
-        receipt.receipt_content = clean_content
-        receipt.receipt_mood = mood
-        receipt.receipt_rating = rating
-        receipt.received_at = receipt.received_at or now
-        receipt.delivered_at = receipt.delivered_at or now
-        receipt.completed_at = now
-        receipt.status = LoveReceiptStatus.completed
-        _create_timeline_memory(db, receipt, current_user)
-        sender_token = active_token_for_user(db, receipt.sender_id)
-        db.commit()
-    except HTTPException:
-        db.rollback()
-        _cleanup(written)
-        raise
-    except Exception:
-        db.rollback()
-        _cleanup(written)
-        raise
-    db.refresh(receipt)
-    background.add_task(
-        notify_love_receipt_completed,
-        recipient_email=receipt.sender.email,
-        recipient_name=receipt.sender.display_name,
-        recipient_token=sender_token,
-        actor_name=receipt.receiver.display_name,
-        receipt_id=receipt.id,
-        receipt_title=receipt.title,
-    )
-    return _receipt_out(receipt, current_user)
 
 
 def _visible_image(db: Session, image_id: int, current_user: User) -> LoveReceiptImage:

@@ -1,4 +1,4 @@
-"""SMTP helpers for timeline, love-receipt, habit, todo, and privacy-aware pair notifications."""
+"""SMTP helpers for privacy-aware timeline event/comment notifications and daily habit reminders (todo never emails)."""
 from __future__ import annotations
 
 from html import escape
@@ -86,19 +86,6 @@ def _event_link(event_id: int, recipient_token: str | None = None) -> str:
     return f"{base}{target}"
 
 
-def _todo_link(target_date: date, recipient_token: str | None = None) -> str:
-    """Build a todo-board link, optionally through token login."""
-    base = (get_settings().app_web_url or "").rstrip("/")
-    target = f"/todo?date={target_date.isoformat()}"
-    if not base:
-        return target
-    if recipient_token:
-        from urllib.parse import quote
-
-        return f"{base}/?token={quote(recipient_token, safe='')}&next={quote(target, safe='/?=&')}"
-    return f"{base}{target}"
-
-
 def _habit_link(target_date: date, recipient_token: str | None = None) -> str:
     """Build a habit-board link, optionally through token login."""
     base = (get_settings().app_web_url or "").rstrip("/")
@@ -110,92 +97,6 @@ def _habit_link(target_date: date, recipient_token: str | None = None) -> str:
 
         return f"{base}/?token={quote(recipient_token, safe='')}&next={quote(target, safe='/?=&')}"
     return f"{base}{target}"
-
-
-def _love_receipt_link(receipt_id: int, recipient_token: str | None = None) -> str:
-    """Build a private love-receipt detail link, optionally through token login."""
-    base = (get_settings().app_web_url or "").rstrip("/")
-    target = f"/love-receipts/{receipt_id}"
-    if not base:
-        return target
-    if recipient_token:
-        from urllib.parse import quote
-
-        return f"{base}/?token={quote(recipient_token, safe='')}&next={quote(target, safe='/')}"
-    return f"{base}{target}"
-
-
-def notify_love_receipt_created(
-    *,
-    recipient_email: str | None,
-    recipient_name: str,
-    recipient_token: str | None,
-    actor_name: str,
-    receipt_id: int,
-    receipt_title: str,
-) -> bool:
-    """Tell the receiver a new private gesture is waiting without exposing its message."""
-    if not recipient_email:
-        return False
-    link = _love_receipt_link(receipt_id, recipient_token)
-    safe_recipient = escape(recipient_name)
-    safe_actor = escape(actor_name)
-    safe_title = escape(receipt_title)
-    safe_link = escape(link, quote=True)
-    subject = f"【我们之间的小事】{actor_name} 有一份心意等你查收"
-    text_body = (
-        f"{recipient_name}，你好：\n\n"
-        f"{actor_name} 为你记下了一份心意：{receipt_title}\n"
-        f"打开爱的回执查看并认真接住它：{link}\n\n"
-        "—— 我们之间的小事"
-    )
-    html_body = f"""
-    <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;line-height:1.6;color:#2b2522;max-width:560px;margin:0 auto;padding:24px;">
-      <p>{safe_recipient}，你好：</p>
-      <p><strong>{safe_actor}</strong> 为你记下了一份心意。</p>
-      <div style="background:#fdf6f1;border:1px solid #e9ddd3;border-radius:12px;padding:16px 18px;margin:12px 0;">
-        <strong>{safe_title}</strong>
-      </div>
-      <p><a href="{safe_link}" style="display:inline-block;background:#d76679;color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;">查看这份心意</a></p>
-      <p style="color:#a09489;font-size:12px;margin-top:24px;">—— 我们之间的小事</p>
-    </div>
-    """
-    return send_email(recipient_email, subject, text_body, html_body)
-
-
-def notify_love_receipt_completed(
-    *,
-    recipient_email: str | None,
-    recipient_name: str,
-    recipient_token: str | None,
-    actor_name: str,
-    receipt_id: int,
-    receipt_title: str,
-) -> bool:
-    """Tell the sender their gesture has been received, leaving photos inside the private app."""
-    if not recipient_email:
-        return False
-    link = _love_receipt_link(receipt_id, recipient_token)
-    safe_recipient = escape(recipient_name)
-    safe_actor = escape(actor_name)
-    safe_title = escape(receipt_title)
-    safe_link = escape(link, quote=True)
-    subject = f"【我们之间的小事】{actor_name} 已经接住了你的心意"
-    text_body = (
-        f"{recipient_name}，你好：\n\n"
-        f"{actor_name} 已收到「{receipt_title}」，并留下了回应。\n"
-        f"打开爱的回执查看：{link}\n\n"
-        "—— 我们之间的小事"
-    )
-    html_body = f"""
-    <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;line-height:1.6;color:#2b2522;max-width:560px;margin:0 auto;padding:24px;">
-      <p>{safe_recipient}，你好：</p>
-      <p><strong>{safe_actor}</strong> 已经接住了「<strong>{safe_title}</strong>」，并留下了回应。</p>
-      <p><a href="{safe_link}" style="display:inline-block;background:#d76679;color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;">查看爱的回执</a></p>
-      <p style="color:#a09489;font-size:12px;margin-top:24px;">—— 我们之间的小事</p>
-    </div>
-    """
-    return send_email(recipient_email, subject, text_body, html_body)
 
 
 def notify_habit_reminder(
@@ -213,7 +114,7 @@ def notify_habit_reminder(
     safe_recipient_name = escape(recipient_name)
     safe_date = escape(target_date.isoformat())
     safe_link = escape(link, quote=True)
-    subject = f"【我们之间的小事】昨天的习惯记录还差一点点"
+    subject = "【我们之间的小事】昨天的习惯记录还差一点点"
     text_body = (
         f"{recipient_name}，你好：\n\n"
         f"昨天（{target_date.isoformat()}）的习惯记录还有未完成项：{completed_count}/{total_count}。\n"
@@ -232,52 +133,6 @@ def notify_habit_reminder(
     </div>
     """
     return send_email(recipient_email, subject, text_body, html_body)
-
-
-def notify_todo_schedule_created(
-    *,
-    recipient_email: str | None,
-    recipient_name: str,
-    recipient_token: str | None,
-    actor_name: str,
-    scheduled_on: date,
-    category: str,
-    item_title: str,
-) -> None:
-    if not recipient_email:
-        return
-    label = {"food": "吃饭", "play": "玩乐", "stay": "住宿"}.get(category, "清单")
-    link = _todo_link(scheduled_on, recipient_token)
-    safe_recipient_name = escape(recipient_name)
-    safe_actor_name = escape(actor_name)
-    safe_item_title = escape(item_title)
-    safe_label = escape(label)
-    safe_date = escape(scheduled_on.isoformat())
-    safe_link = escape(link, quote=True)
-    subject = f"【我们之间的小事】{actor_name} 把 {item_title} 安排到了 {scheduled_on.isoformat()}"
-    text_body = (
-        f"{recipient_name}，你好：\n\n"
-        f"{actor_name} 在 todo 看板里新增了日期安排：\n"
-        f"  日期：{scheduled_on.isoformat()}\n"
-        f"  板块：{label}\n"
-        f"  项目：{item_title}\n\n"
-        f"查看看板：{link}\n\n"
-        f"-- 我们之间的小事"
-    )
-    html_body = f"""
-    <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;line-height:1.6;color:#2b2522;max-width:560px;margin:0 auto;padding:24px;">
-      <p>{safe_recipient_name}，你好：</p>
-      <p><strong>{safe_actor_name}</strong> 在 todo 看板里新增了日期安排。</p>
-      <div style="background:#fdf6f1;border:1px solid #e9ddd3;border-radius:12px;padding:16px 18px;margin:12px 0;">
-        <p style="margin:0 0 6px;"><strong>日期：</strong>{safe_date}</p>
-        <p style="margin:0 0 6px;"><strong>板块：</strong>{safe_label}</p>
-        <p style="margin:0;"><strong>项目：</strong>{safe_item_title}</p>
-      </div>
-      <p><a href="{safe_link}" style="display:inline-block;background:#d76679;color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;">查看看板</a></p>
-      <p style="color:#a09489;font-size:12px;margin-top:24px;">-- 我们之间的小事</p>
-    </div>
-    """
-    send_email(recipient_email, subject, text_body, html_body)
 
 
 def notify_event_created(

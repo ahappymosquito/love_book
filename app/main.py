@@ -1,4 +1,8 @@
-"""FastAPI factory exposing build identity, product routes, and a resilient habit-reminder loop."""
+"""FastAPI factory exposing build identity, product routes, and a resilient habit-reminder loop.
+
+The daily reminder scan (blocking DB + SMTP) runs in a worker thread with its own session so it never
+stalls the event loop. Startup warns, or refuses in production, when ADMIN_KEY is still the default.
+"""
 
 from collections.abc import AsyncGenerator
 import asyncio
@@ -10,6 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import admin, admin_auth, auth, contents, cycles, events, game, habits, love_receipts, meeting_sessions, quotes, todos, users
+from app.core.config import get_settings
 from app.core.database import SessionLocal, init_db
 from app.habits import reminder_target_date, scan_habit_reminders, seconds_until_next_reminder
 from app.version import APP_GIT_SHA, APP_VERSION
@@ -17,18 +22,33 @@ from app.version import APP_GIT_SHA, APP_VERSION
 logger = logging.getLogger(__name__)
 
 
+def run_habit_reminder_scan() -> int:
+    with SessionLocal() as db:
+        return scan_habit_reminders(db, reminder_target_date())
+
+
 async def habit_reminder_loop() -> None:
     while True:
         await asyncio.sleep(seconds_until_next_reminder())
         try:
-            with SessionLocal() as db:
-                scan_habit_reminders(db, reminder_target_date())
+            await asyncio.to_thread(run_habit_reminder_scan)
         except Exception:
             logger.exception("Habit reminder scan failed; the daily loop will continue")
 
 
+def warn_if_default_admin_key() -> None:
+    settings = get_settings()
+    if not settings.admin_key_is_default:
+        return
+    if settings.is_production:
+        logger.error("ADMIN_KEY is still the default placeholder; admin endpoints are disabled until it is changed")
+    else:
+        logger.warning("ADMIN_KEY is the default placeholder; set a strong ADMIN_KEY before exposing this server")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    warn_if_default_admin_key()
     init_db()
     reminder_task = asyncio.create_task(habit_reminder_loop())
     try:

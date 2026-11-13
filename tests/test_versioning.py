@@ -1,7 +1,8 @@
-"""Regression tests for canonical version synchronization and runtime build identity."""
+"""Regression tests for canonical version synchronization and runtime build identity; subprocess I/O is pinned to UTF-8."""
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -18,6 +19,8 @@ def run_version_command(command: str, *args: str) -> subprocess.CompletedProcess
         capture_output=True,
         check=False,
         text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
     )
 
 

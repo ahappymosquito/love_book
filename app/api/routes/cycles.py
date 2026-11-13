@@ -1,4 +1,7 @@
-"""Authenticated cycle dashboard routes for shared pair cycle logs and live reference-only predictions."""
+"""Authenticated cycle dashboard routes for shared pair cycle logs and live reference-only predictions.
+
+Only per-day upsert/delete exist; the formal product has no demo-data or clear-all endpoints.
+"""
 
 from datetime import date
 
@@ -7,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.database import get_db
-from app.cycles import dashboard, delete_log, seed_example_data, upsert_log, clear_logs
+from app.cycles import dashboard, delete_log, upsert_log
 from app.models import User
 from app.schemas import CycleDailyLogOut, CycleDailyLogUpsert, CycleDashboardOut
 
@@ -85,42 +88,3 @@ def remove_cycle_log(
     pair = get_pair_for_user(db, current_user.id)
     delete_log(db, pair, day)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.delete("/logs", status_code=status.HTTP_204_NO_CONTENT)
-def remove_cycle_logs(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> Response:
-    pair = get_pair_for_user(db, current_user.id)
-    clear_logs(db, pair)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.post("/example-data", response_model=list[CycleDailyLogOut], status_code=status.HTTP_201_CREATED)
-def create_cycle_example_data(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> list[CycleDailyLogOut]:
-    pair = get_pair_for_user(db, current_user.id)
-    logs = seed_example_data(db, pair, current_user)
-    return [
-        CycleDailyLogOut.model_validate(
-            {
-                "date": log.date,
-                "phase": log.phase,
-                "is_period": log.is_period,
-                "is_predicted": log.is_predicted,
-                "flow": log.flow,
-                "symptoms": log.symptoms or [],
-                "mood": log.mood,
-                "bbt": log.bbt,
-                "cervical_mucus": log.cervical_mucus,
-                "note": log.note,
-                "updated_by_id": log.updated_by_id,
-                "updated_at": log.updated_at,
-                "source": "recorded",
-            }
-        )
-        for log in logs
-    ]

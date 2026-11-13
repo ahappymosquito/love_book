@@ -1,9 +1,10 @@
-"""API regression tests for auth, received gifts, legacy receipts, reminders, private media, timeline, todo, cycles, AI, and fallbacks."""
+"""API regression tests for auth, received gifts, retired receipts, reminders, private media cleanup, timeline, todo, cycle predictions, AI gating, and fallbacks."""
 
 import asyncio
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image as PILImage
@@ -12,6 +13,7 @@ from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import Session
 from sqlalchemy.schema import CreateTable
 
+import app.api.image_uploads as image_uploads
 import app.api.routes.admin as admin_routes
 import app.api.routes.love_receipts as love_receipt_routes
 import app.api.routes.quotes as quote_routes
@@ -1912,13 +1914,85 @@ def test_legacy_image_thumbnail_is_generated_lazily(
 
     assert response.status_code == 200
     db_session.refresh(legacy_image)
-    assert legacy_image.thumb_data
-    assert response.content == legacy_image.thumb_data
+    assert legacy_image.thumb_data is None
+    assert legacy_image.thumb_storage_key.startswith(f"images/thumbs/{pair_tokens['pair_id']}/{event['id']}/")
+    assert media_path(legacy_image.thumb_storage_key).read_bytes() == response.content
+    assert legacy_image.thumb_size_bytes == len(response.content)
+    assert client.get(f"/images/{legacy_image.id}/thumb", headers=auth(token)).content == response.content
 
     full = client.get(f"/images/{legacy_image.id}/file", headers=auth(token))
     assert full.status_code == 200
     assert full.headers["cache-control"] == "private, max-age=604800"
     assert full.content == original
+
+
+def test_legacy_image_thumbnail_is_served_without_caching_when_disk_write_fails(
+    client: TestClient, pair_tokens: dict[str, str | int], db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = str(pair_tokens["user_a_token"])
+    event = client.post("/events", headers=auth(token), json={"title": "Old photo", "visibility_mode": "public"}).json()
+    legacy_image = DBImage(
+        event_id=event["id"],
+        author_id=int(pair_tokens["user_a"]["id"]),
+        file_path="",
+        data=sample_png_bytes(),
+        thumb_data=None,
+        thumb_mime_type="image/jpeg",
+        thumb_size_bytes=0,
+        mime_type="image/png",
+        size_bytes=100,
+    )
+    db_session.add(legacy_image)
+    db_session.commit()
+
+    def broken_write(*args: object, **kwargs: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr("app.api.routes.contents.write_media_file", broken_write)
+    response = client.get(f"/images/{legacy_image.id}/thumb", headers=auth(token))
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/jpeg"
+    assert response.content
+    db_session.refresh(legacy_image)
+    assert legacy_image.thumb_storage_key is None
+    assert legacy_image.thumb_data is None
+
+
+def test_event_image_upload_removes_written_files_when_commit_fails(
+    client: TestClient, pair_tokens: dict[str, str | int], db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = str(pair_tokens["user_a_token"])
+    event = client.post("/events", headers=auth(token), json={"title": "Upload", "visibility_mode": "public"}).json()
+    written: list[str] = []
+    original_write = image_uploads.write_media_file
+
+    def tracking_write(key: str, data: bytes, settings: object = None):
+        written.append(key)
+        return original_write(key, data)
+
+    monkeypatch.setattr("app.api.image_uploads.write_media_file", tracking_write)
+    original_commit = db_session.commit
+    calls = {"count": 0}
+
+    def failing_commit() -> None:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise RuntimeError("database went away")
+        original_commit()
+
+    monkeypatch.setattr(db_session, "commit", failing_commit)
+    with pytest.raises(RuntimeError, match="database went away"):
+        client.post(
+            f"/events/{event['id']}/images",
+            headers=auth(token),
+            files={"file": ("photo.png", sample_png_bytes(), "image/png")},
+        )
+    monkeypatch.setattr(db_session, "commit", original_commit)
+
+    assert len(written) == 2
+    assert not any(media_path(key).exists() for key in written)
+    assert db_session.query(DBImage).filter_by(event_id=event["id"]).count() == 0
 
 
 def test_cycle_dashboard_requires_login(client: TestClient) -> None:
@@ -1979,24 +2053,83 @@ def test_cycle_logs_are_isolated_between_pairs(client: TestClient, pair_tokens: 
     assert response.json()["logs"][0]["source"] == "empty"
 
 
-def test_cycle_example_data_stats_and_clear(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 5, 22))
+def put_period(client: TestClient, token: str, start: str, days: int = 2) -> None:
+    first = date.fromisoformat(start)
+    for offset in range(days):
+        response = client.put(
+            f"/cycles/logs/{(first + timedelta(days=offset)).isoformat()}",
+            headers=auth(token),
+            json={"phase": "menstrual", "is_period": True, "flow": "medium"},
+        )
+        assert response.status_code == 200
+
+
+def test_cycle_demo_and_clear_all_endpoints_are_removed(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
     token = str(pair_tokens["user_a_token"])
 
-    seeded = client.post("/cycles/example-data", headers=auth(token))
-    assert seeded.status_code == 201
-    assert len(seeded.json()) > 10
+    assert client.post("/cycles/example-data", headers=auth(token)).status_code in {404, 405}
+    assert client.delete("/cycles/logs", headers=auth(token)).status_code in {404, 405}
 
-    dashboard = client.get("/cycles/dashboard?start=2026-05-01&end=2026-05-31", headers=auth(token)).json()
+
+def test_cycle_dashboard_without_period_records_has_no_prediction(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 5, 22))
+    token = str(pair_tokens["user_a_token"])
+    client.put("/cycles/logs/2026-05-10", headers=auth(token), json={"is_period": False, "flow": "none", "mood": "calm"})
+
+    dashboard = client.get("/cycles/dashboard?start=2026-05-10&end=2026-06-30", headers=auth(token)).json()
+
+    stats = dashboard["stats"]
     assert dashboard["is_empty"] is False
-    assert dashboard["stats"]["average_cycle_length"] == 28
-    assert dashboard["stats"]["confidence"] == "medium"
-    assert dashboard["stats"]["next_period_start"] == "2026-05-22"
+    assert stats["has_prediction"] is False
+    assert stats["current_cycle_day"] is None
+    assert stats["current_phase"] == "unknown"
+    for field in ("last_period_start", "next_period_start", "next_period_end", "ovulation_date", "fertile_start", "fertile_end", "prediction_start", "prediction_end"):
+        assert stats[field] is None
+    logs = {log["date"]: log for log in dashboard["logs"]}
+    assert logs["2026-05-10"]["source"] == "recorded"
+    assert logs["2026-05-10"]["phase"] == "unknown"
+    assert all(log["source"] in {"recorded", "empty"} for log in dashboard["logs"])
+    assert not any(log["is_period"] for log in dashboard["logs"])
 
-    removed = client.delete("/cycles/logs", headers=auth(token))
-    assert removed.status_code == 204
-    empty = client.get("/cycles/dashboard?start=2026-05-01&end=2026-05-31", headers=auth(token)).json()
-    assert empty["is_empty"] is True
+
+def test_cycle_short_or_long_period_segments_do_not_anchor_cycles(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 4, 10))
+    token = str(pair_tokens["user_a_token"])
+    put_period(client, token, "2026-01-01", days=1)
+    put_period(client, token, "2026-02-01", days=12)
+    put_period(client, token, "2026-03-01", days=3)
+    put_period(client, token, "2026-03-29", days=3)
+
+    dashboard = client.get("/cycles/dashboard?start=2026-01-01&end=2026-02-12", headers=auth(token)).json()
+
+    stats = dashboard["stats"]
+    assert stats["has_prediction"] is True
+    assert stats["average_cycle_length"] == 28
+    assert stats["last_period_start"] == "2026-03-29"
+    assert stats["next_period_start"] == "2026-04-26"
+    logs = {log["date"]: log for log in dashboard["logs"]}
+    assert logs["2026-01-01"]["source"] == "recorded"
+    assert logs["2026-01-01"]["is_period"] is True
+    assert logs["2026-02-12"]["source"] == "recorded"
+    assert logs["2026-02-12"]["phase"] == "menstrual"
+
+
+def test_cycle_single_day_logged_today_still_anchors_prediction(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 5, 22))
+    token = str(pair_tokens["user_a_token"])
+    put_period(client, token, "2026-05-22", days=1)
+
+    stats = client.get("/cycles/dashboard?start=2026-05-22&end=2026-05-22", headers=auth(token)).json()["stats"]
+
+    assert stats["has_prediction"] is True
+    assert stats["last_period_start"] == "2026-05-22"
+    assert stats["next_period_start"] == "2026-06-19"
 
 
 def test_cycle_log_delete_removes_single_day(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
@@ -2012,21 +2145,23 @@ def test_cycle_log_delete_removes_single_day(client: TestClient, pair_tokens: di
     assert dashboard["logs"][0]["source"] == "empty"
 
 
-def test_cycle_dashboard_keeps_unrecorded_past_empty_and_today_predicted(
+def test_cycle_dashboard_without_records_keeps_every_day_empty(
     client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 5, 22))
     response = client.get(
-        "/cycles/dashboard?start=2026-05-20&end=2026-05-22",
+        "/cycles/dashboard?start=2026-05-20&end=2026-05-23",
         headers=auth(str(pair_tokens["user_a_token"])),
     )
 
     assert response.status_code == 200
+    assert response.json()["stats"]["next_period_start"] is None
     logs = response.json()["logs"]
     assert [(log["date"], log["source"], log["phase"], log["is_period"]) for log in logs] == [
         ("2026-05-20", "empty", "unknown", False),
         ("2026-05-21", "empty", "unknown", False),
-        ("2026-05-22", "predicted", "luteal", False),
+        ("2026-05-22", "empty", "unknown", False),
+        ("2026-05-23", "empty", "unknown", False),
     ]
 
 
@@ -2035,24 +2170,24 @@ def test_cycle_dashboard_predicts_past_non_period_and_future_unrecorded_days(
 ) -> None:
     monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 5, 22))
     token = str(pair_tokens["user_a_token"])
-    client.put(
-        "/cycles/logs/2026-05-20",
-        headers=auth(token),
-        json={"phase": "menstrual", "is_period": True, "flow": "medium"},
-    )
+    put_period(client, token, "2026-05-18", days=2)
 
-    response = client.get("/cycles/dashboard?start=2026-05-20&end=2026-05-23", headers=auth(token))
+    response = client.get("/cycles/dashboard?start=2026-05-18&end=2026-06-16", headers=auth(token))
 
     assert response.status_code == 200
-    logs = {log["date"]: log for log in response.json()["logs"]}
-    assert logs["2026-05-20"]["source"] == "recorded"
+    payload = response.json()
+    assert payload["stats"]["next_period_start"] == "2026-06-15"
+    assert payload["stats"]["next_period_end"] == "2026-06-16"
+    logs = {log["date"]: log for log in payload["logs"]}
+    assert logs["2026-05-19"]["source"] == "recorded"
     assert logs["2026-05-21"]["source"] == "predicted"
     assert logs["2026-05-21"]["is_period"] is False
     assert logs["2026-05-21"]["phase"] == "follicular"
     assert logs["2026-05-22"]["source"] == "predicted"
-    assert logs["2026-05-22"]["is_period"] is True
-    assert logs["2026-05-22"]["phase"] == "menstrual"
-    assert logs["2026-05-23"]["source"] == "predicted"
+    assert logs["2026-05-22"]["is_period"] is False
+    assert logs["2026-06-15"]["source"] == "predicted"
+    assert logs["2026-06-15"]["is_period"] is True
+    assert logs["2026-06-15"]["phase"] == "predicted_period"
 
 
 def test_cycle_non_period_submission_stores_fact_not_client_phase(
@@ -2064,11 +2199,7 @@ def test_cycle_non_period_submission_stores_fact_not_client_phase(
     monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 2, 15))
     token = str(pair_tokens["user_a_token"])
     for start in ["2026-01-01", "2026-01-29"]:
-        client.put(
-            f"/cycles/logs/{start}",
-            headers=auth(token),
-            json={"phase": "menstrual", "is_period": True, "flow": "medium"},
-        )
+        put_period(client, token, start)
 
     created = client.put(
         "/cycles/logs/2026-02-10",
@@ -2096,11 +2227,8 @@ def test_cycle_recorded_non_period_fact_overrides_predicted_period_window(
 ) -> None:
     monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 5, 22))
     token = str(pair_tokens["user_a_token"])
-    client.put(
-        "/cycles/logs/2026-05-20",
-        headers=auth(token),
-        json={"phase": "menstrual", "is_period": True, "flow": "medium"},
-    )
+    put_period(client, token, "2026-04-21", days=5)
+    put_period(client, token, "2026-05-19", days=2)
     client.put(
         "/cycles/logs/2026-05-21",
         headers=auth(token),
@@ -2122,11 +2250,7 @@ def test_cycle_dashboard_write_returns_recomputed_prediction(
     monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 3, 25))
     token = str(pair_tokens["user_a_token"])
     for start in ["2026-01-29", "2026-02-26"]:
-        client.put(
-            f"/cycles/logs/{start}",
-            headers=auth(token),
-            json={"phase": "menstrual", "is_period": True, "flow": "medium"},
-        )
+        put_period(client, token, start)
     before = client.get("/cycles/dashboard?start=2026-03-01&end=2026-04-30", headers=auth(token)).json()
     assert before["stats"]["next_period_start"] == "2026-03-26"
 
@@ -2149,11 +2273,7 @@ def test_cycle_prediction_filters_unreasonable_cycle_gaps(
     monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 3, 21))
     token = str(pair_tokens["user_a_token"])
     for start in ["2026-01-01", "2026-01-29", "2026-03-20"]:
-        client.put(
-            f"/cycles/logs/{start}",
-            headers=auth(token),
-            json={"phase": "menstrual", "is_period": True, "flow": "medium"},
-        )
+        put_period(client, token, start)
 
     dashboard = client.get("/cycles/dashboard?start=2026-03-01&end=2026-04-30", headers=auth(token)).json()
 
@@ -2168,11 +2288,7 @@ def test_cycle_prediction_weights_recent_cycles(
     monkeypatch.setattr(cycles, "local_today", lambda: date(2026, 7, 7))
     token = str(pair_tokens["user_a_token"])
     for start in ["2026-01-01", "2026-01-29", "2026-02-26", "2026-03-26", "2026-04-29", "2026-06-02", "2026-07-06"]:
-        client.put(
-            f"/cycles/logs/{start}",
-            headers=auth(token),
-            json={"phase": "menstrual", "is_period": True, "flow": "medium"},
-        )
+        put_period(client, token, start)
 
     dashboard = client.get("/cycles/dashboard?start=2026-07-01&end=2026-08-31", headers=auth(token)).json()
 
@@ -2708,7 +2824,7 @@ def test_todo_candidate_confirm_detail_crash_returns_502_and_keeps_candidate(cli
     remaining = client.get("/todos/candidates", headers=auth(str(pair_tokens["user_a_token"])))
 
     assert failed.status_code == 502
-    assert "Todo candidate confirmation failed" in failed.json()["detail"]
+    assert "detail crashed" not in failed.json()["detail"]
     assert [candidate["id"] for candidate in remaining.json()] == [created.json()["id"]]
 
 
@@ -2981,7 +3097,67 @@ def test_todo_image_full_view_and_pair_delete(client: TestClient, pair_tokens: d
     assert not thumb_path.exists()
 
 
-def test_todo_classify_uses_llm_result_and_stays_pair_isolated(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+def enable_llm(db_session: Session) -> None:
+    db_session.add(
+        AISetting(
+            id=1,
+            llm_enabled=True,
+            protocol="openai",
+            selected_model="gpt-test",
+            openai_base_url="https://llm.example/v1",
+            anthropic_base_url="https://anthropic.example",
+            api_key="test-key",
+            amap_api_key="",
+        )
+    )
+    db_session.commit()
+
+
+def test_todo_classify_endpoints_refuse_when_ai_is_off(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+    def must_not_call(db: Session, item) -> str:
+        raise AssertionError("LLM must not be called while AI classification is off")
+
+    monkeypatch.setattr("app.api.routes.todos.classify_todo_category", must_not_call)
+    token = str(pair_tokens["user_a_token"])
+    item = client.post("/todos/items", headers=auth(token), json={"category": "play", "title": "火锅"}).json()
+
+    single = client.post(f"/todos/items/{item['id']}/classify", headers=auth(token))
+    batch = client.post("/todos/items/classify-open", headers=auth(token))
+
+    assert single.status_code == 409
+    assert batch.status_code == 409
+    assert single.json()["detail"] == "AI 分类已关闭，请手动选择分类"
+
+
+def test_todo_batch_classify_failure_turns_ai_off_and_keeps_categories(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    enable_llm(db_session)
+    token = str(pair_tokens["user_a_token"])
+    first = client.post("/todos/items", headers=auth(token), json={"category": "play", "title": "first"}).json()
+    second = client.post("/todos/items", headers=auth(token), json={"category": "play", "title": "second"}).json()
+
+    def flaky(db: Session, item) -> str:
+        if item.title == "first":
+            raise httpx.ConnectError("secret upstream host unreachable")
+        return "food"
+
+    monkeypatch.setattr("app.api.routes.todos.classify_todo_category", flaky)
+    response = client.post("/todos/items/classify-open", headers=auth(token))
+
+    assert response.status_code == 502
+    assert "secret upstream" not in response.json()["detail"]
+    db_session.expire_all()
+    assert db_session.get(AISetting, 1).llm_enabled is False
+    items = {row["id"]: row for row in client.get("/todos/dashboard?month=2026-05", headers=auth(token)).json()["items"]}
+    assert items[first["id"]]["category"] == "play"
+    assert items[second["id"]]["category"] == "play"
+
+
+def test_todo_classify_uses_llm_result_and_stays_pair_isolated(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    enable_llm(db_session)
     monkeypatch.setattr("app.api.routes.todos.classify_todo_category", lambda db, item: "food")
     item = client.post(
         "/todos/items",
@@ -3002,7 +3178,10 @@ def test_todo_classify_uses_llm_result_and_stays_pair_isolated(client: TestClien
     assert client.post(f"/todos/items/{item['id']}/classify", headers=auth(other_pair["user_a_token"])).status_code == 404
 
 
-def test_todo_batch_classify_only_updates_open_items(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+def test_todo_batch_classify_only_updates_open_items(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    enable_llm(db_session)
     calls: list[str] = []
 
     def classify_open_only(db: Session, item) -> str:
@@ -3044,7 +3223,11 @@ def test_todo_batch_classify_only_updates_open_items(client: TestClient, pair_to
     assert items[completed_item["id"]]["checked_in"] is True
 
 
-def test_todo_classify_reports_missing_llm_config(client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch) -> None:
+def test_todo_classify_reports_missing_llm_config(
+    client: TestClient, pair_tokens: dict[str, str | int], monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    enable_llm(db_session)
+
     def fail_classify(db: Session, item) -> str:
         raise RuntimeError("LLM API key or model is not configured")
 
@@ -3058,6 +3241,9 @@ def test_todo_classify_reports_missing_llm_config(client: TestClient, pair_token
     classified = client.post(f"/todos/items/{item['id']}/classify", headers=auth(str(pair_tokens["user_a_token"])))
 
     assert classified.status_code == 502
+    assert "not configured" not in classified.json()["detail"]
+    db_session.expire_all()
+    assert db_session.get(AISetting, 1).llm_enabled is False
 
 
 def test_admin_ai_config_edits_keys_lists_models_and_saves_model(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

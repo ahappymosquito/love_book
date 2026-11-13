@@ -1,17 +1,20 @@
-"""User media routes for private avatar image downloads with pair or admin authorization."""
+"""User media routes for private avatar image downloads with pair or (constant-time) admin-key authorization."""
+
+import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from fastapi.responses import Response
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import bearer_scheme, get_pair_for_user, token_is_expired
-from app.core.config import get_settings
+from app.api.dependencies import admin_key_matches, bearer_scheme, get_pair_for_user
 from app.core.database import get_db
 from app.models import DeviceToken, User
+from app.services import token_is_expired
 from app.storage import PRIVATE_MEDIA_CACHE_HEADERS, MediaStorageError, read_media_file
 
 router = APIRouter(prefix="/users", tags=["users"])
+logger = logging.getLogger(__name__)
 
 
 def _authorized_for_avatar(
@@ -20,7 +23,7 @@ def _authorized_for_avatar(
     credentials: HTTPAuthorizationCredentials | None,
     admin_key: str | None,
 ) -> bool:
-    if admin_key and admin_key == get_settings().admin_key:
+    if admin_key_matches(admin_key):
         return True
     if credentials is None or credentials.scheme.lower() != "bearer":
         return False
@@ -48,7 +51,8 @@ def get_user_avatar(
     try:
         stored = read_media_file(user.avatar_storage_key)
     except MediaStorageError as exc:
-        raise HTTPException(status_code=500, detail=f"Avatar image could not be read: {exc}") from exc
+        logger.exception("Avatar image read failed for user %s", user_id)
+        raise HTTPException(status_code=500, detail="头像暂时读取不了，请稍后再试") from exc
     if stored is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Avatar image not found")
     return Response(

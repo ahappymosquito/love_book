@@ -1,6 +1,7 @@
 """Event routes for CRUD, atomic received-gift creation, meeting classification, notifications, and legacy receipt links.
 
 Mutation endpoints commit before returning so the frontend can immediately reload the new or changed event.
+Gift images go through the shared upload helper, which deletes written files if any later step or the commit fails.
 """
 
 from datetime import datetime
@@ -10,14 +11,14 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_pair_for_user
+from app.api.image_uploads import discard_media_on_error, save_uploaded_image
 from app.core.config import get_settings
 from app.core.database import delete_legacy_voice_rows, get_db
 from app.emailer import notify_event_created
-from app.media import MediaProcessingError, make_image_thumbnail
 from app.models import Event, EventKind, GiftFeeling, Image, LoveReceipt, User, VisibilityMode, utc_now
 from app.schemas import EventCreate, EventDetail, EventSummary, EventUpdate
 from app.services import active_token_for_user, counterpart, ensure_pair_event, ensure_pair_meeting_session, event_detail, event_summary, find_meeting_for_date, get_or_create_single_day_meeting, meeting_date_for_values
-from app.storage import MediaStorageError, build_image_storage_keys, delete_media_file, write_media_file
+from app.storage import build_image_storage_keys
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -133,7 +134,6 @@ def create_received_gift(
         raise HTTPException(status_code=422, detail="A received gift supports at most 6 images")
 
     pair = get_pair_for_user(db, current_user.id)
-    settings = get_settings()
     created_at = utc_now()
     event_date = meeting_date_for_values(occurred_at, created_at)
     meeting = find_meeting_for_date(db, pair.id, event_date)
@@ -151,68 +151,31 @@ def create_received_gift(
         created_at=created_at,
     )
     written_keys: list[str] = []
-    try:
+    with discard_media_on_error(db, written_keys):
         db.add(event)
         db.flush()
         for image_order, upload in enumerate(files):
-            content_type = (upload.content_type or "").split(";", 1)[0].strip().lower()
-            if content_type not in settings.allowed_image_mime_types:
-                raise HTTPException(status_code=415, detail="Unsupported image mime type")
-            body = upload.file.read(settings.max_image_bytes + 1)
-            if len(body) > settings.max_image_bytes:
-                raise HTTPException(status_code=413, detail="Image file is too large")
-            try:
-                thumb = make_image_thumbnail(body)
-            except MediaProcessingError as exc:
-                raise HTTPException(status_code=422, detail=f"Image thumbnail could not be generated: {exc}") from exc
-            storage_key, thumb_key = build_image_storage_keys(pair.id, event.id, content_type)
-            write_media_file(storage_key, body)
-            written_keys.append(storage_key)
-            write_media_file(thumb_key, thumb)
-            written_keys.append(thumb_key)
+            stored = save_uploaded_image(upload, lambda mime: build_image_storage_keys(pair.id, event.id, mime))
+            written_keys.extend(stored.keys)
             db.add(
                 Image(
                     event_id=event.id,
                     author_id=current_user.id,
                     sort_order=image_order,
                     file_path="",
-                    storage_key=storage_key,
-                    thumb_storage_key=thumb_key,
-                    storage_backend=settings.media_storage,
+                    storage_key=stored.storage_key,
+                    thumb_storage_key=stored.thumb_storage_key,
+                    storage_backend=get_settings().media_storage,
                     data=None,
                     thumb_data=None,
                     thumb_mime_type="image/jpeg",
-                    thumb_size_bytes=len(thumb),
-                    mime_type=content_type,
-                    size_bytes=len(body),
+                    thumb_size_bytes=stored.thumb_size_bytes,
+                    mime_type=stored.mime_type,
+                    size_bytes=stored.size_bytes,
                 )
             )
         other = counterpart(pair, current_user)
         db.commit()
-    except HTTPException:
-        db.rollback()
-        for key in written_keys:
-            try:
-                delete_media_file(key)
-            except (MediaStorageError, OSError):
-                pass
-        raise
-    except (MediaStorageError, OSError) as exc:
-        db.rollback()
-        for key in written_keys:
-            try:
-                delete_media_file(key)
-            except (MediaStorageError, OSError):
-                pass
-        raise HTTPException(status_code=500, detail=f"Gift image could not be saved: {exc}") from exc
-    except Exception:
-        db.rollback()
-        for key in written_keys:
-            try:
-                delete_media_file(key)
-            except (MediaStorageError, OSError):
-                pass
-        raise
 
     db.refresh(event)
     detail = event_detail(db, event, current_user, pair)

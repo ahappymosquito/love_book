@@ -1,4 +1,6 @@
-"""Bearer 鉴权、管理密钥校验，以及已合上手账时返回给登录方的 410 告别信息。"""
+"""Bearer 鉴权、常量时间管理密钥校验（生产环境拒绝默认密钥），以及已合上手账时返回给登录方的 410 告别信息。"""
+
+import secrets
 
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -7,23 +9,29 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.models import DeviceToken, Pair, User, utc_now
+from app.models import DeviceToken, Pair, User
+from app.services import token_is_expired
 
 bearer_scheme = HTTPBearer(auto_error=False)
 DEFAULT_FAREWELL_MESSAGE = "我们已经把这本手账合上了。"
 
 
-def token_is_expired(token: DeviceToken) -> bool:
-    if token.expires_at is None:
+def admin_key_matches(candidate: str | None) -> bool:
+    settings = get_settings()
+    if not candidate or (settings.admin_key_is_default and settings.is_production):
         return False
-    expires_at = token.expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=utc_now().tzinfo)
-    return expires_at <= utc_now()
+    return secrets.compare_digest(candidate.encode("utf-8"), settings.admin_key.encode("utf-8"))
+
+
+def ensure_admin_key_configured() -> None:
+    settings = get_settings()
+    if settings.admin_key_is_default and settings.is_production:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Admin key is not configured")
 
 
 def require_admin_key(x_admin_key: str | None = Header(default=None)) -> None:
-    if not x_admin_key or x_admin_key != get_settings().admin_key:
+    ensure_admin_key_configured()
+    if not admin_key_matches(x_admin_key):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid admin key")
 
 

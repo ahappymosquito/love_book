@@ -1,4 +1,7 @@
-"""Database setup, lightweight schema/index migrations, and retired-feature compatibility cleanup."""
+"""Database setup, lightweight schema/index migrations, and retired-feature compatibility cleanup.
+
+Legacy voice rows are only removed together with their hard-deleted event (FK requirement), never at startup.
+"""
 
 from collections.abc import Generator
 
@@ -40,7 +43,11 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def delete_legacy_voice_rows(db: Session, event_id: int) -> None:
-    """Remove retired voice rows only when an existing deployment still has the legacy table."""
+    """Remove the deleted event's retired voice rows when the legacy table still exists.
+
+    Legacy `voices.event_id` is a NOT NULL foreign key to `events.id` without ON DELETE, so a hard event
+    delete is rejected unless its voice rows go first; voice rows of every other event stay as backup.
+    """
     bind = db.get_bind()
     if inspect(bind).has_table("voices"):
         db.execute(text("DELETE FROM voices WHERE event_id = :event_id"), {"event_id": event_id})

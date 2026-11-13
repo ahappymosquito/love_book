@@ -1,4 +1,4 @@
-"""Pydantic 契约：pair 功能、合上手账、安全密码会话、跑酷成绩、媒体和管理端接口。"""
+"""Pydantic 契约：pair 功能、合上手账、安全密码会话、跑酷成绩、媒体和管理端接口；周期统计在没有经期锚点时预测字段为 null。"""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -531,19 +531,20 @@ class CycleDailyLogOut(CycleDailyLogBase):
 
 
 class CycleStats(APIModel):
-    current_cycle_day: int
+    has_prediction: bool
+    current_cycle_day: int | None
     current_phase: CyclePhase
     average_cycle_length: int
     average_period_length: int
-    last_period_start: date
-    next_period_start: date
-    next_period_end: date
-    ovulation_date: date
-    fertile_start: date
-    fertile_end: date
+    last_period_start: date | None
+    next_period_start: date | None
+    next_period_end: date | None
+    ovulation_date: date | None
+    fertile_start: date | None
+    fertile_end: date | None
     confidence: Literal["high", "medium", "low"]
-    prediction_start: date
-    prediction_end: date
+    prediction_start: date | None
+    prediction_end: date | None
     cycle_variation_days: int
 
 

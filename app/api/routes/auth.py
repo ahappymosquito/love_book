@@ -1,6 +1,11 @@
-"""User auth/profile routes including entry tokens, Argon2id password sessions, avatars, reminders, and closing a pair."""
+"""User auth/profile routes including entry tokens, throttled Argon2id password sessions, avatars, reminders, and closing a pair.
+
+All writes (including login records) commit before responding; upstream/storage errors are logged and
+answered with short Chinese messages instead of raw exception text.
+"""
 
 from datetime import datetime, timedelta
+import logging
 import secrets
 import unicodedata
 
@@ -12,6 +17,7 @@ from sqlalchemy.orm import Session
 from app import amap_mcp
 from app.ai_config import effective_amap_key
 from app.api.dependencies import find_pair_for_user, get_current_user, get_pair_for_user, raise_if_pair_dissolved
+from app.api.image_uploads import IMAGE_SAVE_FAILED_DETAIL, discard_media_on_error
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.login_logs import client_ip, enrich_location, record_login
@@ -40,10 +46,11 @@ from app.security_credentials import (
     validate_password,
     verify_password,
 )
-from app.services import build_anniversary, counterpart, pair_love_started_on
+from app.services import build_anniversary, clean_email, counterpart, pair_love_started_on
 from app.storage import MediaStorageError, build_avatar_storage_key, write_media_file
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 def _password_session(user_id: int, db: Session) -> tuple[str, datetime]:
@@ -148,17 +155,6 @@ def update_security_password(
     )
 
 
-def _clean_email(value: str | None) -> str | None:
-    if value is None:
-        return None
-    value = value.strip()
-    if not value:
-        return None
-    if "@" not in value or len(value) > 255:
-        raise HTTPException(status_code=422, detail="邮箱格式不正确")
-    return value
-
-
 def _clean_coords(value: str) -> str:
     parts = [part.strip() for part in value.split(",")]
     if len(parts) != 2:
@@ -220,7 +216,7 @@ def update_me(
     if "avatar" in data and data["avatar"] is not None:
         current_user.avatar = data["avatar"]
     if "email" in data:
-        current_user.email = _clean_email(data["email"])
+        current_user.email = clean_email(data["email"])
     db.flush()
     db.commit()
     db.refresh(current_user)
@@ -251,7 +247,8 @@ def update_my_location(
             district = str(resolved.get("district") or "").strip()
             label = payload.label or district or address
     except amap_mcp.AmapMCPError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        logger.warning("Location lookup failed for user %s", current_user.id, exc_info=exc)
+        raise HTTPException(status_code=502, detail="没能确认这个位置，换个地址或城市再试试") from exc
 
     current_user.location_label = label
     current_user.location_address = address or label
@@ -297,20 +294,21 @@ def upload_my_avatar(
     try:
         avatar = make_avatar_image(body)
     except MediaProcessingError as exc:
-        raise HTTPException(status_code=422, detail=f"Avatar image could not be generated: {exc}") from exc
+        raise HTTPException(status_code=422, detail="这张图片无法识别，换一张试试") from exc
 
     storage_key = build_avatar_storage_key(current_user.id)
     try:
         write_media_file(storage_key, avatar)
     except (MediaStorageError, OSError) as exc:
-        raise HTTPException(status_code=500, detail=f"Avatar image could not be saved: {exc}") from exc
+        logger.exception("Avatar image could not be written for user %s", current_user.id)
+        raise HTTPException(status_code=500, detail=IMAGE_SAVE_FAILED_DETAIL) from exc
 
-    current_user.avatar_storage_key = storage_key
-    current_user.avatar_mime_type = "image/jpeg"
-    current_user.avatar_size_bytes = len(avatar)
-    current_user.avatar_updated_at = utc_now()
-    db.flush()
-    db.commit()
+    with discard_media_on_error(db, [storage_key]):
+        current_user.avatar_storage_key = storage_key
+        current_user.avatar_mime_type = "image/jpeg"
+        current_user.avatar_size_bytes = len(avatar)
+        current_user.avatar_updated_at = utc_now()
+        db.commit()
     db.refresh(current_user)
     return UserOut.model_validate(current_user)
 
@@ -350,6 +348,7 @@ def create_login_record(
         timezone_name=payload.timezone_name,
         screen=payload.screen,
     )
+    db.commit()
     background.add_task(enrich_location, entry.id, ip)
     return LoginLogOut(
         id=entry.id,

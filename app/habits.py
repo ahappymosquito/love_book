@@ -1,15 +1,23 @@
-"""Habit services for pair-visible tasks, check-ins, and entry-token reminder delivery. Closed pairs are skipped."""
+"""Habit services for pair-visible tasks, check-ins, and entry-token reminder delivery. Closed pairs are skipped.
+
+Reminder scans commit each user's dedupe record right after a successful send, and a failure for one
+user is logged and skipped so it neither aborts the scan nor triggers a resend for users already mailed.
+"""
 
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
+import logging
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.emailer import notify_habit_reminder
-from app.models import DeviceToken, HabitCheckin, HabitReminderRun, HabitTask, Pair, User, utc_now
+from app.models import HabitCheckin, HabitReminderRun, HabitTask, Pair, User
 from app.schemas import HabitDashboardOut, HabitDayOut, HabitTaskOut, HabitUserDayOut
+from app.services import active_token_for_user
+
+logger = logging.getLogger(__name__)
 
 
 def dates_between(start: date, end: date) -> list[date]:
@@ -148,24 +156,6 @@ def completion_for_user(db: Session, pair: Pair, user: User, target_date: date) 
     return total, int(completed), int(completed) == total
 
 
-def active_token_for_user(db: Session, user_id: int) -> str | None:
-    now = utc_now()
-    token = (
-        db.execute(
-            select(DeviceToken)
-            .where(
-                DeviceToken.user_id == user_id,
-                DeviceToken.source == "entry",
-                or_(DeviceToken.expires_at.is_(None), DeviceToken.expires_at > now),
-            )
-            .order_by(DeviceToken.created_at.desc())
-        )
-        .scalars()
-        .first()
-    )
-    return token.token if token else None
-
-
 def scan_habit_reminders(db: Session, target_date: date) -> int:
     pairs = db.execute(select(Pair)).scalars().all()
     sent = 0
@@ -186,19 +176,24 @@ def scan_habit_reminders(db: Session, target_date: date) -> int:
             total, completed, all_done = completion_for_user(db, pair, user, target_date)
             if total == 0 or all_done:
                 continue
-            delivered = notify_habit_reminder(
-                recipient_email=user.email,
-                recipient_name=user.display_name,
-                recipient_token=active_token_for_user(db, user.id),
-                target_date=target_date,
-                total_count=total,
-                completed_count=completed,
-            )
-            if not delivered:
+            try:
+                delivered = notify_habit_reminder(
+                    recipient_email=user.email,
+                    recipient_name=user.display_name,
+                    recipient_token=active_token_for_user(db, user.id),
+                    target_date=target_date,
+                    total_count=total,
+                    completed_count=completed,
+                )
+                if not delivered:
+                    continue
+                db.add(HabitReminderRun(pair_id=pair.id, user_id=user.id, date=target_date))
+                db.commit()
+            except Exception:
+                db.rollback()
+                logger.exception("Habit reminder failed for user %s on %s", user.id, target_date)
                 continue
-            db.add(HabitReminderRun(pair_id=pair.id, user_id=user.id, date=target_date))
             sent += 1
-    db.commit()
     return sent
 
 

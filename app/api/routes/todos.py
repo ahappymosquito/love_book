@@ -1,4 +1,9 @@
-"""Todo routes for pair tasks, safe AMap evidence, retryable candidates, schedules, comments, and private images."""
+"""Todo routes for pair tasks, safe AMap evidence, retryable candidates, schedules, comments, and private images.
+
+LLM classification (candidate creation and the classify endpoints) only runs while AI classification is on
+(classify endpoints answer 409 otherwise); any LLM failure persists llm_enabled=False before responding 502.
+Client errors carry short Chinese messages; upstream exception details are only logged.
+"""
 
 from __future__ import annotations
 
@@ -16,9 +21,9 @@ from sqlalchemy.orm import Session, selectinload
 from app import amap_mcp
 from app.ai_config import complete_todo_category, effective_amap_key, is_llm_enabled, set_llm_enabled
 from app.api.dependencies import get_current_user, get_pair_for_user
+from app.api.image_uploads import discard_media_on_error, save_uploaded_image
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.media import MediaProcessingError, make_image_thumbnail
 from app.models import Pair, TodoCandidate, TodoCandidateStatus, TodoCategory, TodoComment, TodoImage, TodoItem, TodoParseStatus, TodoRestaurant, TodoSchedule, User, safe_external_url
 from app.schemas import (
     TodoCandidateConfirm,
@@ -43,23 +48,24 @@ from app.schemas import (
     TodoScheduleOut,
     TodoWeatherOut,
 )
-
-logger = logging.getLogger(__name__)
 from app.storage import (
     PRIVATE_MEDIA_CACHE_HEADERS,
     MediaStorageError,
     build_todo_image_storage_keys,
     delete_media_file,
     read_media_file,
-    write_media_file,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/todos", tags=["todos"])
 image_router = APIRouter(prefix="/todo-images", tags=["todos"])
 
 DEFAULT_PLAY_TITLES = ["唱歌", "台球", "看电影", "拼乐高"]
 NEARBY_SEARCH_RADIUS_M = 5000
 TODO_CANDIDATE_LIMIT = 6
+LLM_DISABLED_DETAIL = "AI 分类已关闭，请手动选择分类"
+LLM_FAILED_DETAIL = "AI 分类暂时不可用，已自动关闭，请手动选择分类"
+AMAP_FAILED_DETAIL = "高德地图暂时没有响应，请稍后再试"
 
 
 def _merge_restaurant_candidate(candidate: TodoRestaurantCandidate, detail: dict | None) -> dict:
@@ -447,16 +453,33 @@ def create_schedule(
     return TodoScheduleOut.model_validate(schedule)
 
 
+def _require_llm_enabled(db: Session) -> None:
+    if not is_llm_enabled(db):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=LLM_DISABLED_DETAIL)
+
+
+def _turn_off_llm_after_failure(db: Session, exc: Exception) -> HTTPException:
+    logger.warning("LLM classification failed; AI classification turned off", exc_info=exc)
+    db.rollback()
+    set_llm_enabled(db, False)
+    db.commit()
+    return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=LLM_FAILED_DETAIL)
+
+
+def _amap_failure(exc: Exception) -> HTTPException:
+    logger.warning("AMap MCP request failed", exc_info=exc)
+    return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=AMAP_FAILED_DETAIL)
+
+
 @router.post("/items/{item_id}/classify", response_model=TodoItemOut)
 def classify_item(item_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> TodoItemOut:
     pair = get_pair_for_user(db, current_user.id)
     item = _ensure_pair_item(db, item_id, pair)
+    _require_llm_enabled(db)
     try:
         item.category = TodoCategory(classify_todo_category(db, item))
-    except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"LLM classification failed: {exc}") from exc
+    except (RuntimeError, ValueError, httpx.HTTPError) as exc:
+        raise _turn_off_llm_after_failure(db, exc) from exc
     db.commit()
     db.refresh(item)
     return _item_out(db, item)
@@ -465,6 +488,7 @@ def classify_item(item_id: int, current_user: User = Depends(get_current_user), 
 @router.post("/items/classify-open", response_model=TodoClassifyOpenOut)
 def classify_open_items(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> TodoClassifyOpenOut:
     pair = get_pair_for_user(db, current_user.id)
+    _require_llm_enabled(db)
     items = (
         db.execute(
             select(TodoItem)
@@ -480,10 +504,8 @@ def classify_open_items(current_user: User = Depends(get_current_user), db: Sess
     try:
         for item in open_items:
             item.category = TodoCategory(classify_todo_category(db, item))
-    except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"LLM classification failed: {exc}") from exc
+    except (RuntimeError, ValueError, httpx.HTTPError) as exc:
+        raise _turn_off_llm_after_failure(db, exc) from exc
     db.commit()
     for item in open_items:
         db.refresh(item)
@@ -514,7 +536,7 @@ def search_restaurants(
             for candidate in _search_location_aware_pois(db, current_user, payload.keyword, payload.city)
         ]
     except amap_mcp.AmapMCPError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise _amap_failure(exc) from exc
     return TodoRestaurantSearchOut(candidates=candidates)
 
 
@@ -542,12 +564,8 @@ def create_candidate(
     pair = get_pair_for_user(db, current_user.id)
     try:
         category = _infer_candidate_category(db, payload.raw_title, payload.category)
-    except RuntimeError as exc:
-        db.commit()
-        raise HTTPException(status_code=502, detail=f"LLM classification failed and AI classification has been turned off: {exc}") from exc
-    except httpx.HTTPError as exc:
-        db.commit()
-        raise HTTPException(status_code=502, detail=f"LLM classification failed and AI classification has been turned off: {exc}") from exc
+    except (RuntimeError, ValueError, httpx.HTTPError) as exc:
+        raise _turn_off_llm_after_failure(db, exc) from exc
     status_value = TodoCandidateStatus.ready
     amap_candidates: list[dict] = []
     selected_candidate: dict | None = None
@@ -614,7 +632,7 @@ def confirm_candidate(
     except Exception as exc:
         db.rollback()
         logger.exception("Todo candidate confirmation failed", extra={"candidate_id": candidate_id})
-        raise HTTPException(status_code=502, detail=f"Todo candidate confirmation failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail="这条暂时没能加入清单，卡片还在，可以稍后再试") from exc
     persisted_item = _ensure_pair_item(db, item_id, pair)
     return _item_out(db, persisted_item)
 
@@ -679,7 +697,7 @@ def restaurant_lottery(
         try:
             candidates = amap_mcp.around_restaurants(payload.location, payload.radius_km * 1000, amap_key=effective_amap_key(db))
         except amap_mcp.AmapMCPError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            raise _amap_failure(exc) from exc
         if candidates:
             return TodoLotteryOut(candidate=TodoRestaurantCandidate(**random.choice(candidates)))
     return TodoLotteryOut()
@@ -766,38 +784,23 @@ def upload_image(
 ) -> TodoImageOut:
     pair = get_pair_for_user(db, current_user.id)
     item = _ensure_pair_item(db, item_id, pair)
-    settings = get_settings()
-    content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
-    if content_type not in settings.allowed_image_mime_types:
-        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Unsupported image mime type")
-    body = file.file.read(settings.max_image_bytes + 1)
-    if len(body) > settings.max_image_bytes:
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Image file is too large")
-    try:
-        thumb = make_image_thumbnail(body)
-    except MediaProcessingError as exc:
-        raise HTTPException(status_code=422, detail=f"Image thumbnail could not be generated: {exc}") from exc
-    storage_key, thumb_storage_key = build_todo_image_storage_keys(pair.id, item.id, content_type)
-    try:
-        write_media_file(storage_key, body)
-        write_media_file(thumb_storage_key, thumb)
-    except (MediaStorageError, OSError) as exc:
-        raise HTTPException(status_code=500, detail=f"Image file could not be saved: {exc}") from exc
-    image = TodoImage(
-        item_id=item.id,
-        author_id=current_user.id,
-        storage_key=storage_key,
-        thumb_storage_key=thumb_storage_key,
-        storage_backend=settings.media_storage,
-        mime_type=content_type,
-        size_bytes=len(body),
-        thumb_mime_type="image/jpeg",
-        thumb_size_bytes=len(thumb),
-        width=width,
-        height=height,
-    )
-    db.add(image)
-    db.commit()
+    stored = save_uploaded_image(file, lambda mime: build_todo_image_storage_keys(pair.id, item.id, mime))
+    with discard_media_on_error(db, stored.keys):
+        image = TodoImage(
+            item_id=item.id,
+            author_id=current_user.id,
+            storage_key=stored.storage_key,
+            thumb_storage_key=stored.thumb_storage_key,
+            storage_backend=get_settings().media_storage,
+            mime_type=stored.mime_type,
+            size_bytes=stored.size_bytes,
+            thumb_mime_type="image/jpeg",
+            thumb_size_bytes=stored.thumb_size_bytes,
+            width=width,
+            height=height,
+        )
+        db.add(image)
+        db.commit()
     db.refresh(image)
     return TodoImageOut.model_validate(image)
 

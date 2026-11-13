@@ -1,4 +1,7 @@
-"""Environment-backed settings for database, media, SMTP, AMap MCP, LLM endpoints, and public URLs."""
+"""Environment-backed settings for runtime environment, admin key, database, media, SMTP, AMap MCP, LLM endpoints, and public URLs.
+
+`APP_ENV=production` marks a production runtime, where an empty or placeholder admin key (`change-me` / `change-me-please`) is rejected.
+"""
 
 from functools import lru_cache
 from pathlib import Path
@@ -9,12 +12,15 @@ from pydantic import BaseModel
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE = PROJECT_ROOT / ".env"
+DEFAULT_ADMIN_KEY = "change-me"
+PLACEHOLDER_ADMIN_KEYS = frozenset({"", DEFAULT_ADMIN_KEY, "change-me-please"})
 
 
 class Settings(BaseModel):
     app_name: str = "Pair Events API"
+    app_env: str = "development"
     database_url: str = "sqlite:///./pair_events.db"
-    admin_key: str = "change-me"
+    admin_key: str = DEFAULT_ADMIN_KEY
     max_image_bytes: int = 10 * 1024 * 1024
     media_root: str = "/app/media"
     media_storage: str = "local"
@@ -41,12 +47,21 @@ class Settings(BaseModel):
     llm_protocol: str = "openai"
     llm_model: str = ""
 
+    @property
+    def is_production(self) -> bool:
+        return self.app_env in {"production", "prod"}
+
+    @property
+    def admin_key_is_default(self) -> bool:
+        return self.admin_key.strip() in PLACEHOLDER_ADMIN_KEYS
+
 
 @lru_cache
 def get_settings() -> Settings:
     load_dotenv(ENV_FILE)
     defaults = Settings()
     return Settings(
+        app_env=os.getenv("APP_ENV", defaults.app_env).strip().lower() or defaults.app_env,
         database_url=os.getenv("DATABASE_URL", defaults.database_url),
         admin_key=os.getenv("ADMIN_KEY", defaults.admin_key),
         max_image_bytes=int(os.getenv("MAX_IMAGE_BYTES", str(defaults.max_image_bytes))),

@@ -1,4 +1,4 @@
-"""Shared pair/event/quote logic plus stable entry-token selection for notification links."""
+"""Shared pair/event/quote logic, email normalization, token-expiry checks, and entry-token selection for notification links."""
 
 import random
 from datetime import date, datetime, timedelta, timezone
@@ -189,9 +189,31 @@ def counterpart(pair: Pair, user: User) -> User:
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not in pair")
 
 
-def active_token_for_user(db: Session, user_id: int) -> str | None:
-    """返回该用户当前可用（未过期）的任意一条 token，没有则返回 None。"""
+def clean_email(value: str | None) -> str | None:
+    """Normalize an optional email: blank becomes None, obviously invalid values raise 422."""
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    if "@" not in value or len(value) > 255:
+        raise HTTPException(status_code=422, detail="邮箱格式不正确")
+    return value
+
+
+def token_is_expired(token: DeviceToken) -> bool:
+    if token.expires_at is None:
+        return False
     now = utc_now()
+    expires_at = token.expires_at
+    # SQLite returns naive datetimes for timezone-aware columns; stored values are UTC.
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=now.tzinfo)
+    return expires_at <= now
+
+
+def active_token_for_user(db: Session, user_id: int) -> str | None:
+    """返回该用户最新一条未过期的 entry token（用于邮件免登录链接），没有则返回 None。"""
     tokens = (
         db.execute(
             select(DeviceToken)
@@ -201,15 +223,7 @@ def active_token_for_user(db: Session, user_id: int) -> str | None:
         .scalars()
         .all()
     )
-    for token in tokens:
-        expires_at = token.expires_at
-        if expires_at is None:
-            return token.token
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=now.tzinfo)
-        if expires_at > now:
-            return token.token
-    return None
+    return next((token.token for token in tokens if not token_is_expired(token)), None)
 
 
 def ensure_pair_event(db: Session, event_id: int, pair: Pair) -> Event:

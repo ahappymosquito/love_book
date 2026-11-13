@@ -1,16 +1,20 @@
-"""Cycle record persistence helpers, fact-only log storage, and weighted phase display logic."""
+"""Cycle record persistence, fact-only log storage, and weighted live predictions.
+
+Only period segments of 2-10 days anchor a cycle start (a segment still touching yesterday is only held to
+the 10-day cap). Without any anchor the dashboard returns no prediction: stats date fields are null and
+unrecorded days stay empty instead of being fabricated.
+"""
 
 from datetime import date, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import CycleDailyLog, CycleFlow, CyclePhase, Pair, User
+from app.models import CycleDailyLog, CyclePhase, Pair, User
 from app.schemas import CycleDailyLogOut, CycleDailyLogUpsert, CycleDashboardOut, CycleStats
 
 DEFAULT_CYCLE_LENGTH = 28
 DEFAULT_PERIOD_LENGTH = 5
-DEFAULT_CURRENT_OFFSET = 17
 MIN_REASONABLE_CYCLE_LENGTH = 21
 MAX_REASONABLE_CYCLE_LENGTH = 45
 MIN_REASONABLE_PERIOD_LENGTH = 2
@@ -30,33 +34,31 @@ def _date_range(start: date, end: date) -> list[date]:
     return [start + timedelta(days=i) for i in range(days + 1)]
 
 
-def _period_starts(logs: list[CycleDailyLog]) -> list[date]:
-    period_days = sorted({log.date for log in logs if log.is_period})
+def _period_segments(logs: list[CycleDailyLog]) -> list[tuple[date, int]]:
+    segments: list[tuple[date, int]] = []
+    for day in sorted({log.date for log in logs if log.is_period}):
+        if segments and (day - segments[-1][0]).days == segments[-1][1]:
+            segments[-1] = (segments[-1][0], segments[-1][1] + 1)
+        else:
+            segments.append((day, 1))
+    return segments
+
+
+def _period_starts(logs: list[CycleDailyLog], today: date) -> list[date]:
     starts: list[date] = []
-    previous: date | None = None
-    for day in period_days:
-        if previous is None or (day - previous).days > 1:
-            starts.append(day)
-        previous = day
+    for start, length in _period_segments(logs):
+        # A segment touching yesterday or later may still be growing, so only the upper bound applies to it.
+        ongoing = start + timedelta(days=length) >= today
+        if length > MAX_REASONABLE_PERIOD_LENGTH:
+            continue
+        if length < MIN_REASONABLE_PERIOD_LENGTH and not ongoing:
+            continue
+        starts.append(start)
     return starts
 
 
 def _period_lengths(logs: list[CycleDailyLog]) -> list[int]:
-    period_days = sorted({log.date for log in logs if log.is_period})
-    if not period_days:
-        return []
-    lengths: list[int] = []
-    current = 1
-    previous = period_days[0]
-    for day in period_days[1:]:
-        if (day - previous).days == 1:
-            current += 1
-        else:
-            lengths.append(current)
-            current = 1
-        previous = day
-    lengths.append(current)
-    return lengths
+    return [length for _, length in _period_segments(logs)]
 
 
 def _mean_int(values: list[int], fallback: int) -> int:
@@ -129,16 +131,34 @@ def _normalize_log_data(data: dict[str, object]) -> dict[str, object]:
     return data
 
 
-def _stats(all_logs: list[CycleDailyLog], today: date) -> CycleStats:
-    starts = _period_starts(all_logs)
+def _stats(all_logs: list[CycleDailyLog], starts: list[date], today: date) -> CycleStats:
     lengths = _cycle_lengths(starts)
     average_cycle = _weighted_recent_mean(lengths, DEFAULT_CYCLE_LENGTH)
     average_period = _recent_period_length(all_logs)
     confidence, variation = _confidence(lengths)
 
+    if not starts:
+        return CycleStats(
+            has_prediction=False,
+            current_cycle_day=None,
+            current_phase=CyclePhase.unknown,
+            average_cycle_length=average_cycle,
+            average_period_length=average_period,
+            last_period_start=None,
+            next_period_start=None,
+            next_period_end=None,
+            ovulation_date=None,
+            fertile_start=None,
+            fertile_end=None,
+            confidence="low",
+            prediction_start=None,
+            prediction_end=None,
+            cycle_variation_days=0,
+        )
+
     last_start = max((start for start in starts if start <= today), default=None)
     if last_start is None:
-        last_start = (starts[-1] if starts else today - timedelta(days=DEFAULT_CURRENT_OFFSET))
+        last_start = starts[-1]
         while last_start > today:
             last_start -= timedelta(days=average_cycle)
 
@@ -156,6 +176,7 @@ def _stats(all_logs: list[CycleDailyLog], today: date) -> CycleStats:
     current_phase = _phase_for_cycle_day((today - last_start).days % average_cycle, average_cycle, average_period)
 
     return CycleStats(
+        has_prediction=True,
         current_cycle_day=cycle_day,
         current_phase=current_phase,
         average_cycle_length=average_cycle,
@@ -276,7 +297,7 @@ def _log_out(log: CycleDailyLog) -> CycleDailyLogOut:
 
 def _recorded_dashboard_log(log: CycleDailyLog, starts: list[date], stats: CycleStats) -> CycleDailyLogOut:
     output = _log_out(log)
-    if not log.is_period:
+    if not log.is_period and starts:
         output.phase = _non_period_phase(log.date, starts, stats)
     return output
 
@@ -290,11 +311,11 @@ def _dashboard_log(
 ) -> CycleDailyLogOut:
     if day in range_logs:
         return _recorded_dashboard_log(range_logs[day], starts, stats)
+    if not stats.has_prediction:
+        return _empty_log(day)
     if day >= today:
         return _predicted_log(day, stats)
-    if day < today and starts:
-        return _past_non_period_log(day, starts, stats)
-    return _empty_log(day)
+    return _past_non_period_log(day, starts, stats)
 
 
 def dashboard(db: Session, pair: Pair, start: date, end: date, today: date | None = None) -> CycleDashboardOut:
@@ -303,8 +324,8 @@ def dashboard(db: Session, pair: Pair, start: date, end: date, today: date | Non
         select(CycleDailyLog).where(CycleDailyLog.pair_id == pair.id).order_by(CycleDailyLog.date)
     ).scalars().all()
     range_logs = {log.date: log for log in all_logs if start <= log.date <= end}
-    starts = _period_starts(all_logs)
-    stats = _stats(all_logs, today)
+    starts = _period_starts(all_logs, today)
+    stats = _stats(all_logs, starts, today)
     logs = [_dashboard_log(day, today, range_logs, starts, stats) for day in _date_range(start, end)]
     return CycleDashboardOut(logs=logs, stats=stats, is_empty=len(all_logs) == 0)
 
@@ -335,57 +356,3 @@ def delete_log(db: Session, pair: Pair, day: date) -> bool:
     db.delete(log)
     db.commit()
     return True
-
-
-def clear_logs(db: Session, pair: Pair) -> None:
-    db.execute(delete(CycleDailyLog).where(CycleDailyLog.pair_id == pair.id))
-    db.commit()
-
-
-def seed_example_data(db: Session, pair: Pair, user: User, today: date | None = None) -> list[CycleDailyLog]:
-    today = today or local_today()
-    clear_logs(db, pair)
-    starts = [today - timedelta(days=84), today - timedelta(days=56), today - timedelta(days=28)]
-    logs: list[CycleDailyLog] = []
-    for start in starts:
-        for offset in range(5):
-            logs.append(
-                CycleDailyLog(
-                    pair_id=pair.id,
-                    date=start + timedelta(days=offset),
-                    phase=CyclePhase.menstrual,
-                    is_period=True,
-                    is_predicted=False,
-                    flow=CycleFlow.medium if offset in {1, 2} else CycleFlow.light,
-                    symptoms=["腹痛"] if offset == 1 else [],
-                    mood=None,
-                    bbt=None,
-                    cervical_mucus=None,
-                    note="示例记录" if offset == 0 else None,
-                    created_by_id=user.id,
-                    updated_by_id=user.id,
-                )
-            )
-    for offset, symptoms, mood in [(16, ["疲劳"], "tired"), (19, ["情绪波动"], "calm"), (22, [], "happy")]:
-        logs.append(
-            CycleDailyLog(
-                pair_id=pair.id,
-                date=today - timedelta(days=28) + timedelta(days=offset),
-                phase=CyclePhase.luteal,
-                is_period=False,
-                is_predicted=False,
-                flow=CycleFlow.none,
-                symptoms=symptoms,
-                mood=mood,
-                bbt=36.5 + offset / 100,
-                cervical_mucus=None,
-                note="睡眠一般" if offset == 19 else None,
-                created_by_id=user.id,
-                updated_by_id=user.id,
-            )
-        )
-    db.add_all(logs)
-    db.commit()
-    for log in logs:
-        db.refresh(log)
-    return logs
