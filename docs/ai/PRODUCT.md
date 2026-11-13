@@ -10,7 +10,7 @@ Love Book is used by a fixed pair of partners who enter through private token li
 
 ## Product Purpose
 
-The product gives two people a private shared place to write events, exchange comments, send and acknowledge thoughtful gestures through photo receipts, upload image memories, collect multiple offline-meeting notes into named meetings, arrange food/play plans, track personal daily habits, track cycle records, and revisit milestones. Success means the interface feels trustworthy enough for long-term personal use while keeping common tasks quick and clear.
+The product gives two people a private shared place to write events, exchange comments, wrap gifts for each other and respond once they are opened, upload image memories, collect multiple offline-meeting notes into named meetings, arrange food/play plans, track personal daily habits, track cycle records, revisit milestones, and export their shared journal. Success means the interface feels trustworthy enough for long-term personal use while keeping common tasks quick and clear.
 
 Meeting sessions remain an internal counting and grouping model rather than a visible form concept. Each meeting owns an inclusive Beijing-time date range; all pair events inside it are classified automatically, while marking an unmatched event creates a same-title single-day range. Either partner can click the meeting title to edit its title, start date, and end date in one responsive dialog. Overlapping ranges merge into the earliest-created meeting and keep that meeting's title, cancellation removes the whole range and reclassifies affected events, and event content permissions and independent event titles remain unchanged.
 
@@ -24,7 +24,9 @@ Each partner may configure one unique login name and a security password from th
 
 Either partner may close the shared book from `/me`. After a second confirmation they can leave one short message. The pair then stops admitting either person; memories, photos, and other pair content stay stored and are not deleted. The next password or entry-link login only shows that message, then returns to 花田拾光. Habit reminder mail is not sent after the book is closed.
 
-Received gifts are recorded directly by the receiver as Timeline events. Only the gift name is required; normal written feedback, up to three honest positive or complex feeling tags, an optional one-to-five-star rating, and up to six private event photos can be added without a delivery state machine. A gift received during a meeting keeps its photo-led warm gift identity while also belonging to that meeting.
+Gifts are given, not logged after the fact. The sender wraps a gift for the partner: a name, a wrapping paper, a short teaser that shows on the box, a hidden message, up to six photos, and an optional time before which it cannot be opened. Until it is opened, the receiver sees only the wrapped box, the teaser, and who it is from; the name, message, photos, and comments stay hidden, and notification emails never reveal them. The sender can re-wrap until it is opened. Opening is a short unwrap moment followed by an optional response of up to three honest positive or complex feelings, a one-to-five stamp rating, and written feedback, which the sender sees on the opened gift. A gift given during a meeting keeps its gift identity while also belonging to that meeting. Older one-sided received-gift records stay readable but can no longer be created.
+
+The Timeline reads like a shared scrapbook: monthly paper pages, taped cards, polaroids, and ticket-style meetings. From the Timeline header ("手账") or a meeting ticket, either partner can open `/journal` to read or export the whole book, a date range, or one meeting as an online view, HTML, PDF, or long image, optionally with photos. Exports never reveal content that is still locked or wrapped, for either partner.
 
 ## Brand Personality
 

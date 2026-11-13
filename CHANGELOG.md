@@ -12,9 +12,16 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 - 周期 dashboard 统计新增 `has_prediction`；还没有有效经期记录时，周期页展示首次记录邀请。
 - `/timeline`、`/cycle`、`/todo`、`/habits` 顶部栏提供带二次确认的退出按钮。
 - 花田拾光画面升级：连续抖动天色、日月弧线、星星与流星、三层视差、萤火和花瓣，小狗摇尾眨眼，拾取闪光、`+N` / 连击提示、心盾与受击反馈；减弱动效时关闭震屏、闪白、流星和花瓣。页面隐藏或失焦会暂停并弹出继续菜单。
+- 新增「送一份礼物」：送礼人选包装纸（玫瑰、暖桃、鼠尾草、奶油、星夜）、写一句小提示和藏在里面的话、放最多 6 张照片，可设拆开时间（`POST /events/gifts/wrap`，事件类型 `gift`）。拆开前对方只看到礼盒、小提示和「来自 X」，看不到名称、正文、照片和评论；送礼人拆开前可重新包装。
+- 收礼人可拆礼物（`POST /events/{id}/gift/open`，未到时间返回 409）并写回应：最多 3 个感受、1–5 枚印章评分和一段反馈（`PUT /events/{id}/gift/response`）。包礼物和拆礼物各发一封不含内容的提醒邮件。
+- 时间线礼物卡片：待拆礼盒轻晃、倒计时 / 「可以拆啦」、约 1.6 秒全屏拆礼物动画后进入回应步骤；拆开后显示打开的礼盒、拍立得和回应贴纸。
+- 新增 `/journal` 手账导出：可选全部、日期范围（近 30 天 / 半年 / 今年）或某次见面，可带上照片，支持在线翻看、HTML、PDF（A5）和长图；触屏设备能分享文件时走系统分享。后端新增 `GET /journal`，未解锁的互相提交内容和未拆礼物对双方都只显示占位。
+- `events` 新增可空列 `gift_receiver_id`、`gift_wrap_style`、`gift_teaser`、`gift_open_at`、`gift_opened_at`、`gift_feedback`、`gift_responded_at`；MySQL 启动修复会给事件类型 ENUM 补上 `gift`。前端新增依赖 `modern-screenshot` 与 `jspdf`，只在导出时按需加载。
 
 ### Changed
 
+- `/timeline` 与事件详情改为剪贴手账风格：按月的纸页和装订孔（点阵 / 方格 / 横线）、手写月份书签、翻页展开、轻微倾斜的卡片、和纸胶带、贴纸、拍立得，见面分组做成票根并可「导出这次见面」；顶部栏新增「手账」入口。纸张是实体内容层，减弱动效时只保留淡入淡出。
+- 创建入口的第三项由「记一份收礼」改为「送一份礼物」；旧 `gift_received` 收礼事件继续展示，但不再提供新建入口。
 - 生产镜像固定为与 `VERSION` 一致的裸 `X.Y.Z` 标签；`deploy_host.py update --yes` 会把 `LOVE_BOOK_IMAGE_TAG` 传给服务器更新器，并在结束后核对 `/api/health` 的版本。`latest` 只在冒烟和发布成功后作为便捷指针移动。服务器上的 `update.sh` 仍需另行改为按该标签拉取。
 - `deploy_host.py run` 在 `User=root` 的发布主机上必须加 `--yes`，并支持 `--dry-run`。
 - 工作流顶层权限收紧为 `contents: read`，只有发布 job 拿 `packages: write`；所有 job 都设置超时。
@@ -38,6 +45,7 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 ### Removed
 
 - 移除周期演示数据和清空全部记录接口（`POST /cycles/example-data`、`DELETE /cycles/logs`）。
+- 移除单方记录收礼的 `POST /events/gifts`（现返回 405）和前端「记一份收礼」表单；`POST /events` 不再接受 `event_kind=gift`（422）。
 - 移除 `deploy/caddy/Caddyfile` 与 `scripts/cutover_caddy_to_nginx.sh`。
 
 ## [0.11.1] - 2026-11-10

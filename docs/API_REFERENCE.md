@@ -16,6 +16,8 @@
 - 未登录首页提供 1-bit 像素「花田拾光」与匿名全站 Top 3 排行榜；无 token 先看到开始菜单，有 token 直接进入手账。首页底部居中展示备案号「浙ICP备2025205478号-2」，链接到 https://beian.miit.gov.cn/ 。分数含路程、拾光和连击加成，达到入榜门槛后可留下 1–12 字符的 Unicode 名字。
 - 两位用户都可以创建事件、提交评论、上传图片，并对可见留言添加点赞 / 倒赞 reaction。
 - 线下见面使用内部 `meeting_sessions` 作为真实见面次数统计单位，并以 `started_on / ended_on` 保存包含首尾整天的北京时间范围；范围内双方事件自动归类，标记范围外事件时自动建立同名单日见面。双方点击见面标题可同时编辑标题与日期范围，重叠范围自动合并并保留较早标题，也可取消整个见面；不再提供加号或手动归入流程，事件内容权限保持不变。
+- 任意一方可给对方包一份礼物：选包装纸、写小提示和藏在里面的话、放最多 6 张照片，可设拆开时间。拆开前收礼人只看到礼盒、小提示和送礼人；拆开后收礼人可留下感受、印章评分和反馈。
+- 双方可通过 `GET /journal` 取得全部、日期范围或某次见面的手账数据，前端据此在线翻看或导出 HTML / PDF / 长图。
 - 事件、内容和留言 reaction 写接口会在响应返回前完成数据库提交，前端创建、评论或点 reaction 后可以立即刷新详情。
 - 只有 pair 内的两位用户能访问该 pair 的事件和内容。
 - 支持两种事件可见模式：
@@ -29,7 +31,8 @@ app/
   main.py                 FastAPI 应用入口
   models.py               SQLAlchemy 数据模型
   schemas.py              Pydantic 请求/响应模型
-  services.py             可见性、权限和内容过滤逻辑
+  services.py             可见性、权限、礼物遮罩和内容过滤逻辑
+  journal.py              手账导出：范围选择、按北京时间分月、未解锁内容遮罩
   storage.py              本地图片媒体存储 key、路径校验和读写
   core/
     config.py             环境配置
@@ -42,8 +45,9 @@ app/
       auth.py             当前用户、密码登录与安全凭据接口
       game.py             匿名跑酷排行榜接口
       quotes.py           情侣共享本地语录库接口
-      events.py           事件与收礼事件接口
+      events.py           事件、包礼物 / 拆礼物 / 收礼回应接口
       meeting_sessions.py 共享见面标题/日期范围编辑、合并和取消接口
+      journal.py          手账导出数据接口（GET /journal）
       contents.py         评论、留言 reaction、图片和内容接口
       habits.py           每日习惯接口
       cycles.py           周期日历接口
@@ -250,11 +254,14 @@ Authorization: Bearer <token>
 | quotes | DELETE | `/quotes/{quote_id}` | `Bearer` | 删除当前 pair 的共享语录 |
 | game | GET | `/game/leaderboard` | 无 | 匿名读取全站跑酷 Top 3 和入榜门槛 |
 | game | POST | `/game/leaderboard` | 无 | 匿名提交名字和成绩，返回是否入榜及最新榜单 |
-| events | POST | `/events` | `Bearer` | 创建事件 |
-| events | POST | `/events/gifts` | `Bearer` | 创建收礼事件（multipart，可带照片） |
+| events | POST | `/events` | `Bearer` | 创建事件（不接受 `event_kind=gift`） |
+| events | POST | `/events/gifts/wrap` | `Bearer` | 给对方包一份礼物（multipart，可带照片） |
+| events | POST | `/events/{event_id}/gift/open` | `Bearer` | 收礼人拆开礼物，幂等 |
+| events | PUT | `/events/{event_id}/gift/response` | `Bearer` | 收礼人写回应：感受、评分、反馈 |
 | events | GET | `/events` | `Bearer` | 当前 pair 的事件列表 |
 | events | GET | `/events/{event_id}` | `Bearer` | 事件详情（含已可见内容） |
-| events | PATCH | `/events/{event_id}` | `Bearer` | 修改事件，仅创建者 |
+| events | PATCH | `/events/{event_id}` | `Bearer` | 修改事件，仅创建者；礼物只能在拆开前改 |
+| journal | GET | `/journal` | `Bearer` | 手账导出数据（`scope` / `start` / `end` / `meeting_id`） |
 | events | DELETE | `/events/{event_id}` | `Bearer` | 删除事件，仅创建者 |
 | meeting-sessions | GET | `/meeting-sessions` | `Bearer` | 当前 pair 的见面列表 |
 | meeting-sessions | POST | `/meeting-sessions` | `Bearer` | 创建见面日期范围，重叠时自动合并 |
@@ -824,11 +831,29 @@ curl -X POST "http://127.0.0.1:8000/events/1/images" \
 
 ## 历史图片与旧回执
 
-已有数据库如果仍包含 `images.data` / `images.thumb_data`，接口会回退读取这些 BLOB；新图片只写 `MEDIA_ROOT` 和 storage key。旧 `love_receipts` 会在应用启动时幂等转换为收礼事件。迁移服务器时需要同时备份数据库和 `love_book_media` volume。
+已有数据库如果仍包含 `images.data` / `images.thumb_data`，接口会回退读取这些 BLOB；新图片只写 `MEDIA_ROOT` 和 storage key。旧 `love_receipts` 会在应用启动时幂等转换为旧式 `gift_received` 收礼事件。迁移服务器时需要同时备份数据库和 `love_book_media` volume。
 
 ## 已停用语音数据
 
 语音上传、下载和网页播放能力已经移除。已有部署中的 `voices` 表、BLOB 和 `MEDIA_ROOT/voices` 文件不会在启动或部署时自动删除，只作为不可达备份保留；新安装环境不再创建 `voices` 表。删除一个旧事件时，后端只清理该事件对应的旧 `voices` 行以兼容外键约束，不清理其他历史语音或媒体文件。
+
+## 手账导出
+
+`GET /journal?scope=all|range|meeting&start=YYYY-MM-DD&end=YYYY-MM-DD&meeting_id=N`
+
+只读接口，`Bearer` 鉴权，只返回当前 pair 的内容；未鉴权 401，pair 已合上 410。`scope` 默认 `all`；`range` 必须带 `start` 和 `end`（按事件北京时间日期筛选）；`meeting` 必须带 `meeting_id`，不属于当前 pair 的见面返回 404。参数缺失或开始晚于结束返回 422；范围内超过 2000 条事件返回 422「范围太大，请缩小日期范围」。
+
+响应 `JournalOut`：
+
+- `scope`、`title`（全部为「我们的手账」，日期范围为 `YYYY.MM.DD - YYYY.MM.DD`，见面为见面标题）、`start`、`end`、`generated_at`。
+- `pair`：`users` 两人（当前用户在前，含 `id`、`display_name`、`avatar`、`avatar_has_image`、`avatar_updated_at`）、`together_since`、`together_days`。
+- `meetings[]`：范围内的见面 `{id, title, started_on, ended_on}`。
+- `months[]`：按北京时间分月 `{month: "YYYY-MM", label: "YYYY年M月", entries[]}`，条目按发生时间升序。
+- `stats`：`entry_count`、`image_count`、`gift_count`、`meeting_count`。
+
+`JournalEntry` 为 `{id, kind, title, description, occurred_at, creator_id, meeting_session_id, meeting_title, locked, images[{id, width, height}], comments[{id, author_id, content, created_at}], gift}`。`gift` 非礼物为 `null`，礼物为 `{state, sender_id, receiver_id, wrap_style, teaser, opened_at, feelings, rating, feedback}`。图片只返回 ID，像素仍通过 `/images/{id}/thumb|file` 读取。
+
+为避免导出提前泄露内容，对双方（包括送礼人）一律遮罩：未解锁的 `mutual_submit` 事件 `locked=true`、标题为「还没解锁的小事」；未拆礼物标题为「一份还没拆的礼物」。两者都不返回描述、图片和评论，未拆礼物也不返回感受、评分和反馈。
 
 ## 典型流程
 
@@ -865,6 +890,8 @@ curl -X POST "http://127.0.0.1:8000/events/1/images" \
 - 旧 `images.data` / `images.thumb_data` 图片仍可读取，避免升级后历史图片失效。
 - 只有事件创建者可以修改和删除事件。
 - 情侣共享语录库的添加、列表、删除和 pair 隔离权限。
+- 包礼物、拆开时间门槛、收礼人遮罩、拆开后回应和送礼人重新包装（`tests/test_gift_wrap.py`）。
+- 手账导出的范围选择、按月分组、锁定与未拆礼物遮罩和错误码（`tests/test_journal.py`）。
 
 ## 像素跑酷排行榜
 
@@ -938,12 +965,19 @@ python -m pytest tests -q
 - 数据表包括 `habit_tasks`、`habit_checkins` 和 `habit_reminder_runs`；写接口返回前完成数据库提交。
 - FastAPI lifespan 内置轻量习惯提醒任务，每天服务器本地时间 00:01 检查昨天。用户昨天有启用习惯且未全部完成时发送邮件；全部完成、无邮箱、无启用习惯或习惯已停用时不发送。提醒邮件链接到 `/habits?date=YYYY-MM-DD`，可携带 token 免登录补记；扫描在工作线程中执行，不阻塞事件循环；每封邮件实际投递成功后立即提交该用户的 `habit_reminder_runs` 去重记录，临时投递失败不会被误记为已发送，单个用户失败会记录日志并跳过，不会中断扫描，也不会让已发送用户在重试时收到重复邮件。
 
-## 收礼事件与旧回执兼容
+## 包礼物、拆礼物与旧收礼事件
 
-- `POST /events/gifts` 使用 multipart 创建收礼事件。`title` 必填；`feedback`、重复提交且最多 3 个的 `feelings`、`occurred_at`、1–5 的 `rating` 和最多 6 个 `files` 均可选。过渡期继续接受旧 `feeling` 文本字段。
-- `feelings` 仅接受 `happy / surprised / touched / reassured / cherished / hug / disappointed / wronged / pressured / not_my_style / upset / complicated`，不得重复。
-- 收礼事件返回标准 `EventDetail`，`event_kind` 为 `gift_received`，反馈复用 `description`，标签位于 `gift_feelings`，评分位于 `gift_rating`。事件摘要额外返回 `preview_image` 和 `image_count`，照片仍通过 `/images/{id}/file|thumb` 私有接口读取。
-- 创建事件及全部照片在同一事务中完成；数据库或媒体写入失败时回滚事件并清理已写文件。
-- 收礼日期落在见面范围内时仍保持 `gift_received`，同时写入 `meeting_session_id`，因此会出现在对应见面分组。
-- 启动迁移会把所有旧 `love_receipts` 幂等转换为收礼事件并复制媒体；旧心情迁入 `gift_feelings`，旧图片 ID 使用确定性目标路径和唯一映射避免重复。旧 `GET /love-receipts` 与详情仅供历史跳转；旧创建、状态推进和提交回执接口不论参数如何都固定返回 `410 Gone`，不写库也不发邮件。
+- 礼物事件类型为 `gift`：由送礼人创建，收礼人固定是 pair 中的另一方，可见方式固定为 `public`。旧单方记录的 `gift_received` 事件继续展示（视为已拆开，创建者仍可按原方式 PATCH），但不再有新建入口；`POST /events/gifts` 已移除（返回 405），`POST /events` 传 `event_kind=gift` 返回 422。
+- `POST /events/gifts/wrap`（multipart）包一份礼物，返回 201 `EventDetail`：
+  - `title` 礼物名称，必填，1–200 字；`message` 藏在里面的话，最多 2000 字，保存为 `description`；`teaser` 拆开前可见的小提示，最多 120 字。
+  - `wrap_style` 包装纸：`rose`（默认）/ `peach` / `sage` / `cream` / `starry`；`open_at` 可选的最早拆开时间（ISO 8601）；`occurred_at` 可选；`files` 0–6 张照片。
+  - 事件及全部照片在同一事务中提交；失败时回滚并清理已写文件。礼物日期落在见面范围内时保持 `gift`，同时写入 `meeting_session_id`。
+  - 给收礼人发一封「你收到一份礼物」邮件，只说明谁送了礼物并附链接，不含名称、正文、小提示或照片。
+- `POST /events/{event_id}/gift/open` 收礼人拆开礼物，返回 200 `EventDetail`。非礼物或不在当前 pair 返回 404，非收礼人返回 403，未到 `open_at` 返回 409「还没到拆开的时间」；已拆开时直接返回当前详情（幂等）。首次拆开会给送礼人发「TA 拆开了你的礼物」邮件，同样不含内容。
+- `PUT /events/{event_id}/gift/response`（JSON）收礼人写回应：`feelings` 最多 3 个且不重复，`rating` 1–5 或 `null`，`feedback` 最多 2000 字。返回 200 `EventDetail`；非收礼人 403，非礼物 404，未拆开 409，校验失败 422。`feelings` 取值为 `happy / surprised / touched / reassured / cherished / hug / disappointed / wronged / pressured / not_my_style / upset / complicated`。
+- `PATCH /events/{event_id}` 对 `gift`：送礼人在拆开前可改 `title`、`description`（也接受 `message`）、`gift_teaser`、`gift_wrap_style`、`gift_open_at`；拆开后再改这些字段返回 409，收礼人修改返回 403，`gift_rating` / `gift_feelings` 只能走回应接口（422）。`event_kind=offline_meeting` 只把礼物归入见面并保持 `gift` 类型；为未拆礼物新建的单日见面标题为「一份礼物」，避免从见面标题看到礼物名称。改成其它类型返回 422；非礼物事件设置包装字段也返回 422。
+- `EventSummary` / `EventDetail` 新增 `gift_state`（`wrapped` / `opened`，非礼物为 `null`）、`gift_receiver_id`、`gift_wrap_style`、`gift_teaser`、`gift_open_at`、`gift_opened_at`、`gift_feedback`、`gift_responded_at`、`gift_masked`、`gift_can_open`。旧 `gift_received` 的 `gift_state` 为 `opened`，`gift_feedback` 缺失时回退 `description`。
+- 礼物未拆开时，收礼人看到的是遮罩视图：`gift_masked=true`，`title` 为空字符串，`description` 为 `null`，没有图片和评论；`/images/{id}/thumb` 与 `/images/{id}/file` 返回 403，评论和上传图片返回 409。送礼人看到完整内容。收礼人收到的评论邮件在礼物拆开前同样不带正文。
+- 启动时 `events` 自动补可空列 `gift_receiver_id`、`gift_wrap_style`、`gift_teaser`、`gift_open_at`、`gift_opened_at`、`gift_feedback`、`gift_responded_at`；MySQL / MariaDB 会把 `events.event_kind` ENUM 修复为包含 `gift`。
+- 启动迁移会把所有旧 `love_receipts` 幂等转换为 `gift_received` 收礼事件并复制媒体；旧心情迁入 `gift_feelings`，旧图片 ID 使用确定性目标路径和唯一映射避免重复。旧 `GET /love-receipts` 与详情仅供历史跳转；旧创建、状态推进和提交回执接口不论参数如何都固定返回 `410 Gone`，不写库也不发邮件。
 - `/timeline`、`/cycle`、`/todo`、`/habits` 顶部 `AppHeader` 右侧提供退出按钮，点击后需二次确认；`/me` 设置页同样保留退出。管理端继续保留独立的管理员退出操作。
