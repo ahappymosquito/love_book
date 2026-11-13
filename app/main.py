@@ -1,4 +1,4 @@
-"""FastAPI factory exposing build identity, product routes, and a resilient habit-reminder loop.
+"""FastAPI factory exposing build identity, product routes (including gift wrap and journal export), and a resilient habit-reminder loop.
 
 The daily reminder scan (blocking DB + SMTP) runs in a worker thread with its own session so it never
 stalls the event loop. Startup warns, or refuses in production, when ADMIN_KEY is still the default.
@@ -13,7 +13,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import admin, admin_auth, auth, contents, cycles, events, game, habits, love_receipts, meeting_sessions, quotes, todos, users
+from app.api.routes import admin, admin_auth, auth, contents, cycles, events, game, habits, journal, love_receipts, meeting_sessions, quotes, todos, users
 from app.core.config import get_settings
 from app.core.database import SessionLocal, init_db
 from app.habits import reminder_target_date, scan_habit_reminders, seconds_until_next_reminder
@@ -86,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(love_receipts.image_router)
     app.include_router(events.router)
     app.include_router(meeting_sessions.router)
+    app.include_router(journal.router)
     app.include_router(quotes.router)
     app.include_router(contents.router)
     app.include_router(users.router)

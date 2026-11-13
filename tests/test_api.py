@@ -1,4 +1,4 @@
-"""API regression tests for auth, received gifts, retired receipts, reminders, private media cleanup, timeline, todo, cycle predictions, AI gating, and fallbacks."""
+"""API regression tests for auth, legacy received gifts, wrapped-gift routing, retired receipts, reminders, private media cleanup, timeline, todo, cycle predictions, AI gating, and fallbacks."""
 
 import asyncio
 from datetime import date, datetime, timedelta, timezone
@@ -49,37 +49,39 @@ def test_health_exposes_version_and_source_revision(client: TestClient) -> None:
     assert health.json() == {"status": "ok", "version": APP_VERSION, "git_sha": "development"}
 
 
-def test_received_gift_is_atomic_pair_private_and_supports_optional_fields(
+def test_legacy_received_gift_stays_readable_editable_and_pair_private(
     client: TestClient, pair_tokens: dict[str, str | int]
 ) -> None:
     token_a = str(pair_tokens["user_a_token"])
     token_b = str(pair_tokens["user_b_token"])
     created = client.post(
-        "/events/gifts",
+        "/events",
         headers=auth(token_a),
-        data={
+        json={
             "title": "下班后收到的一束花",
-            "feedback": "被惦记到了",
-            "rating": "5",
-            "feelings": ["happy", "pressured"],
+            "description": "被惦记到了",
+            "event_kind": "gift_received",
+            "gift_rating": 5,
+            "gift_feelings": ["happy", "pressured"],
         },
-        files=[
-            ("files", ("flower.png", sample_png_bytes(), "image/png")),
-            ("files", ("card.png", sample_png_bytes(), "image/png")),
-        ],
     )
     assert created.status_code == 201
     event = created.json()
     assert event["event_kind"] == "gift_received"
     assert event["gift_rating"] == 5
     assert event["gift_feelings"] == ["happy", "pressured"]
-    assert event["description"] == "被惦记到了"
-    assert event["visibility_mode"] == "public"
-    assert len(event["contents"]["images"]) == 2
-    assert [image["sort_order"] for image in event["contents"]["images"]] == [0, 1]
-    assert event["preview_image"]["id"] == event["contents"]["images"][0]["id"]
-    assert event["image_count"] == 2
-    image_id = event["contents"]["images"][0]["id"]
+    assert event["gift_state"] == "opened"
+    assert event["gift_receiver_id"] == pair_tokens["user_a"]["id"]
+    assert event["gift_feedback"] == "被惦记到了"
+    assert event["gift_masked"] is False
+    assert event["gift_can_open"] is False
+    uploaded = client.post(
+        f"/events/{event['id']}/images",
+        headers=auth(token_a),
+        files={"file": ("flower.png", sample_png_bytes(), "image/png")},
+    )
+    assert uploaded.status_code == 201
+    image_id = uploaded.json()["id"]
     assert client.get(f"/images/{image_id}/thumb", headers=auth(token_b)).status_code == 200
     assert client.get(f"/images/{image_id}/file", headers=auth(token_a)).content == sample_png_bytes()
 
@@ -91,6 +93,7 @@ def test_received_gift_is_atomic_pair_private_and_supports_optional_fields(
     assert edited.status_code == 200
     assert edited.json()["gift_rating"] == 4
     assert edited.json()["gift_feelings"] == ["touched", "complicated"]
+    assert edited.json()["gift_feedback"] == "很喜欢"
     assert client.patch(
         f"/events/{event['id']}",
         headers=auth(token_b),
@@ -107,32 +110,10 @@ def test_received_gift_is_atomic_pair_private_and_supports_optional_fields(
     assert client.get(f"/images/{image_id}/thumb", headers=other_headers).status_code == 404
 
 
-def test_received_gift_requires_only_title_and_validates_limits(
-    client: TestClient, pair_tokens: dict[str, str | int]
-) -> None:
+def test_legacy_gift_create_endpoint_is_removed(client: TestClient, pair_tokens: dict[str, str | int]) -> None:
     headers = auth(str(pair_tokens["user_a_token"]))
-    minimal = client.post("/events/gifts", headers=headers, data={"title": "一盒糖"})
-    assert minimal.status_code == 201
-    assert minimal.json()["gift_rating"] is None
-    assert minimal.json()["contents"]["images"] == []
-    assert client.post("/events/gifts", headers=headers, data={"title": "一盒糖", "rating": "6"}).status_code == 422
-    assert client.post(
-        "/events/gifts",
-        headers=headers,
-        data={"title": "一盒糖", "feelings": ["happy", "happy"]},
-    ).status_code == 422
-    assert client.post(
-        "/events/gifts",
-        headers=headers,
-        data={"title": "一盒糖", "feelings": ["happy", "touched", "pressured", "complicated"]},
-    ).status_code == 422
-    too_many = client.post(
-        "/events/gifts",
-        headers=headers,
-        data={"title": "好多照片"},
-        files=[("files", (f"photo-{index}.png", sample_png_bytes(), "image/png")) for index in range(7)],
-    )
-    assert too_many.status_code == 422
+    assert client.post("/events/gifts", headers=headers, data={"title": "一盒糖"}).status_code in {404, 405}
+    assert client.post("/events", headers=headers, json={"title": "一盒糖", "event_kind": "gift"}).status_code == 422
 
 
 def test_received_gift_keeps_kind_inside_meeting_and_legacy_writes_are_gone(
@@ -145,15 +126,23 @@ def test_received_gift_keeps_kind_inside_meeting_and_legacy_writes_are_gone(
         json={"title": "周末见面", "started_on": "2026-07-20", "ended_on": "2026-07-22"},
     )
     created = client.post(
-        "/events/gifts",
+        "/events",
         headers=headers,
-        data={"title": "见面时收到的花", "occurred_at": "2026-07-21T12:00:00Z"},
+        json={"title": "见面时收到的花", "event_kind": "gift_received", "occurred_at": "2026-07-21T12:00:00Z"},
     )
     assert created.status_code == 201
     event = created.json()
     assert event["event_kind"] == "gift_received"
     assert event["meeting_session_id"] is not None
     assert event["meeting_session"]["title"] == "周末见面"
+    wrapped = client.post(
+        "/events/gifts/wrap",
+        headers=headers,
+        data={"title": "见面时送的花", "occurred_at": "2026-07-21T13:00:00Z"},
+    )
+    assert wrapped.status_code == 201
+    assert wrapped.json()["event_kind"] == "gift"
+    assert wrapped.json()["meeting_session_id"] == event["meeting_session_id"]
     retired = client.post(
         "/love-receipts",
         headers=headers,

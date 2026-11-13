@@ -1,9 +1,9 @@
-"""Pydantic 契约：pair 功能、合上手账、安全密码会话、跑酷成绩、媒体和管理端接口；周期统计在没有经期锚点时预测字段为 null。"""
+"""Pydantic 契约：pair 功能、包装礼物（拆礼物状态/遮罩/收礼回应）、手账导出、合上手账、安全密码会话、跑酷成绩、媒体和管理端接口；周期统计在没有经期锚点时预测字段为 null。"""
 
 from datetime import date, datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import AliasChoices, BaseModel, Field, field_serializer, field_validator
 
 from app.models import (
     AIProtocol,
@@ -259,20 +259,49 @@ class EventCreate(APIModel):
         return value
 
 
+GiftWrapStyle = Literal["rose", "peach", "sage", "cream", "starry"]
+GiftState = Literal["wrapped", "opened"]
+
+
 class EventUpdate(APIModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
-    description: str | None = None
+    description: str | None = Field(default=None, validation_alias=AliasChoices("description", "message"))
     occurred_at: datetime | None = None
     event_kind: EventKind | None = None
     meeting_session_id: int | None = None
     visibility_mode: VisibilityMode | None = None
     gift_rating: int | None = Field(default=None, ge=1, le=5)
     gift_feelings: list[GiftFeeling] | None = Field(default=None, max_length=3)
+    gift_teaser: str | None = Field(default=None, max_length=120, validation_alias=AliasChoices("gift_teaser", "teaser"))
+    gift_wrap_style: GiftWrapStyle | None = Field(
+        default=None, validation_alias=AliasChoices("gift_wrap_style", "wrap_style")
+    )
+    gift_open_at: datetime | None = Field(default=None, validation_alias=AliasChoices("gift_open_at", "open_at"))
 
     @field_validator("gift_feelings")
     @classmethod
     def unique_optional_gift_feelings(cls, value: list[GiftFeeling] | None) -> list[GiftFeeling] | None:
         if value is not None and len(set(value)) != len(value):
+            raise ValueError("Gift feelings must be unique")
+        return value
+
+    @field_validator("gift_teaser")
+    @classmethod
+    def strip_optional_teaser(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+
+class GiftResponseIn(APIModel):
+    feelings: list[GiftFeeling] = Field(default_factory=list, max_length=3)
+    rating: int | None = Field(default=None, ge=1, le=5)
+    feedback: str = Field(default="", max_length=2000)
+
+    @field_validator("feelings")
+    @classmethod
+    def unique_feelings(cls, value: list[GiftFeeling]) -> list[GiftFeeling]:
+        if len(set(value)) != len(value):
             raise ValueError("Gift feelings must be unique")
         return value
 
@@ -352,6 +381,16 @@ class EventSummary(APIModel):
     event_kind: EventKind
     gift_rating: int | None = Field(default=None, ge=1, le=5)
     gift_feelings: list[GiftFeeling] = Field(default_factory=list, max_length=3)
+    gift_state: GiftState | None = None
+    gift_receiver_id: int | None = None
+    gift_wrap_style: str | None = None
+    gift_teaser: str | None = None
+    gift_open_at: datetime | None = None
+    gift_opened_at: datetime | None = None
+    gift_feedback: str | None = None
+    gift_responded_at: datetime | None = None
+    gift_masked: bool = False
+    gift_can_open: bool = False
     preview_image: ImagePreviewOut | None = None
     image_count: int = 0
     visibility_mode: VisibilityMode
@@ -414,6 +453,95 @@ class ContentsOut(APIModel):
 
 class EventDetail(EventSummary):
     contents: ContentsOut
+
+
+JournalScope = Literal["all", "range", "meeting"]
+
+
+class JournalUserOut(APIModel):
+    id: int
+    display_name: str
+    avatar: str = ""
+    avatar_has_image: bool = False
+    avatar_updated_at: datetime | None = None
+
+
+class JournalPairOut(APIModel):
+    users: list[JournalUserOut]
+    together_since: date | None = None
+    together_days: int | None = None
+
+
+class JournalMeetingOut(APIModel):
+    id: int
+    title: str
+    started_on: date | None = None
+    ended_on: date | None = None
+
+
+class JournalImageOut(APIModel):
+    id: int
+    width: int | None = None
+    height: int | None = None
+
+
+class JournalCommentOut(APIModel):
+    id: int
+    author_id: int
+    content: str
+    created_at: datetime
+
+
+class JournalGiftOut(APIModel):
+    state: GiftState
+    sender_id: int | None = None
+    receiver_id: int | None = None
+    wrap_style: str | None = None
+    teaser: str | None = None
+    opened_at: datetime | None = None
+    feelings: list[GiftFeeling] = Field(default_factory=list)
+    rating: int | None = None
+    feedback: str | None = None
+
+
+class JournalEntryOut(APIModel):
+    id: int
+    kind: EventKind
+    title: str
+    description: str | None = None
+    occurred_at: datetime
+    creator_id: int
+    meeting_session_id: int | None = None
+    meeting_title: str | None = None
+    locked: bool = False
+    images: list[JournalImageOut] = Field(default_factory=list)
+    comments: list[JournalCommentOut] = Field(default_factory=list)
+    gift: JournalGiftOut | None = None
+
+
+class JournalMonthOut(APIModel):
+    month: str
+    label: str
+    entries: list[JournalEntryOut]
+
+
+class JournalStatsOut(APIModel):
+    entry_count: int
+    image_count: int
+    gift_count: int
+    meeting_count: int
+
+
+class JournalOut(APIModel):
+    scope: JournalScope
+    title: str
+    start: date | None = None
+    end: date | None = None
+    generated_at: datetime
+    pair: JournalPairOut
+    meetings: list[JournalMeetingOut]
+    months: list[JournalMonthOut]
+    stats: JournalStatsOut
 
 
 class LoveReceiptImageOut(APIModel):

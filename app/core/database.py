@@ -1,5 +1,8 @@
 """Database setup, lightweight schema/index migrations, and retired-feature compatibility cleanup.
 
+Wrapped-gift columns on `events` are added as nullable columns, and the MySQL/MariaDB `events.event_kind`
+ENUM is repaired to include `gift` next to the legacy `gift_received`.
+
 Legacy voice rows are only removed together with their hard-deleted event (FK requirement), never at startup.
 """
 
@@ -199,6 +202,29 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         "gift_feelings",
         {"sqlite": "JSON NULL", "mysql": "JSON NULL", "mariadb": "JSON NULL", "default": "JSON NULL"},
     ),
+    (
+        "events",
+        "gift_receiver_id",
+        {"default": "INTEGER NULL", "mysql": "INT NULL", "mariadb": "INT NULL"},
+    ),
+    ("events", "gift_wrap_style", {"default": "VARCHAR(32) NULL"}),
+    ("events", "gift_teaser", {"default": "VARCHAR(120) NULL"}),
+    (
+        "events",
+        "gift_open_at",
+        {"default": "TIMESTAMP WITH TIME ZONE NULL", "mysql": "DATETIME NULL", "mariadb": "DATETIME NULL"},
+    ),
+    (
+        "events",
+        "gift_opened_at",
+        {"default": "TIMESTAMP WITH TIME ZONE NULL", "mysql": "DATETIME NULL", "mariadb": "DATETIME NULL"},
+    ),
+    ("events", "gift_feedback", {"default": "TEXT NULL"}),
+    (
+        "events",
+        "gift_responded_at",
+        {"default": "TIMESTAMP WITH TIME ZONE NULL", "mysql": "DATETIME NULL", "mariadb": "DATETIME NULL"},
+    ),
     # Legacy image BLOB columns stay readable while new uploads use storage keys.
     (
         "images",
@@ -328,7 +354,7 @@ def _event_kind_enum_migration_sql(dialect_name: str) -> list[str]:
         return []
     return [
         "ALTER TABLE events MODIFY event_kind "
-        "ENUM('memory','offline_meeting','gift_received') NOT NULL DEFAULT 'memory'"
+        "ENUM('memory','offline_meeting','gift_received','gift') NOT NULL DEFAULT 'memory'"
     ]
 
 

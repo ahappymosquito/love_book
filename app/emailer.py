@@ -1,4 +1,4 @@
-"""SMTP helpers for privacy-aware timeline event/comment notifications and daily habit reminders (todo never emails)."""
+"""SMTP helpers for privacy-aware timeline event/comment notifications, content-free gift wrap/open notices, and daily habit reminders (todo never emails)."""
 from __future__ import annotations
 
 from html import escape
@@ -199,6 +199,70 @@ def notify_event_created(
     </div>
     """
     send_email(recipient_email, subject, text_body, html_body)
+
+
+def _notify_gift(
+    *,
+    recipient_email: str | None,
+    recipient_name: str,
+    recipient_token: str | None,
+    event_id: int,
+    subject: str,
+    line: str,
+    button: str,
+) -> None:
+    """Gift emails only carry who did it and a link; title, message, teaser and images stay in the app."""
+    if not recipient_email:
+        return
+    link = _event_link(event_id, recipient_token)
+    text_body = f"{recipient_name}，你好：\n\n{line}\n\n{button}：{link}\n\n—— 我们之间的小事"
+    html_body = f"""
+    <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;line-height:1.6;color:#2b2522;max-width:560px;margin:0 auto;padding:24px;">
+      <p>{escape(recipient_name)}，你好：</p>
+      <p>{escape(line)}</p>
+      <p><a href="{escape(link, quote=True)}" style="display:inline-block;background:#d76679;color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;">{escape(button)}</a></p>
+      <p style="color:#a09489;font-size:12px;margin-top:24px;">—— 我们之间的小事</p>
+    </div>
+    """
+    send_email(recipient_email, subject, text_body, html_body)
+
+
+def notify_gift_wrapped(
+    *,
+    recipient_email: str | None,
+    recipient_name: str,
+    recipient_token: str | None,
+    actor_name: str,
+    event_id: int,
+) -> None:
+    _notify_gift(
+        recipient_email=recipient_email,
+        recipient_name=recipient_name,
+        recipient_token=recipient_token,
+        event_id=event_id,
+        subject="【我们之间的小事】你收到一份礼物",
+        line=f"{actor_name} 给你包了一份礼物，里面写了什么要你亲手拆开才知道。",
+        button="去拆礼物",
+    )
+
+
+def notify_gift_opened(
+    *,
+    recipient_email: str | None,
+    recipient_name: str,
+    recipient_token: str | None,
+    actor_name: str,
+    event_id: int,
+) -> None:
+    _notify_gift(
+        recipient_email=recipient_email,
+        recipient_name=recipient_name,
+        recipient_token=recipient_token,
+        event_id=event_id,
+        subject="【我们之间的小事】TA 拆开了你的礼物",
+        line=f"{actor_name} 拆开了你送的礼物。",
+        button="去看看",
+    )
 
 
 def notify_comment_created(

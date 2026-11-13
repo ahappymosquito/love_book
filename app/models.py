@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair features, private media, password sessions, game scores, and admin settings."""
+"""SQLAlchemy models for pair features, wrapped gifts (sender/receiver, wrap style, teaser, unwrap gate, receiver response), private media, password sessions, game scores, and admin settings."""
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
@@ -36,6 +36,12 @@ class EventKind(StrEnum):
     memory = "memory"
     offline_meeting = "offline_meeting"
     gift_received = "gift_received"
+    gift = "gift"
+
+
+GIFT_EVENT_KINDS = frozenset({EventKind.gift, EventKind.gift_received})
+GIFT_WRAP_STYLES = ("rose", "peach", "sage", "cream", "starry")
+DEFAULT_GIFT_WRAP_STYLE = "rose"
 
 
 class GiftFeeling(StrEnum):
@@ -233,13 +239,21 @@ class Event(Base):
     )
     gift_rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     gift_feelings: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    gift_receiver_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    gift_wrap_style: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    gift_teaser: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    gift_open_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    gift_opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    gift_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    gift_responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     visibility_mode: Mapped[VisibilityMode] = mapped_column(
         Enum(VisibilityMode), default=VisibilityMode.public, nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     pair: Mapped[Pair] = relationship()
-    creator: Mapped[User] = relationship()
+    creator: Mapped[User] = relationship(foreign_keys=[creator_id])
+    gift_receiver: Mapped[User | None] = relationship(foreign_keys=[gift_receiver_id])
     meeting_session: Mapped["MeetingSession | None"] = relationship(back_populates="events")
     comments: Mapped[list["Comment"]] = relationship(cascade="all, delete-orphan")
     images: Mapped[list["Image"]] = relationship(cascade="all, delete-orphan")

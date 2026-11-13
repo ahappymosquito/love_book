@@ -1,4 +1,8 @@
-"""Shared pair/event/quote logic, email normalization, token-expiry checks, and entry-token selection for notification links."""
+"""Shared pair/event/quote logic, wrapped-gift state and receiver masking, email normalization, token-expiry checks, and entry-token selection for notification links.
+
+A wrapped gift is masked for its receiver in every event serialization (empty title, no description, images or
+comments); image/comment access goes through `visible_contents`, so masked media stays unreachable too.
+"""
 
 import random
 from datetime import date, datetime, timedelta, timezone
@@ -9,7 +13,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, exists, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Comment, CommentReaction, DefaultQuote, DeviceToken, Event, EventKind, Image, MeetingSession, Pair, Quote, User, VisibilityMode, utc_now
+from app.models import GIFT_EVENT_KINDS, Comment, CommentReaction, DefaultQuote, DeviceToken, Event, EventKind, Image, MeetingSession, Pair, Quote, User, VisibilityMode, utc_now
 from app.schemas import (
     AnniversaryOut,
     CommentOut,
@@ -371,7 +375,7 @@ def reconcile_pair_meeting_ranges(db: Session, pair_id: int) -> list[MeetingSess
                 event.event_kind = EventKind.memory
             event.meeting_session_id = None
         else:
-            if event.event_kind != EventKind.gift_received:
+            if event.event_kind not in GIFT_EVENT_KINDS:
                 event.event_kind = EventKind.offline_meeting
             event.meeting_session_id = matching.id
     db.flush()
@@ -496,6 +500,69 @@ def comment_outs(db: Session, comments: list[Comment], user_id: int) -> list[Com
     ]
 
 
+def as_utc(value: datetime | None) -> datetime | None:
+    """SQLite returns naive datetimes for timezone-aware columns; stored values are UTC."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def is_gift_event(event: Event) -> bool:
+    return event.event_kind in GIFT_EVENT_KINDS
+
+
+def gift_receiver_id(event: Event) -> int | None:
+    if event.event_kind == EventKind.gift:
+        return event.gift_receiver_id
+    if event.event_kind == EventKind.gift_received:
+        return event.gift_receiver_id or event.creator_id
+    return None
+
+
+def gift_sender_id(event: Event, pair: Pair) -> int | None:
+    if event.event_kind == EventKind.gift:
+        return event.creator_id
+    if event.event_kind == EventKind.gift_received:
+        receiver_id = gift_receiver_id(event)
+        if receiver_id == pair.user_a_id:
+            return pair.user_b_id
+        if receiver_id == pair.user_b_id:
+            return pair.user_a_id
+    return None
+
+
+def gift_is_wrapped(event: Event) -> bool:
+    return event.event_kind == EventKind.gift and event.gift_opened_at is None
+
+
+def gift_state(event: Event) -> str | None:
+    if not is_gift_event(event):
+        return None
+    return "wrapped" if gift_is_wrapped(event) else "opened"
+
+
+def gift_masked_for(event: Event, user: User) -> bool:
+    """While a gift is wrapped its receiver only sees the wrapping, never the content."""
+    return gift_is_wrapped(event) and event.gift_receiver_id == user.id
+
+
+def gift_open_time_reached(event: Event, now: datetime | None = None) -> bool:
+    open_at = as_utc(event.gift_open_at)
+    return open_at is None or (now or utc_now()) >= open_at
+
+
+def gift_can_open(event: Event, user: User) -> bool:
+    return gift_masked_for(event, user) and gift_open_time_reached(event)
+
+
+def gift_feedback(event: Event) -> str | None:
+    if event.event_kind == EventKind.gift_received and event.gift_feedback is None:
+        return event.description
+    return event.gift_feedback if is_gift_event(event) else None
+
+
 def user_has_submitted_query(event_id: int, user_id: int) -> Select[tuple[bool]]:
     comment_exists = exists().where(Comment.event_id == event_id, Comment.author_id == user_id)
     image_exists = exists().where(Image.event_id == event_id, Image.author_id == user_id)
@@ -520,6 +587,8 @@ def submission_state(db: Session, event: Event, user: User, pair: Pair) -> Submi
 
 def visible_contents(db: Session, event: Event, user: User, pair: Pair) -> ContentsOut:
     state = submission_state(db, event, user, pair)
+    if gift_masked_for(event, user):
+        return ContentsOut(submission_state=state, comments=[], images=[])
     comments_query = select(Comment).where(Comment.event_id == event.id)
     images_query = select(Image).where(Image.event_id == event.id)
 
@@ -538,9 +607,10 @@ def visible_contents(db: Session, event: Event, user: User, pair: Pair) -> Conte
 
 def event_summary(db: Session, event: Event, user: User, pair: Pair) -> EventSummary:
     state = submission_state(db, event, user, pair)
+    masked = gift_masked_for(event, user)
     preview_image = None
     image_count = 0
-    if state.unlocked:
+    if state.unlocked and not masked:
         image_count = int(
             db.scalar(select(func.count()).select_from(Image).where(Image.event_id == event.id)) or 0
         )
@@ -562,12 +632,22 @@ def event_summary(db: Session, event: Event, user: User, pair: Pair) -> EventSum
         creator_id=event.creator_id,
         meeting_session_id=event.meeting_session_id,
         meeting_session=meeting_session_lite(db, event.meeting_session) if event.meeting_session else None,
-        title=event.title,
-        description=event.description,
+        title="" if masked else event.title,
+        description=None if masked else event.description,
         occurred_at=event.occurred_at,
         event_kind=event.event_kind,
         gift_rating=event.gift_rating,
         gift_feelings=event.gift_feelings or [],
+        gift_state=gift_state(event),
+        gift_receiver_id=gift_receiver_id(event),
+        gift_wrap_style=event.gift_wrap_style if is_gift_event(event) else None,
+        gift_teaser=event.gift_teaser if is_gift_event(event) else None,
+        gift_open_at=event.gift_open_at if is_gift_event(event) else None,
+        gift_opened_at=event.gift_opened_at if is_gift_event(event) else None,
+        gift_feedback=gift_feedback(event),
+        gift_responded_at=event.gift_responded_at if is_gift_event(event) else None,
+        gift_masked=masked,
+        gift_can_open=gift_can_open(event, user),
         preview_image=preview_image,
         image_count=image_count,
         visibility_mode=event.visibility_mode,

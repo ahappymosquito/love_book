@@ -1,5 +1,8 @@
 """Content route handlers for comments, reactions, local image storage, and filtered image downloads.
 
+A wrapped gift's receiver cannot comment or upload (409) until it is opened, its media stays hidden from them,
+and comment emails to a receiver of a still-wrapped gift use the content-free variant.
+
 Creation endpoints commit before returning so detail pages can refresh content immediately after a submit;
 uploaded files are removed again if the DB commit fails. Legacy BLOB images without a stored thumbnail get
 one regenerated into MEDIA_ROOT (thumb_storage_key), never back into the database; if the disk write fails
@@ -29,6 +32,7 @@ from app.services import (
     ensure_comment_visible,
     ensure_image_file_visible,
     ensure_pair_event,
+    gift_masked_for,
     submission_state,
     visible_contents,
 )
@@ -44,6 +48,7 @@ router = APIRouter(tags=["contents"])
 logger = logging.getLogger(__name__)
 
 IMAGE_READ_FAILED_DETAIL = "图片暂时读取不了，请稍后再试"
+GIFT_WRAPPED_DETAIL = "礼物还没拆开，先拆开再留言吧"
 
 
 def _persist_legacy_thumbnail(db: Session, image: Image, pair_id: int, thumb: bytes) -> None:
@@ -75,13 +80,15 @@ def create_comment(
 ) -> CommentOut:
     pair = get_pair_for_user(db, current_user.id)
     event = ensure_pair_event(db, event_id, pair)
+    if gift_masked_for(event, current_user):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=GIFT_WRAPPED_DETAIL)
     comment = Comment(event_id=event_id, author_id=current_user.id, text=payload.text)
     db.add(comment)
     db.flush()
     db.refresh(comment)
     other = counterpart(pair, current_user)
     recipient_token = active_token_for_user(db, other.id)
-    content_unlocked = submission_state(db, event, other, pair).unlocked
+    content_unlocked = submission_state(db, event, other, pair).unlocked and not gift_masked_for(event, other)
     db.commit()
     db.refresh(comment)
     background.add_task(
@@ -170,6 +177,8 @@ def upload_image(
     """Store uploaded image bytes under MEDIA_ROOT and save only relative storage keys."""
     pair = get_pair_for_user(db, current_user.id)
     event = ensure_pair_event(db, event_id, pair)
+    if gift_masked_for(event, current_user):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=GIFT_WRAPPED_DETAIL)
     stored = save_uploaded_image(file, lambda mime: build_image_storage_keys(pair.id, event.id, mime))
     with discard_media_on_error(db, stored.keys):
         current_max_order = db.scalar(
