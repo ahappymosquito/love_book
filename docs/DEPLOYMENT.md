@@ -102,27 +102,13 @@ LOVE_BOOK_SSH_HOSTS=cn-ts3,cn
 
 生产 Compose 工作目录是 `/home/ts3/love-book`。更新器核对前后端 OCI 版本标签、仅在发现新版本时以 `ts3` 身份做 `pre-release` 备份，再启动并验证 `/api/health` 与首页。已经是目标版本时不会备份或重启。失败只输出状态和日志，不自动回滚，也绝不会执行 `docker compose down -v`。
 
-### 待办：服务器 `update.sh` 改为按固定标签拉取
+### 服务器 `update.sh` 按固定标签拉取
 
-`update.sh` 不在仓库里。服务器上的现有版本仍按 `latest` 拉取，需要在服务器侧改为读取 `LOVE_BOOK_IMAGE_TAG` 并拉取 `:${TAG}`，否则 `deploy_host.py` 传入的版本不会生效。改动要点：
+`update.sh` 不在仓库里，安装在 `/home/ts3/love-book/update.sh`。它要求 `LOVE_BOOK_IMAGE_TAG` 为 `X.Y.Z`，缺失或格式不对时以状态 2 退出；然后只拉取
 
-```bash
-TAG="${LOVE_BOOK_IMAGE_TAG:?LOVE_BOOK_IMAGE_TAG is required}"
-[[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "invalid image tag: $TAG" >&2; exit 2; }
-docker pull "ghcr.io/ahappymosquito/love_book-backend:${TAG}"
-docker pull "ghcr.io/ahappymosquito/love_book-frontend:${TAG}"
-export LOVE_BOOK_IMAGE_TAG="$TAG"
-```
+`ghcr.io/ahappymosquito/love_book-backend:${TAG}` 和 `ghcr.io/ahappymosquito/love_book-frontend:${TAG}`。
 
-`docker-compose.override.yml` 同步改为引用该变量，缺失时直接报错而不是回落到 `latest`：
-
-```yaml
-services:
-  backend:
-    image: ghcr.io/ahappymosquito/love_book-backend:${LOVE_BOOK_IMAGE_TAG:?}
-  frontend:
-    image: ghcr.io/ahappymosquito/love_book-frontend:${LOVE_BOOK_IMAGE_TAG:?}
-```
+两份镜像的 OCI `org.opencontainers.image.version` 必须都等于该标签。`docker-compose.override.yml` 由更新器写成这两个具体镜像引用，不回落到 `latest`。健康检查地址优先用调用环境里的 `APP_WEB_URL`，否则读部署目录 `.env` 的同名项，再否则用 `https://tingle272.xyz`。版本没变时不备份、不重启；发现新版本时仍以 `ts3` 身份做 `pre-release` 备份，再启动并核对 `/api/health` 与首页。
 
 ## 1. 目录结构
 
@@ -255,7 +241,7 @@ docker compose down
 | Nginx 无法签发或续期证书 | 确认 DNS 指向本机，80 上的 ACME webroot 可访问，跑 `certbot renew --dry-run` |
 | HTTPS 打不开 | `systemctl status nginx`、`nginx -t`、确认 80/443 没有被其它进程占用 |
 | `/admin` 接口返回 503 | 生产 `ADMIN_KEY` 为空或仍是占位值，改成随机强密钥后重启 backend |
-| `update --yes` 报线上版本不一致 | 服务器 `update.sh` 还没按 `LOVE_BOOK_IMAGE_TAG` 拉取，或镜像未发布；见上文待办 |
+| `update --yes` 报线上版本不一致 | 镜像还没发布，或更新器拉到的 OCI 版本标签和 `LOVE_BOOK_IMAGE_TAG` 不一致 |
 | 前端能打开但 `/api/*` 失败 | 检查 `love-book-proxy.conf` 与 `curl -fsS http://127.0.0.1:8000/health` |
 | CDN 打不开 | 确认 `/var/www/cdn.qrqto.club` 和 `cdn.tingle272.xyz` 站点，不要改安装包文件 |
 | 页面能开但登录/时间线/Todo 全超时 | 后端 `DATABASE_URL` 必须指向本机 MySQL（`host.docker.internal`），不要再用已过期的 `qrqto.group` |

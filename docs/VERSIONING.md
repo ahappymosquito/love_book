@@ -60,7 +60,7 @@ python scripts/deploy_host.py update --host cn --yes
 
 `update --yes` 会 SSH 到具备更新能力的主机，执行 `LOVE_BOOK_IMAGE_TAG='0.5.0' bash /home/ts3/love-book/update.sh`，标签取自本地 `VERSION`。更新器确认两套镜像的 OCI 版本标签完全一致，仅在发现新版本时创建 `pre-release` 恢复点，然后启动并验证 `/api/health` 和首页；`deploy_host.py` 随后轮询 `/api/health`，`version` 与 `VERSION` 不一致就以失败退出。未经当次明确授权不得加 `--yes`。
 
-服务器上的 `update.sh` 不在仓库里，仍需在服务器侧改为读取 `LOVE_BOOK_IMAGE_TAG` 并拉取 `:${TAG}`，改法见 [`DEPLOYMENT.md`](DEPLOYMENT.md) 的“待办：服务器 `update.sh` 改为按固定标签拉取”。
+服务器上的 `update.sh` 不在仓库里。它只接受 `LOVE_BOOK_IMAGE_TAG` 并拉取对应的 `X.Y.Z` 镜像，说明见 [`DEPLOYMENT.md`](DEPLOYMENT.md) 的“服务器 `update.sh` 按固定标签拉取”。
 
 ## 生产部署与验证
 

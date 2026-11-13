@@ -4,6 +4,8 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-14
+
 ### Added
 
 - 发布工作流在推送镜像前先做容器冒烟（`scripts/ci_smoke_image.sh`）：后端用隔离 SQLite 启动并核对 `/health` 的版本与提交，前端首页需返回 200，两者都核对 OCI 版本标签。
@@ -22,7 +24,7 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 - `/timeline` 与事件详情改为剪贴手账风格：按月的纸页和装订孔（点阵 / 方格 / 横线）、手写月份书签、翻页展开、轻微倾斜的卡片、和纸胶带、贴纸、拍立得，见面分组做成票根并可「导出这次见面」；顶部栏新增「手账」入口。纸张是实体内容层，减弱动效时只保留淡入淡出。
 - 创建入口的第三项由「记一份收礼」改为「送一份礼物」；旧 `gift_received` 收礼事件继续展示，但不再提供新建入口。
-- 生产镜像固定为与 `VERSION` 一致的裸 `X.Y.Z` 标签；`deploy_host.py update --yes` 会把 `LOVE_BOOK_IMAGE_TAG` 传给服务器更新器，并在结束后核对 `/api/health` 的版本。`latest` 只在冒烟和发布成功后作为便捷指针移动。服务器上的 `update.sh` 仍需另行改为按该标签拉取。
+- 生产镜像固定为与 `VERSION` 一致的裸 `X.Y.Z` 标签；`deploy_host.py update --yes` 会把 `LOVE_BOOK_IMAGE_TAG` 传给服务器更新器，更新器只拉取该标签并在结束后核对 `/api/health` 的版本。`latest` 只在冒烟和发布成功后作为便捷指针移动。
 - `deploy_host.py run` 在 `User=root` 的发布主机上必须加 `--yes`，并支持 `--dry-run`。
 - 工作流顶层权限收紧为 `contents: read`，只有发布 job 拿 `packages: write`；所有 job 都设置超时。
 - 后端镜像改为多阶段构建，只信任私有网段来源的转发头（`FORWARDED_ALLOW_IPS`）；前端镜像只装生产依赖，并以非 root 用户 `nextjs` 运行。
