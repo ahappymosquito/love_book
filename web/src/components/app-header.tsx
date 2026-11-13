@@ -1,14 +1,20 @@
 "use client";
 
-// Unified authenticated Liquid Glass app header with mobile-safe width, avatar navigation, and predictable action placement.
+// Unified authenticated Liquid Glass app header: avatar to /me (or a back link), title/subtitle, page action slot, and a confirmed logout button on main task pages; width follows the shared page-width table so header, content, and bottom nav align.
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowLeft } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ArrowLeft, LogOut } from "lucide-react";
 import { Avatar } from "./avatar";
+import { ConfirmDialog } from "./confirm-dialog";
 import { GlassSurface } from "@/components/ui/glass-surface";
 import { cn } from "@/lib/cn";
+import { PAGE_CHROME_WIDTH_CLASS, pageWidthForPath } from "@/lib/page-width";
 import { useAppStore } from "@/lib/store";
+import { useLogout } from "@/lib/use-logout";
 
 export interface AppHeaderProps {
   title?: string;
@@ -16,7 +22,7 @@ export interface AppHeaderProps {
   back?: { href: string; label?: string; onClick?: () => boolean | void };
   rightSlot?: ReactNode;
   mode?: "default" | "compact";
-  maxWidth?: "5xl" | "7xl";
+  showLogout?: boolean;
 }
 
 export function AppHeader({
@@ -25,9 +31,12 @@ export function AppHeader({
   back,
   rightSlot,
   mode = "default",
-  maxWidth = "7xl",
+  showLogout = !back,
 }: AppHeaderProps) {
   const me = useAppStore((s) => s.me);
+  const pathname = usePathname();
+  const logout = useLogout();
+  const [confirmLogout, setConfirmLogout] = useState(false);
 
   if (!me) return null;
 
@@ -39,8 +48,8 @@ export function AppHeader({
       <GlassSurface
         variant="regular"
         className={cn(
-          "app-header-glass flex w-full min-w-0 items-center gap-3",
-          maxWidth === "5xl" ? "max-w-5xl" : "max-w-7xl",
+          "app-header-glass flex w-full min-w-0 items-center gap-2 sm:gap-3",
+          PAGE_CHROME_WIDTH_CLASS[pageWidthForPath(pathname)],
           compact ? "h-[60px] sm:h-[64px]" : "h-16",
         )}
       >
@@ -50,7 +59,7 @@ export function AppHeader({
             onClick={(event) => {
               if (back.onClick?.() === false) event.preventDefault();
             }}
-            className="grid h-10 w-10 flex-none place-items-center rounded-full text-ink transition hover:bg-ink/5 focus-ring"
+            className="grid h-11 w-11 flex-none place-items-center rounded-full text-ink transition hover:bg-ink/5 focus-ring"
             aria-label={back.label || "返回"}
           >
             <ArrowLeft className="h-5 w-5" />
@@ -59,8 +68,8 @@ export function AppHeader({
           <Link
             href="/me"
             className={cn(
-              "inline-flex flex-none items-center rounded-full transition hover:bg-ink/5 focus-ring",
-              compact ? "gap-2 py-1 pl-1 pr-2.5" : "gap-2 py-1 pl-1 pr-3",
+              "inline-flex min-h-11 flex-none items-center rounded-full transition hover:bg-ink/5 focus-ring",
+              compact ? "gap-2 py-0.5 pl-0.5 pr-1.5" : "gap-2 py-0.5 pl-0.5 pr-2",
             )}
             aria-label="进入我的设置"
           >
@@ -92,10 +101,37 @@ export function AppHeader({
           )}
         </div>
 
-        <div className={cn("flex flex-none items-center", compact ? "gap-1.5" : "gap-2")}>
+        <div className={cn("flex flex-none items-center", compact ? "gap-1" : "gap-1.5 sm:gap-2")}>
           {rightSlot}
+          {showLogout && (
+            <button
+              type="button"
+              onClick={() => setConfirmLogout(true)}
+              className="grid h-11 w-11 flex-none place-items-center rounded-full text-ink-muted transition hover:bg-ink/5 hover:text-rose-deep focus-ring"
+              aria-label="退出登录"
+              title="退出登录"
+            >
+              <LogOut className="h-[18px] w-[18px]" />
+            </button>
+          )}
         </div>
       </GlassSurface>
+      {showLogout && typeof document !== "undefined"
+        ? createPortal(
+            <ConfirmDialog
+              open={confirmLogout}
+              title="要先退出吗？"
+              description="退出后，可以用安全密码或专属入口链接再回来。"
+              confirmLabel="退出登录"
+              onConfirm={() => {
+                setConfirmLogout(false);
+                logout();
+              }}
+              onCancel={() => setConfirmLogout(false)}
+            />,
+            document.body,
+          )
+        : null}
     </header>
   );
 }

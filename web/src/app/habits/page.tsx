@@ -1,6 +1,6 @@
 "use client";
 
-// Habit page presents pair progress with directional calendar continuity, user-triggered completion feedback, shared disclosures, and reduced-motion fallbacks.
+// Habit page presents pair progress with directional calendar continuity, user-triggered completion feedback, shared disclosures, and reduced-motion fallbacks; the default selected day and "today" marker follow the Asia/Shanghai calendar.
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
@@ -25,6 +25,7 @@ import { MotionCollapse } from "@/components/ui/motion-collapse";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { shanghaiDateKey } from "@/lib/dates";
 import { MOTION_TRANSITIONS } from "@/lib/motion";
 import { useAppStore } from "@/lib/store";
 import type { HabitDashboardOut, HabitDayOut, HabitTaskOut, HabitUserDayOut, UserOut } from "@/lib/types";
@@ -143,9 +144,9 @@ export default function HabitsPage() {
 
 function HabitsInner() {
   const me = useAppStore((s) => s.me)!;
-  const [viewDate, setViewDate] = useState(() => new Date());
+  const [viewDate, setViewDate] = useState(() => parseISODate(shanghaiDateKey()));
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("week");
-  const [selectedDate, setSelectedDate] = useState(() => toISODate(new Date()));
+  const [selectedDate, setSelectedDate] = useState(() => shanghaiDateKey());
   const [dashboard, setDashboard] = useState<HabitDashboardOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -339,7 +340,7 @@ function HabitsInner() {
                           date={day}
                           isoDate={key}
                           currentMonth={calendarMode === "week" || day.getMonth() === viewDate.getMonth()}
-                          today={key === toISODate(new Date())}
+                          today={key === shanghaiDateKey()}
                           selected={key === selectedDate}
                           celebrate={pairCelebrationDate === key}
                           day={daysByDate.get(key)}

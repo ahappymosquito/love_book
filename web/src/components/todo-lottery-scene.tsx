@@ -1,13 +1,13 @@
 "use client";
 
-// Lightweight Three.js lottery animation for the todo restaurant draw, with reduced-motion fallback.
+// Lightweight Three.js lottery animation for the todo restaurant draw; under prefers-reduced-motion the orb and sparkles stay still and only a static scene renders.
 
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Sparkles } from "@react-three/drei";
 import { useEffect, useRef, useState } from "react";
 import type { Group } from "three";
 
-function LotteryOrb({ spinning }: { spinning: boolean }) {
+function LotteryOrb({ spinning, still }: { spinning: boolean; still: boolean }) {
   const group = useRef<Group>(null);
   useFrame((_, delta) => {
     if (!group.current || !spinning) return;
@@ -24,7 +24,7 @@ function LotteryOrb({ spinning }: { spinning: boolean }) {
         <icosahedronGeometry args={[1.25, 1]} />
         <meshStandardMaterial color="#f5c6b8" transparent opacity={0.22} roughness={0.2} />
       </mesh>
-      <Sparkles count={32} scale={3.2} size={2.8} speed={spinning ? 0.55 : 0.15} color="#fff6ef" />
+      <Sparkles count={32} scale={3.2} size={2.8} speed={still ? 0 : spinning ? 0.55 : 0.15} color="#fff6ef" />
     </group>
   );
 }
@@ -41,10 +41,10 @@ export function TodoLotteryScene({ spinning }: { spinning: boolean }) {
   const active = spinning && !reducedMotion;
   return (
     <div className="h-40 w-full overflow-hidden rounded-2xl bg-peach/18 hairline" aria-hidden="true">
-      <Canvas camera={{ position: [0, 0, 4], fov: 42 }} dpr={[1, 1.6]}>
+      <Canvas camera={{ position: [0, 0, 4], fov: 42 }} dpr={[1, 1.6]} frameloop={reducedMotion ? "demand" : "always"}>
         <ambientLight intensity={1.8} />
         <pointLight position={[3, 3, 4]} intensity={2.8} />
-        <LotteryOrb spinning={active} />
+        <LotteryOrb spinning={active} still={reducedMotion} />
       </Canvas>
     </div>
   );

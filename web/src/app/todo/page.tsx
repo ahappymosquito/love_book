@@ -1,25 +1,28 @@
 "use client";
 
-// Pair-shared Todo workspace with restrained layout continuity for candidates, task sections, detail panels, photos, and shared check-ins.
+// Pair-shared Todo workspace in a Microsoft To Do style: desktop left list navigation (four sections plus the lottery entry), a central task list, and a right detail panel; mobile collapses navigation into a compact chip row and opens detail as a bottom sheet.
+// Sections sort by earliest due date (undated last); background polling skips hidden tabs, never clears good data, guards overlap and stale responses, and failed quick-adds keep a retryable local card.
 
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import {
   CalendarDays,
   Check,
   ChevronRight,
   Circle,
+  CloudOff,
   CloudSun,
   Clock3,
   ImagePlus,
+  Inbox,
   ListTodo,
   Loader2,
   MapPin,
-  Menu,
   Music2,
-  Plus,
   BedDouble,
-  Search,
+  Plus,
+  RotateCcw,
   Shuffle,
   Star,
   Trash2,
@@ -29,14 +32,15 @@ import {
 import { toast } from "sonner";
 import { AppHeader } from "@/components/app-header";
 import { AuthGate } from "@/components/auth-gate";
-import { Avatar } from "@/components/avatar";
-import { TodoLotteryScene } from "@/components/todo-lottery-scene";
 import { MotionCollapse } from "@/components/ui/motion-collapse";
-import { APIError, api, fetchTodoImageBlob } from "@/lib/api";
+import { Sheet, SheetBody, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { APIError, api, friendlyErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { shanghaiDateKey } from "@/lib/dates";
 import { formatRelative } from "@/lib/format";
 import { MOTION_TRANSITIONS } from "@/lib/motion";
-import { useAppStore } from "@/lib/store";
+import { TODO_CATEGORY_LABELS, compareTodoByDueDate } from "@/lib/todo-meta";
+import { useAuthedBlobUrl } from "@/lib/use-authed-blob-url";
 import type {
   TodoCategory,
   TodoCandidateOut,
@@ -49,29 +53,16 @@ import type {
   TodoScheduleOut,
 } from "@/lib/types";
 
-type TodoView = "all" | "important" | "planned" | "food" | "play" | "stay" | "lottery";
+const TodoLotteryScene = dynamic(() => import("@/components/todo-lottery-scene").then((mod) => mod.TodoLotteryScene), {
+  ssr: false,
+  loading: () => <div className="h-40 w-full rounded-2xl bg-peach/18 hairline" aria-hidden="true" />,
+});
+
 type LocalTodoCandidate = Omit<TodoCandidateOut, "id"> & {
   client_id: string;
   is_local: true;
 };
 type CandidateQueueItem = TodoCandidateOut | LocalTodoCandidate;
-
-const VIEW_META: Record<TodoView, { title: string; subtitle: string; icon: ReactNode }> = {
-  all: { title: "任务", subtitle: "所有还没完成的小安排", icon: <ListTodo className="h-4 w-4" /> },
-  important: { title: "重要", subtitle: "已有时间或需要留意的事项", icon: <Star className="h-4 w-4" /> },
-  planned: { title: "计划内", subtitle: "已经设置要完成时间的事项", icon: <CalendarDays className="h-4 w-4" /> },
-  food: { title: "吃饭", subtitle: "想尝试的餐厅和打卡记录", icon: <Utensils className="h-4 w-4" /> },
-  play: { title: "玩乐", subtitle: "一起去做的快乐清单", icon: <Music2 className="h-4 w-4" /> },
-  stay: { title: "住宿", subtitle: "酒店、民宿和过夜安排", icon: <BedDouble className="h-4 w-4" /> },
-  lottery: { title: "随机抽奖", subtitle: "不知道吃什么时交给运气", icon: <Shuffle className="h-4 w-4" /> },
-};
-
-const TODO_CATEGORY_LABELS: Record<TodoCategory, string> = {
-  food: "吃喝",
-  play: "玩乐",
-  stay: "住宿",
-  wish: "许愿",
-};
 
 const TODO_SECTIONS: Array<{ category: TodoCategory; title: string; subtitle: string; icon: ReactNode }> = [
   { category: "food", title: "今天想吃点", subtitle: "餐厅、甜品、咖啡和想打卡的味道", icon: <Utensils className="h-4 w-4" /> },
@@ -116,16 +107,6 @@ const TODO_SECTION_STYLE: Record<TodoCategory, { shell: string; header: string; 
   },
 };
 
-function toDateOnly(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
-}
-
-function monthKey(date: Date): string {
-  return toDateOnly(date).slice(0, 7);
-}
-
 function formatShortDate(date: string): string {
   const parsed = new Date(`${date}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return date;
@@ -147,8 +128,16 @@ function getPrimarySchedule(item: TodoItemOut, schedules: TodoScheduleOut[]): To
   return [...ownSchedules].sort((left, right) => left.scheduled_on.localeCompare(right.scheduled_on))[0] ?? null;
 }
 
+function primaryDueDate(item: TodoItemOut, schedules: TodoScheduleOut[]): string | null {
+  return getPrimarySchedule(item, schedules)?.scheduled_on ?? null;
+}
+
+function sortByDueDate(items: TodoItemOut[], schedules: TodoScheduleOut[]): TodoItemOut[] {
+  return [...items].sort((left, right) => compareTodoByDueDate(left, right, (item) => primaryDueDate(item, schedules)));
+}
+
 function scheduleMeta(date: string, checkedIn: boolean): { label: string; className: string } {
-  const today = toDateOnly(new Date());
+  const today = shanghaiDateKey();
   const todayTime = new Date(`${today}T00:00:00`).getTime();
   const targetTime = new Date(`${date}T00:00:00`).getTime();
   const days = Math.round((targetTime - todayTime) / 86_400_000);
@@ -176,10 +165,13 @@ function candidateKey(candidate: CandidateQueueItem): string {
 }
 
 function apiErrorMessage(error: unknown): string {
-  if (error instanceof APIError) {
-    return error.status === 0 ? "网络连接失败，请检查后端服务或高德详情调用后重试" : error.message;
-  }
-  return error instanceof Error ? error.message : "请求失败，请重试";
+  if (error instanceof APIError && error.status === 0) return "网络有点不稳，稍后再试一次";
+  if (error instanceof APIError && error.status >= 500) return "这会儿没找到合适的地点，可以再试一次，或者直接选个板块加入";
+  return friendlyErrorMessage(error);
+}
+
+function sectionAnchorId(category: TodoCategory): string {
+  return `todo-section-${category}`;
 }
 export default function TodoPage() {
   return (
@@ -190,22 +182,29 @@ export default function TodoPage() {
 }
 
 function TodoInner() {
-  const today = toDateOnly(new Date());
-  const [month, setMonth] = useState(monthKey(new Date()));
+  const reducedMotion = useReducedMotion();
+  const today = shanghaiDateKey();
+  const [month, setMonth] = useState(today.slice(0, 7));
   const [selectedDate, setSelectedDate] = useState(today);
   const [dashboard, setDashboard] = useState<TodoDashboardOut | null>(null);
   const [candidates, setCandidates] = useState<TodoCandidateOut[]>([]);
   const [localCandidates, setLocalCandidates] = useState<LocalTodoCandidate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [autoEditNoteId, setAutoEditNoteId] = useState<number | null>(null);
   const [recentlyAddedId, setRecentlyAddedId] = useState<number | null>(null);
+  const [lotteryOpen, setLotteryOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState<TodoCategory | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<TodoCategory, boolean>>({
     food: false,
     play: false,
     stay: false,
     wish: true,
   });
+  const requestSeqRef = useRef(0);
+  const inFlightSeqRef = useRef(0);
+  const failureNotifiedRef = useRef(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -222,20 +221,40 @@ function TodoInner() {
     return () => window.clearTimeout(timer);
   }, [recentlyAddedId]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [nextDashboard, nextCandidates] = await Promise.all([api.getTodoDashboard(month), api.listTodoCandidates()]);
-      setDashboard(nextDashboard);
-      setCandidates(nextCandidates);
-    } catch {
-      setDashboard({ month, items: [], schedules: [], llm_enabled: false });
-      setCandidates([]);
-      toast.error("Todo 看板加载失败");
-    } finally {
-      setLoading(false);
-    }
-  }, [month]);
+  const load = useCallback(
+    async (mode: "foreground" | "background" = "foreground") => {
+      if (mode === "background" && (inFlightSeqRef.current !== 0 || document.hidden)) return;
+      const seq = ++requestSeqRef.current;
+      inFlightSeqRef.current = seq;
+      if (mode === "foreground") setLoading(true);
+      try {
+        const [nextDashboard, nextCandidates] = await Promise.all([
+          api.getTodoDashboard(month, { silent: true }),
+          api.listTodoCandidates({ silent: true }),
+        ]);
+        if (seq !== requestSeqRef.current) return;
+        setDashboard(nextDashboard);
+        setCandidates(nextCandidates);
+        setLoadFailed(false);
+        failureNotifiedRef.current = false;
+      } catch {
+        if (seq !== requestSeqRef.current) return;
+        setLoadFailed(true);
+        if (!failureNotifiedRef.current) {
+          failureNotifiedRef.current = true;
+          toast.error("清单暂时没同步上，稍后会自动再试");
+        }
+      } finally {
+        if (inFlightSeqRef.current === seq) inFlightSeqRef.current = 0;
+        if (mode === "foreground") setLoading(false);
+      }
+    },
+    [month],
+  );
+
+  const markLocalChange = useCallback(() => {
+    requestSeqRef.current += 1;
+  }, []);
 
   useEffect(() => {
     void load();
@@ -243,9 +262,16 @@ function TodoInner() {
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      void load();
+      void load("background");
     }, 8000);
-    return () => window.clearInterval(timer);
+    const onVisibilityChange = () => {
+      if (!document.hidden) void load("background");
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [load]);
 
   const items = useMemo(() => dashboard?.items ?? [], [dashboard]);
@@ -260,6 +286,25 @@ function TodoInner() {
   }, [dashboard, items]);
   const selectedDetail = detailId ? items.find((item) => item.id === detailId) ?? null : null;
   const queuedCandidates = useMemo<CandidateQueueItem[]>(() => [...localCandidates, ...candidates], [localCandidates, candidates]);
+  const sectionItems = useMemo(() => {
+    const result = {} as Record<TodoCategory, { open: TodoItemOut[]; done: TodoItemOut[] }>;
+    for (const section of TODO_SECTIONS) {
+      const own = items.filter((item) => item.category === section.category);
+      result[section.category] = {
+        open: sortByDueDate(own.filter((item) => !item.checked_in), schedules),
+        done: sortByDueDate(own.filter((item) => item.checked_in), schedules),
+      };
+    }
+    return result;
+  }, [items, schedules]);
+  const openCounts = useMemo(
+    () =>
+      Object.fromEntries(TODO_SECTIONS.map((section) => [section.category, sectionItems[section.category].open.length])) as Record<
+        TodoCategory,
+        number
+      >,
+    [sectionItems],
+  );
 
   async function scheduleItem(itemId: number, date = selectedDate) {
     await api.scheduleTodoItem(itemId, date);
@@ -274,23 +319,53 @@ function TodoInner() {
   }
 
   async function archiveItem(itemId: number) {
-    await api.updateTodoItem(itemId, { is_archived: true });
+    try {
+      await api.updateTodoItem(itemId, { is_archived: true });
+    } catch {
+      return;
+    }
     toast.success("已收起这个项目");
     if (detailId === itemId) setDetailId(null);
     await load();
   }
 
-  async function addTodo(title: string, category: TodoCategory) {
-    if (category === "wish") {
-      const item = await api.createTodoItem({ category, title });
-      toast.success("已加入许愿");
+  async function createWish(title: string): Promise<TodoItemOut | null> {
+    try {
+      const item = await api.createTodoItem({ category: "wish", title });
+      markLocalChange();
+      toast.success("已悄悄收进许愿");
       setExpandedSections((current) => ({ ...current, wish: true }));
       await load();
       setRecentlyAddedId(item.id);
       setAutoEditNoteId(item.id);
       setDetailId(item.id);
-      return;
+      return item;
+    } catch {
+      return null;
     }
+  }
+
+  async function submitCandidate(clientId: string, title: string, category: TodoCategory) {
+    try {
+      const created = await api.createTodoCandidate({ raw_title: title, category });
+      markLocalChange();
+      setLocalCandidates((current) => current.filter((candidate) => candidate.client_id !== clientId));
+      setCandidates((current) => [created, ...current.filter((candidate) => candidate.id !== created.id)]);
+      void load();
+    } catch (error) {
+      const message = apiErrorMessage(error);
+      setLocalCandidates((current) =>
+        current.map((candidate) =>
+          candidate.client_id === clientId
+            ? { ...candidate, status: "failed", parse_error: message, updated_at: new Date().toISOString() }
+            : candidate,
+        ),
+      );
+    }
+  }
+
+  async function addTodo(title: string, category: TodoCategory): Promise<boolean> {
+    if (category === "wish") return Boolean(await createWish(title));
     const now = new Date().toISOString();
     const clientId = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const localCandidate: LocalTodoCandidate = {
@@ -306,40 +381,37 @@ function TodoInner() {
       updated_at: now,
     };
     setLocalCandidates((current) => [localCandidate, ...current]);
-    try {
-      const created = await api.createTodoCandidate({ raw_title: title, category });
-      setLocalCandidates((current) => current.filter((candidate) => candidate.client_id !== clientId));
-      setCandidates((current) => [created, ...current.filter((candidate) => candidate.id !== created.id)]);
-      toast.success("已放入待确认队列");
-      void load();
-    } catch (error) {
-      const message = apiErrorMessage(error);
-      setLocalCandidates((current) =>
-        current.map((candidate) =>
-          candidate.client_id === clientId
-            ? { ...candidate, status: "failed", parse_error: message, updated_at: new Date().toISOString() }
-            : candidate,
-        ),
-      );
+    void submitCandidate(clientId, title, category);
+    return true;
+  }
+
+  async function retryLocalCandidate(candidate: LocalTodoCandidate, category: TodoCategory) {
+    if (category === "wish") {
+      if (await createWish(candidate.raw_title)) {
+        setLocalCandidates((current) => current.filter((item) => item.client_id !== candidate.client_id));
+      }
+      return;
     }
+    setLocalCandidates((current) =>
+      current.map((item) =>
+        item.client_id === candidate.client_id ? { ...item, category, status: "parsing", parse_error: null } : item,
+      ),
+    );
+    await submitCandidate(candidate.client_id, candidate.raw_title, category);
   }
 
   async function confirmCandidate(candidate: TodoCandidateOut, selectedCandidate = candidate.selected_candidate, category = candidate.category) {
-    try {
-      const item = await api.confirmTodoCandidate(candidate.id, {
-        category,
-        selected_candidate: selectedCandidate,
-      });
-      toast.success("已加入清单");
-      setCandidates((current) => current.filter((item) => item.id !== candidate.id));
-      setExpandedSections((current) => ({ ...current, [category]: true }));
-      await load();
-      setRecentlyAddedId(item.id);
-      setDetailId(item.id);
-    } catch (error) {
-      toast.error(`加入失败：${apiErrorMessage(error)}`);
-      throw error;
-    }
+    const item = await api.confirmTodoCandidate(candidate.id, {
+      category,
+      selected_candidate: selectedCandidate,
+    });
+    markLocalChange();
+    toast.success("已加入清单");
+    setCandidates((current) => current.filter((entry) => entry.id !== candidate.id));
+    setExpandedSections((current) => ({ ...current, [category]: true }));
+    await load();
+    setRecentlyAddedId(item.id);
+    setDetailId(item.id);
   }
 
   async function discardCandidate(candidate: CandidateQueueItem) {
@@ -347,57 +419,92 @@ function TodoInner() {
       setLocalCandidates((current) => current.filter((item) => item.client_id !== candidate.client_id));
       return;
     }
-    try {
-      await api.deleteTodoCandidate(candidate.id);
-      setCandidates((current) => current.filter((item) => item.id !== candidate.id));
-      toast.success("已移出待确认");
-      void load();
-    } catch (error) {
-      toast.error(`丢弃失败：${apiErrorMessage(error)}`);
-      throw error;
-    }
+    await api.deleteTodoCandidate(candidate.id);
+    markLocalChange();
+    setCandidates((current) => current.filter((item) => item.id !== candidate.id));
+    toast.success("已移出待确认");
+    void load();
   }
+
   function toggleSection(category: TodoCategory) {
     setExpandedSections((current) => ({ ...current, [category]: !current[category] }));
+  }
+
+  function scrollToAnchor(id: string) {
+    window.requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
+    });
+  }
+
+  function focusSection(category: TodoCategory) {
+    setExpandedSections((current) => ({ ...current, [category]: true }));
+    setActiveSection(category);
+    scrollToAnchor(sectionAnchorId(category));
   }
 
   return (
     <div className="viewport-guard min-h-dvh pb-[calc(env(safe-area-inset-bottom,0px)+9rem)] text-ink">
       <AppHeader title="Todo" subtitle="想吃、想玩和想许的愿望都收进来" />
 
-      <div className="mx-auto flex min-h-[calc(100dvh-64px)] w-full max-w-7xl min-w-0 gap-0 px-3 py-3 sm:px-5 lg:px-6">
+      <div className="mx-auto flex w-full max-w-7xl min-w-0 items-start gap-4 px-4 pt-4 sm:px-6 sm:pt-5">
+        <TodoNav
+          className="hidden xl:flex"
+          counts={openCounts}
+          candidateCount={queuedCandidates.length}
+          activeSection={activeSection}
+          onPick={focusSection}
+          onPickCandidates={() => scrollToAnchor("todo-candidates")}
+          onLottery={() => setLotteryOpen(true)}
+        />
+
         <main className="content-surface min-w-0 flex flex-1 flex-col overflow-hidden">
           <TodoBoardHeader
-            loading={loading}
+            loading={loading && dashboard !== null}
             openCount={items.filter((item) => !item.checked_in).length}
             candidateCount={queuedCandidates.length}
+            onLottery={() => setLotteryOpen(true)}
           />
+          <TodoSectionChips className="xl:hidden" counts={openCounts} activeSection={activeSection} onPick={focusSection} />
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] sm:px-5 sm:pb-5">
-            <LayoutGroup id="todo-board-layout">
-              <motion.div layout className="space-y-3 pt-3" transition={MOTION_TRANSITIONS.layout}>
-                <QuickAddBar onCreated={addTodo} llmEnabled={llmEnabled} />
-                {TODO_SECTIONS.map((section) => (
-                  <TodoCategorySection
-                    key={section.category}
-                    section={section}
-                    expanded={expandedSections[section.category]}
-                    items={items.filter((item) => item.category === section.category && !item.checked_in)}
-                    completedItems={items.filter((item) => item.category === section.category && item.checked_in)}
-                    schedules={schedules}
-                    recentlyAddedId={recentlyAddedId}
-                    onToggle={() => toggleSection(section.category)}
-                    onOpen={setDetailId}
+          <div className="px-3 pb-5 sm:px-5">
+            {dashboard === null ? (
+              loadFailed ? (
+                <TodoLoadFailed onRetry={() => void load()} />
+              ) : (
+                <div className="grid min-h-[40vh] place-items-center" role="status" aria-label="正在打开清单">
+                  <Loader2 className="h-6 w-6 animate-spin text-ink-muted motion-reduce:animate-none" />
+                </div>
+              )
+            ) : (
+              <LayoutGroup id="todo-board-layout">
+                <motion.div layout className="space-y-3 pt-3" transition={MOTION_TRANSITIONS.layout}>
+                  <QuickAddBar onCreated={addTodo} llmEnabled={llmEnabled} />
+                  <CandidateQueue
+                    candidates={queuedCandidates}
+                    llmEnabled={llmEnabled}
+                    onConfirm={confirmCandidate}
+                    onDiscard={discardCandidate}
+                    onRetryLocal={retryLocalCandidate}
                   />
-                ))}
-                <CandidateQueue
-                  candidates={queuedCandidates}
-                  llmEnabled={llmEnabled}
-                  onConfirm={confirmCandidate}
-                  onDiscard={discardCandidate}
-                />
-              </motion.div>
-            </LayoutGroup>
+                  {TODO_SECTIONS.map((section) => (
+                    <TodoCategorySection
+                      key={section.category}
+                      section={section}
+                      expanded={expandedSections[section.category]}
+                      items={sectionItems[section.category].open}
+                      completedItems={sectionItems[section.category].done}
+                      schedules={schedules}
+                      recentlyAddedId={recentlyAddedId}
+                      onToggle={() => {
+                        setActiveSection(section.category);
+                        toggleSection(section.category);
+                      }}
+                      onOpen={setDetailId}
+                    />
+                  ))}
+                </motion.div>
+              </LayoutGroup>
+            )}
           </div>
         </main>
 
@@ -420,93 +527,186 @@ function TodoInner() {
           )}
         </AnimatePresence>
       </div>
+
+      <TodoLotterySheet
+        open={lotteryOpen}
+        onOpenChange={setLotteryOpen}
+        onCreated={() => void load()}
+        onOpenItem={(id) => {
+          setLotteryOpen(false);
+          setDetailId(id);
+        }}
+      />
     </div>
   );
 }
 
-function filterItems(
-  items: TodoItemOut[],
-  schedules: TodoScheduleOut[],
-  view: TodoView,
-  query: string,
-  completed: boolean,
-): TodoItemOut[] {
-  const normalized = query.trim().toLowerCase();
-  const scheduledIds = new Set(schedules.map((schedule) => schedule.item_id));
-
-  return items
-    .filter((item) => {
-      if (item.checked_in !== completed) return false;
-      if (view === "all") return true;
-      if (view === "important") return item.restaurant?.parse_status === "failed" || scheduledIds.has(item.id);
-      if (view === "planned") return scheduledIds.has(item.id);
-      if (view === "food") return item.category === "food";
-      if (view === "play") return item.category === "play";
-      if (view === "stay") return item.category === "stay";
-      return true;
-    })
-    .filter((item) => {
-      if (!normalized) return true;
-      return [item.title, item.note, item.restaurant?.address, item.restaurant?.business_area, item.restaurant?.signature_dishes]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(normalized));
-    })
-    .sort((left, right) => compareTodoItems(left, right, schedules));
+function TodoNav({
+  className,
+  counts,
+  candidateCount,
+  activeSection,
+  onPick,
+  onPickCandidates,
+  onLottery,
+}: {
+  className?: string;
+  counts: Record<TodoCategory, number>;
+  candidateCount: number;
+  activeSection: TodoCategory | null;
+  onPick: (category: TodoCategory) => void;
+  onPickCandidates: () => void;
+  onLottery: () => void;
+}) {
+  return (
+    <nav
+      aria-label="Todo 清单导航"
+      className={cn(
+        "content-surface sticky top-[calc(var(--lb-header-clearance)+0.25rem)] w-[232px] flex-none flex-col gap-1 p-3",
+        className,
+      )}
+    >
+      <p className="px-2 pb-1 pt-1 font-sc text-xs font-medium text-ink-muted">我们的清单</p>
+      {TODO_SECTIONS.map((section) => {
+        const active = activeSection === section.category;
+        return (
+          <button
+            key={section.category}
+            type="button"
+            onClick={() => onPick(section.category)}
+            aria-current={active ? "true" : undefined}
+            className={cn(
+              "flex min-h-11 w-full items-center gap-3 rounded-xl px-2.5 text-left font-sc text-sm transition focus-ring",
+              active ? "bg-rose/12 text-rose-deep" : "text-ink-soft hover:bg-peach/12 hover:text-rose-deep",
+            )}
+          >
+            <span className={cn("grid h-8 w-8 flex-none place-items-center rounded-lg", TODO_SECTION_STYLE[section.category].icon)}>{section.icon}</span>
+            <span className="min-w-0 flex-1 truncate">{section.title}</span>
+            <span className="rounded-full bg-ink/5 px-2 py-0.5 text-xs tabular-nums text-ink-muted">{counts[section.category]}</span>
+          </button>
+        );
+      })}
+      {candidateCount > 0 && (
+        <button
+          type="button"
+          onClick={onPickCandidates}
+          className="flex min-h-11 w-full items-center gap-3 rounded-xl px-2.5 text-left font-sc text-sm text-ink-soft transition hover:bg-peach/12 hover:text-rose-deep focus-ring"
+        >
+          <span className="grid h-8 w-8 flex-none place-items-center rounded-lg bg-rose/10 text-rose-deep">
+            <Inbox className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1 truncate">等你确认</span>
+          <span className="rounded-full bg-rose/12 px-2 py-0.5 text-xs tabular-nums text-rose-deep">{candidateCount}</span>
+        </button>
+      )}
+      <div className="my-2 h-px bg-line/60" aria-hidden="true" />
+      <button
+        type="button"
+        onClick={onLottery}
+        className="flex min-h-11 w-full items-center gap-3 rounded-xl px-2.5 text-left font-sc text-sm text-ink-soft transition hover:bg-peach/12 hover:text-rose-deep focus-ring"
+      >
+        <span className="grid h-8 w-8 flex-none place-items-center rounded-lg bg-peach/30 text-peach-deep">
+          <Shuffle className="h-4 w-4" />
+        </span>
+        <span className="min-w-0 flex-1 truncate">不知道吃什么？抽一家</span>
+      </button>
+      <p className="px-2 pt-4 font-sc text-xs leading-relaxed text-ink-muted">清单只在你们两个人之间共享。</p>
+    </nav>
+  );
 }
 
-function getEarliestScheduleDate(item: TodoItemOut, schedules: TodoScheduleOut[]): string | null {
-  const dates = schedules
-    .filter((schedule) => schedule.item_id === item.id)
-    .map((schedule) => schedule.scheduled_on)
-    .sort();
-  return dates[0] ?? null;
+function TodoSectionChips({
+  className,
+  counts,
+  activeSection,
+  onPick,
+}: {
+  className?: string;
+  counts: Record<TodoCategory, number>;
+  activeSection: TodoCategory | null;
+  onPick: (category: TodoCategory) => void;
+}) {
+  return (
+    <div className={cn("local-x-scroll border-b border-line/60 px-3 py-2.5 sm:px-5", className)}>
+      <div className="flex w-max gap-2" role="group" aria-label="跳到清单板块">
+        {TODO_SECTIONS.map((section) => {
+          const active = activeSection === section.category;
+          return (
+            <button
+              key={section.category}
+              type="button"
+              onClick={() => onPick(section.category)}
+              aria-pressed={active}
+              className={cn(
+                "inline-flex min-h-11 items-center gap-2 rounded-full border px-3.5 font-sc text-sm transition focus-ring",
+                active ? "border-rose/30 bg-rose/10 text-rose-deep" : "border-line/70 bg-surface-raised/80 text-ink-soft hover:text-rose-deep",
+              )}
+            >
+              {section.icon}
+              {section.title}
+              <span className="rounded-full bg-ink/5 px-1.5 text-xs tabular-nums text-ink-muted">{counts[section.category]}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
-function compareTodoItems(left: TodoItemOut, right: TodoItemOut, schedules: TodoScheduleOut[]): number {
-  const leftDate = getEarliestScheduleDate(left, schedules);
-  const rightDate = getEarliestScheduleDate(right, schedules);
-  if (leftDate && rightDate && leftDate !== rightDate) return leftDate.localeCompare(rightDate);
-  if (leftDate && !rightDate) return -1;
-  if (!leftDate && rightDate) return 1;
-  return left.created_at.localeCompare(right.created_at) || left.id - right.id;
-}
-
-function getViewCounts(items: TodoItemOut[], schedules: TodoScheduleOut[]): Record<TodoView, number> {
-  const scheduledIds = new Set(schedules.map((schedule) => schedule.item_id));
-  const openItems = items.filter((item) => !item.checked_in);
-  return {
-    all: openItems.length,
-    important: openItems.filter((item) => item.restaurant?.parse_status === "failed" || scheduledIds.has(item.id)).length,
-    planned: openItems.filter((item) => scheduledIds.has(item.id)).length,
-    food: openItems.filter((item) => item.category === "food").length,
-    play: openItems.filter((item) => item.category === "play").length,
-    stay: openItems.filter((item) => item.category === "stay").length,
-    lottery: openItems.filter((item) => item.category === "food").length,
-  };
+function TodoLoadFailed({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="grid min-h-[40vh] place-items-center p-6 text-center" role="alert">
+      <div>
+        <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-peach/24 text-rose-deep">
+          <CloudOff className="h-6 w-6" />
+        </span>
+        <p className="mt-4 font-display text-lg font-semibold text-ink">清单暂时没打开</p>
+        <p className="mt-1 font-sc text-sm text-ink-muted">可能是网络有点慢，你们记下的事情都还在。</p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="btn-primary mt-4 inline-flex min-h-11 items-center gap-2 rounded-full px-5 font-sc text-sm font-medium focus-ring"
+        >
+          <RotateCcw className="h-4 w-4" />
+          再试一次
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function TodoBoardHeader({
   loading,
   openCount,
   candidateCount,
+  onLottery,
 }: {
   loading: boolean;
   openCount: number;
   candidateCount: number;
+  onLottery: () => void;
 }) {
   return (
     <header className="border-b border-line/60 px-3 py-4 sm:px-5 sm:py-5">
-      <div className="flex items-start gap-3">
-        <span className="grid h-10 w-10 place-items-center rounded-2xl bg-peach/20 text-rose-deep">
+      <div className="flex items-center gap-3">
+        <span className="grid h-10 w-10 flex-none place-items-center rounded-2xl bg-peach/20 text-rose-deep">
           <ListTodo className="h-4 w-4" />
         </span>
         <div className="min-w-0 flex-1">
           <h2 className="font-display text-xl font-semibold leading-tight text-ink sm:text-2xl">要一起做的事情</h2>
           <p className="mt-1 font-sc text-sm text-ink-muted">
-            {openCount} 件还没完成，{candidateCount} 件待确认
+            {openCount} 件还没完成{candidateCount > 0 ? `，${candidateCount} 件等你确认` : ""}
           </p>
         </div>
-        {loading && <Loader2 className="mt-2 h-5 w-5 animate-spin text-ink-muted" />}
+        {loading && <Loader2 className="h-5 w-5 flex-none animate-spin text-ink-muted motion-reduce:animate-none" aria-label="正在同步" />}
+        <button
+          type="button"
+          onClick={onLottery}
+          className="btn-ghost inline-flex min-h-11 flex-none items-center gap-1.5 rounded-full px-3.5 font-sc text-sm focus-ring xl:hidden"
+        >
+          <Shuffle className="h-4 w-4" />
+          抽一家
+        </button>
       </div>
     </header>
   );
@@ -532,7 +732,12 @@ function TodoCategorySection({
 }) {
   const style = TODO_SECTION_STYLE[section.category];
   return (
-    <motion.section layout="position" transition={MOTION_TRANSITIONS.layout} className={cn("overflow-hidden rounded-2xl border", style.shell)}>
+    <motion.section
+      id={sectionAnchorId(section.category)}
+      layout="position"
+      transition={MOTION_TRANSITIONS.layout}
+      className={cn("scroll-mt-[calc(var(--lb-header-clearance)+0.75rem)] overflow-hidden rounded-2xl border", style.shell)}
+    >
       <button type="button" onClick={onToggle} className={cn("flex min-h-14 w-full items-center gap-3 px-4 text-left transition focus-ring", style.header)} aria-expanded={expanded}>
         <span className={cn("grid h-9 w-9 place-items-center rounded-xl", style.icon)}>{section.icon}</span>
         <span className="min-w-0 flex-1">
@@ -562,27 +767,30 @@ function CandidateQueue({
   llmEnabled,
   onConfirm,
   onDiscard,
+  onRetryLocal,
 }: {
   candidates: CandidateQueueItem[];
   llmEnabled: boolean;
-  onConfirm: (candidate: TodoCandidateOut, selectedCandidate?: TodoRestaurantCandidate | null, category?: TodoCategory) => void | Promise<void>;
-  onDiscard: (candidate: CandidateQueueItem) => void | Promise<void>;
+  onConfirm: (candidate: TodoCandidateOut, selectedCandidate?: TodoRestaurantCandidate | null, category?: TodoCategory) => Promise<void>;
+  onDiscard: (candidate: CandidateQueueItem) => Promise<void>;
+  onRetryLocal: (candidate: LocalTodoCandidate, category: TodoCategory) => Promise<void>;
 }) {
   return (
     <AnimatePresence initial={false}>
       {candidates.length > 0 && (
         <motion.section
+          id="todo-candidates"
           layout
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -4 }}
           transition={MOTION_TRANSITIONS.state}
-          className="rounded-2xl border border-rose/20 bg-rose/6 p-3"
+          className="scroll-mt-[calc(var(--lb-header-clearance)+0.75rem)] rounded-2xl border border-rose/20 bg-rose/6 p-3"
         >
           <div className="mb-3 flex items-center justify-between gap-2 px-1">
             <div>
-              <h2 className="font-display text-base font-semibold text-ink">待确认</h2>
-              <p className="font-sc text-xs text-ink-muted">点击卡片查看解析结果，再确认加入或丢弃。</p>
+              <h2 className="font-display text-base font-semibold text-ink">等你确认</h2>
+              <p className="font-sc text-xs text-ink-muted">看看找到的地点对不对，再决定加入还是丢掉。</p>
             </div>
             <motion.span layout className="rounded-full bg-rose/10 px-2 py-0.5 font-sc text-xs text-rose-deep">
               {candidates.length}
@@ -591,7 +799,14 @@ function CandidateQueue({
           <div className="grid gap-2">
             <AnimatePresence initial={false}>
               {candidates.map((candidate) => (
-                <CandidateCard key={candidateKey(candidate)} candidate={candidate} llmEnabled={llmEnabled} onConfirm={onConfirm} onDiscard={onDiscard} />
+                <CandidateCard
+                  key={candidateKey(candidate)}
+                  candidate={candidate}
+                  llmEnabled={llmEnabled}
+                  onConfirm={onConfirm}
+                  onDiscard={onDiscard}
+                  onRetryLocal={onRetryLocal}
+                />
               ))}
             </AnimatePresence>
           </div>
@@ -606,11 +821,13 @@ function CandidateCard({
   llmEnabled,
   onConfirm,
   onDiscard,
+  onRetryLocal,
 }: {
   candidate: CandidateQueueItem;
   llmEnabled: boolean;
-  onConfirm: (candidate: TodoCandidateOut, selectedCandidate?: TodoRestaurantCandidate | null, category?: TodoCategory) => void | Promise<void>;
-  onDiscard: (candidate: CandidateQueueItem) => void | Promise<void>;
+  onConfirm: (candidate: TodoCandidateOut, selectedCandidate?: TodoRestaurantCandidate | null, category?: TodoCategory) => Promise<void>;
+  onDiscard: (candidate: CandidateQueueItem) => Promise<void>;
+  onRetryLocal: (candidate: LocalTodoCandidate, category: TodoCategory) => Promise<void>;
 }) {
   const reducedMotion = useReducedMotion();
   const [expanded, setExpanded] = useState(true);
@@ -653,7 +870,27 @@ function CandidateCard({
     }
   }
 
-  const statusText = candidate.status === "ready" ? "待增加" : candidate.status === "needs_choice" ? "需要选择地点" : candidate.status === "failed" ? "解析失败" : "正在解析";
+  async function retryLocal() {
+    if (persisted) return;
+    setConfirming(true);
+    setActionError(null);
+    try {
+      await onRetryLocal(candidate, overrideCategory);
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  const statusText =
+    candidate.status === "ready"
+      ? "可以加入了"
+      : candidate.status === "needs_choice"
+        ? "挑一个地点"
+        : candidate.status === "failed"
+          ? persisted
+            ? "没找到地点"
+            : "还没送出去"
+          : "正在找地点";
 
   return (
     <motion.article
@@ -692,15 +929,17 @@ function CandidateCard({
         <div className="mt-3 space-y-3 border-t border-line/52 pt-3">
           {candidate.status === "parsing" && (
             <p className="rounded-xl bg-peach/12 p-3 font-sc text-xs text-ink-muted">
-              {llmEnabled ? "正在智能分类并搜索地点，完成后这里会显示可确认的详情。" : "正在按你选中的板块搜索地点，完成后这里会显示可确认的详情。"}
+              {llmEnabled ? "正在帮你判断放进哪个板块，顺便找找地点，稍等一下。" : "正在按你选的板块找找地点，稍等一下。"}
             </p>
           )}
-          {(candidate.parse_error || actionError) && <p className="rounded-xl bg-red-50 p-2 font-sc text-xs text-red-700">{actionError ?? candidate.parse_error}</p>}
+          {(candidate.parse_error || actionError) && (
+            <p className="rounded-xl bg-red-50 p-2 font-sc text-xs text-red-700 dark:bg-red-500/12 dark:text-red-100">{actionError ?? candidate.parse_error}</p>
+          )}
 
           <div className="rounded-xl border border-line/58 bg-surface-raised/70 p-3">
             <p className="font-sc text-xs text-ink-muted">
-              {llmEnabled ? `AI 分类：${TODO_CATEGORY_LABELS[candidate.category]}。` : `手动分类：${TODO_CATEGORY_LABELS[candidate.category]}。`}
-              你也可以改到其它板块。
+              {llmEnabled ? `看起来像「${TODO_CATEGORY_LABELS[candidate.category]}」。` : `放在「${TODO_CATEGORY_LABELS[candidate.category]}」。`}
+              不合适的话，换个板块就好。
             </p>
             <div className="mt-2 grid grid-cols-4 gap-1 rounded-xl bg-ink/5 p-1">
               {TODO_CATEGORY_OPTIONS.map((category) => (
@@ -743,18 +982,24 @@ function CandidateCard({
           )}
 
           <div className="flex flex-wrap justify-end gap-2">
+            {candidate.status === "failed" && !persisted && (
+              <button type="button" onClick={() => void retryLocal()} disabled={confirming || discarding} className="btn-primary inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3.5 font-sc text-xs focus-ring disabled:opacity-50">
+                {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                再试一次
+              </button>
+            )}
             {candidate.status === "failed" && persisted && (
-              <button type="button" onClick={() => confirmWith(overrideCategory)} disabled={confirming || discarding} className="btn-ghost min-h-9 rounded-xl px-3 font-sc text-xs focus-ring disabled:opacity-50">
-                {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : `按当前分类加入${TODO_CATEGORY_LABELS[overrideCategory]}`}
+              <button type="button" onClick={() => confirmWith(overrideCategory)} disabled={confirming || discarding} className="btn-ghost min-h-11 rounded-xl px-3.5 font-sc text-xs focus-ring disabled:opacity-50">
+                {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : `直接放进${TODO_CATEGORY_LABELS[overrideCategory]}`}
               </button>
             )}
             {(candidate.status === "ready" || candidate.status === "needs_choice") && persisted && (
-              <button type="button" onClick={() => confirmWith()} disabled={confirming || discarding || (candidate.status === "needs_choice" && !selected)} className="btn-primary min-h-9 rounded-xl px-3 font-sc text-xs focus-ring disabled:opacity-50">
+              <button type="button" onClick={() => confirmWith()} disabled={confirming || discarding || (candidate.status === "needs_choice" && !selected)} className="btn-primary min-h-11 rounded-xl px-3.5 font-sc text-xs focus-ring disabled:opacity-50">
                 {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : "确认加入"}
               </button>
             )}
-            <button type="button" onClick={discard} disabled={confirming || discarding} className="btn-ghost min-h-9 rounded-xl px-3 font-sc text-xs focus-ring disabled:opacity-50">
-              {discarding ? <Loader2 className="h-4 w-4 animate-spin" /> : "丢弃"}
+            <button type="button" onClick={discard} disabled={confirming || discarding} className="btn-ghost min-h-11 rounded-xl px-3.5 font-sc text-xs focus-ring disabled:opacity-50">
+              {discarding ? <Loader2 className="h-4 w-4 animate-spin" /> : "丢掉"}
             </button>
           </div>
         </div>
@@ -769,7 +1014,7 @@ function CandidatePoiSummary({ candidate, selected }: { candidate: TodoRestauran
       <span className="flex items-start gap-2">
         <span className="min-w-0 flex-1">
           <span className="block font-display text-sm font-semibold text-ink">{candidate.name}</span>
-          <span className="mt-1 block truncate font-sc text-xs text-ink-muted">{candidate.address || candidate.city || "高德未返回地址"}</span>
+          <span className="mt-1 block truncate font-sc text-xs text-ink-muted">{candidate.address || candidate.city || "暂时没有地址"}</span>
         </span>
         {selected && <Check className="mt-0.5 h-4 w-4 flex-none text-rose-deep" />}
       </span>
@@ -783,131 +1028,7 @@ function CandidatePoiSummary({ candidate, selected }: { candidate: TodoRestauran
     </span>
   );
 }
-function TodoSidebar({
-  open,
-  me,
-  view,
-  query,
-  counts,
-  loading,
-  onQuery,
-  onPick,
-  onClose,
-}: {
-  open: boolean;
-  me: ReturnType<typeof useAppStore.getState>["me"];
-  view: TodoView;
-  query: string;
-  counts: Record<TodoView, number>;
-  loading: boolean;
-  onQuery: (query: string) => void;
-  onPick: (view: TodoView) => void;
-  onClose: () => void;
-}) {
-  return (
-    <>
-      <AnimatePresence>
-        {open && (
-          <motion.button
-            type="button"
-            className="fixed inset-0 z-40 bg-ink/28 lg:hidden"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            aria-label="关闭列表导航"
-            onClick={onClose}
-          />
-        )}
-      </AnimatePresence>
-      <aside
-        className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[min(282px,86vw)] max-w-full flex-col border-r border-line/62 bg-surface/96 px-4 py-4 shadow-[18px_0_44px_-34px_rgb(var(--ink)/0.46)] transition-transform duration-200 ease-out lg:sticky lg:top-0 lg:z-auto lg:min-h-dvh lg:w-[282px] lg:translate-x-0 lg:bg-surface/68 lg:shadow-none",
-          open ? "translate-x-0" : "-translate-x-full",
-        )}
-      >
-        <div className="mb-4 flex items-center justify-between gap-3">
-          {me && (
-            <div className="flex min-w-0 items-center gap-3">
-              <Avatar user={me.user} size="md" />
-              <div className="min-w-0">
-                <p className="truncate font-display text-sm font-semibold text-ink">{me.user.display_name}</p>
-                <p className="truncate font-sc text-xs text-ink-muted">和 {me.counterpart.display_name} 的清单</p>
-              </div>
-            </div>
-          )}
-          <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full text-ink-muted hover:bg-ink/5 focus-ring lg:hidden" aria-label="关闭导航">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
 
-        <label className="mb-4 flex h-11 items-center gap-2 rounded-xl border border-line/76 bg-surface-raised/86 px-3 focus-within:border-rose/60 focus-within:shadow-[0_0_0_4px_rgb(var(--focus)/0.14)]">
-          <Search className="h-4 w-4 text-ink-muted" />
-          <input
-            value={query}
-            onChange={(event) => onQuery(event.target.value)}
-            placeholder="搜索"
-            className="min-w-0 flex-1 bg-transparent font-sc text-sm outline-none placeholder:text-ink-muted/80"
-          />
-        </label>
-
-        <nav className="space-y-1" aria-label="Todo 列表">
-          {(Object.keys(VIEW_META) as TodoView[]).map((key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => onPick(key)}
-              className={cn(
-                "flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left font-sc text-sm transition focus-ring",
-                view === key ? "bg-rose/12 text-rose-deep" : "text-ink-soft hover:bg-peach/12 hover:text-rose-deep",
-              )}
-            >
-              <span className={cn("grid h-7 w-7 place-items-center rounded-lg", view === key ? "bg-rose/14" : "bg-transparent")}>{VIEW_META[key].icon}</span>
-              <span className="min-w-0 flex-1 truncate">{VIEW_META[key].title}</span>
-              <span className="rounded-full bg-ink/5 px-2 py-0.5 text-xs text-ink-muted">{counts[key]}</span>
-            </button>
-          ))}
-        </nav>
-
-        <div className="mt-auto border-t border-line/60 pt-4 font-sc text-xs text-ink-muted">
-          {loading ? "正在同步清单..." : "Todo 数据只在你们两个人之间共享"}
-        </div>
-      </aside>
-    </>
-  );
-}
-
-function TodoToolbar({
-  view,
-  loading,
-  count,
-  onOpenSidebar,
-}: {
-  view: TodoView;
-  loading: boolean;
-  count: number;
-  onOpenSidebar: () => void;
-}) {
-  const meta = VIEW_META[view];
-  return (
-    <header className="border-b border-line/60 px-3 py-4 sm:px-5 sm:py-5">
-      <div className="flex items-start gap-3">
-        <button type="button" onClick={onOpenSidebar} className="grid h-10 w-10 place-items-center rounded-xl text-ink-soft hover:bg-peach/14 focus-ring lg:hidden" aria-label="打开列表导航">
-          <Menu className="h-5 w-5" />
-        </button>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="grid h-10 w-10 place-items-center rounded-2xl bg-peach/20 text-rose-deep">{meta.icon}</span>
-            <div className="min-w-0">
-              <h2 className="font-display text-xl font-semibold leading-tight text-ink sm:text-2xl">{meta.title}</h2>
-              <p className="mt-1 font-sc text-sm text-ink-muted">{meta.subtitle}，{count} 项</p>
-            </div>
-          </div>
-        </div>
-        {loading && <Loader2 className="mt-2 h-5 w-5 animate-spin text-ink-muted" />}
-      </div>
-    </header>
-  );
-}
 function TaskList({
   items,
   completedItems,
@@ -924,11 +1045,11 @@ function TaskList({
   return (
     <div className="pt-3">
       {items.length === 0 ? (
-        <div className="grid min-h-[32vh] place-items-center rounded-2xl border border-dashed border-line/70 bg-peach/8 p-8 text-center">
+        <div className="grid place-items-center rounded-2xl border border-dashed border-line/70 bg-peach/8 px-6 py-8 text-center">
           <div>
-            <ListTodo className="mx-auto h-8 w-8 text-rose-deep" />
-            <p className="mt-3 font-display text-lg font-semibold text-ink">这里还没有未完成任务</p>
-            <p className="mt-1 font-sc text-sm text-ink-muted">从底部添加一条，或者切换到吃饭视图搜索餐厅。</p>
+            <ListTodo className="mx-auto h-7 w-7 text-rose-deep" />
+            <p className="mt-3 font-display text-base font-semibold text-ink">这里还空着</p>
+            <p className="mt-1 font-sc text-sm text-ink-muted">在最上面写下想一起做的事，就会出现在这里。</p>
           </div>
         </div>
       ) : (
@@ -1105,24 +1226,24 @@ function TaskRow({
 
 function StatusPill({ status }: { status: string }) {
   if (status === "resolved") return null;
-  if (status === "failed") return <span className="rounded-full bg-red-100 px-2 py-0.5 font-sc text-[11px] text-red-700">解析失败</span>;
-  return <span className="rounded-full bg-peach/18 px-2 py-0.5 font-sc text-[11px] text-ink-muted">解析中</span>;
+  if (status === "failed") return <span className="rounded-full bg-red-100 px-2 py-0.5 font-sc text-[11px] text-red-700 dark:bg-red-500/14 dark:text-red-100">没找到地点</span>;
+  return <span className="rounded-full bg-peach/18 px-2 py-0.5 font-sc text-[11px] text-ink-muted">正在找地点</span>;
 }
 
-function QuickAddBar({ onCreated, llmEnabled }: { onCreated: (title: string, category: TodoCategory) => void | Promise<void>; llmEnabled: boolean }) {
+function QuickAddBar({ onCreated, llmEnabled }: { onCreated: (title: string, category: TodoCategory) => Promise<boolean>; llmEnabled: boolean }) {
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState<TodoCategory>("play");
 
-  function createAs(nextCategory: TodoCategory) {
+  async function createAs(nextCategory: TodoCategory) {
     const next = title.trim();
     if (!next) return;
     setTitle("");
-    void onCreated(next, nextCategory);
+    if (!(await onCreated(next, nextCategory))) setTitle((current) => current || next);
   }
 
-  async function submit(event: FormEvent) {
+  function submit(event: FormEvent) {
     event.preventDefault();
-    createAs(category);
+    void createAs(category);
   }
 
   return (
@@ -1134,19 +1255,21 @@ function QuickAddBar({ onCreated, llmEnabled }: { onCreated: (title: string, cat
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             placeholder="写下想一起做的事，或想去的店和地方"
+            aria-label="想一起做的事"
             maxLength={200}
-            className="min-w-0 flex-1 bg-transparent font-sc text-sm outline-none placeholder:text-ink-muted/82"
+            className="min-w-0 flex-1 bg-transparent font-sc text-base outline-none placeholder:text-ink-muted/82 sm:text-sm"
           />
         </div>
         <div className="flex w-full flex-none gap-2 sm:w-auto">
-          <div className="grid flex-1 grid-cols-3 gap-1 rounded-xl bg-ink/5 p-1 sm:w-52 sm:flex-none">
+          <div className="grid flex-1 grid-cols-3 gap-1 rounded-xl bg-ink/5 p-1 sm:w-52 sm:flex-none" role="group" aria-label="放进哪个板块">
             {QUICK_ADD_CATEGORY_OPTIONS.map((item) => (
               <button
                 key={item}
                 type="button"
                 onClick={() => setCategory(item)}
+                aria-pressed={category === item}
                 className={cn(
-                  "min-h-9 rounded-lg font-sc text-xs transition focus-ring",
+                  "min-h-10 rounded-lg font-sc text-xs transition focus-ring",
                   category === item ? "bg-surface text-rose-deep shadow-sm" : "text-ink-muted hover:bg-surface/62",
                 )}
               >
@@ -1159,105 +1282,49 @@ function QuickAddBar({ onCreated, llmEnabled }: { onCreated: (title: string, cat
           <button type="submit" disabled={!title.trim()} className="min-h-11 flex-1 rounded-xl bg-rose px-4 font-sc text-sm text-white disabled:opacity-45 focus-ring sm:flex-none">
             新增
           </button>
-          <button type="button" onClick={() => createAs("wish")} disabled={!title.trim()} className="btn-ghost min-h-11 flex-1 rounded-xl px-4 font-sc text-sm disabled:opacity-45 focus-ring sm:flex-none">
+          <button type="button" onClick={() => void createAs("wish")} disabled={!title.trim()} className="btn-ghost min-h-11 flex-1 rounded-xl px-4 font-sc text-sm disabled:opacity-45 focus-ring sm:flex-none">
             许愿
           </button>
         </div>
       </div>
       <p className="mt-2 px-1 font-sc text-xs leading-relaxed text-ink-muted">
-        {llmEnabled ? "新增后会先智能分类，当前选择会作为失败时的回退分类；许愿请用右侧按钮直接收进愿望里。" : "AI 已关闭，新增会使用你手动选中的分类；许愿请用右侧按钮直接收进愿望里。"}
+        {llmEnabled
+          ? "点「新增」会帮你判断放进哪个板块，拿不准时就放进你选的那个；还没想好的心愿，点「许愿」悄悄收起来。"
+          : "点「新增」会放进你选的板块；还没想好的心愿，点「许愿」悄悄收起来。"}
       </p>
     </form>
   );
 }
 
-function RestaurantCreator({ onCreated }: { onCreated: (item: TodoItemOut) => void | Promise<void> }) {
-  const [keyword, setKeyword] = useState("");
-  const [city, setCity] = useState("");
-  const [searching, setSearching] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [candidates, setCandidates] = useState<TodoRestaurantCandidate[]>([]);
-  const [selected, setSelected] = useState<TodoRestaurantCandidate | null>(null);
-
-  async function search(event: FormEvent) {
-    event.preventDefault();
-    if (!keyword.trim()) return;
-    setSearching(true);
-    try {
-      const result = await api.searchTodoRestaurants({ keyword: keyword.trim(), city: city.trim() || null });
-      setCandidates(result.candidates);
-      setSelected(result.candidates[0] ?? null);
-      if (!result.candidates.length) toast.message("没有找到餐厅候选");
-    } finally {
-      setSearching(false);
-    }
-  }
-
-  async function create() {
-    if (!selected) return;
-    setCreating(true);
-    try {
-      const item = await api.createTodoRestaurant({ candidate: selected });
-      setKeyword("");
-      setCity("");
-      setCandidates([]);
-      setSelected(null);
-      toast.success("餐厅已添加，已刷新高德详情");
-      await onCreated(item);
-    } finally {
-      setCreating(false);
-    }
-  }
-
+function TodoLotterySheet({
+  open,
+  onOpenChange,
+  onCreated,
+  onOpenItem,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: () => void;
+  onOpenItem: (id: number) => void;
+}) {
+  const reducedMotion = useReducedMotion();
   return (
-    <section className="mt-3 rounded-2xl border border-line/62 bg-peach/10 p-3 sm:p-4">
-      <form onSubmit={search} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_140px_48px]">
-        <input className="input-field rounded-xl text-sm" value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索餐厅名或关键词" maxLength={100} />
-        <input className="input-field rounded-xl text-sm" value={city} onChange={(event) => setCity(event.target.value)} placeholder="城市" maxLength={100} />
-        <button type="submit" disabled={searching || !keyword.trim()} className="grid h-12 w-full place-items-center rounded-xl bg-rose text-white disabled:opacity-50 focus-ring" aria-label="搜索餐厅">
-          {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-        </button>
-      </form>
-
-      {candidates.length > 0 && (
-        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
-          <div className="grid gap-2">
-            {candidates.slice(0, 6).map((candidate, index) => (
-              <button
-                type="button"
-                key={`${candidate.amap_poi_id || candidate.name}-${index}`}
-                onClick={() => setSelected(candidate)}
-                className={cn("rounded-xl border p-3 text-left transition focus-ring", selected === candidate ? "border-rose/38 bg-rose/10" : "border-line/58 bg-surface-raised/84 hover:bg-peach/12")}
-              >
-                <span className="block font-display text-sm font-semibold text-ink">{candidate.name}</span>
-                <span className="mt-1 block truncate font-sc text-xs text-ink-muted">{candidate.address || candidate.city || "暂无地址"}</span>
-                <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-sc text-[11px] text-ink-muted">
-                  {candidate.poi_type && <span>{candidate.poi_type}</span>}
-                  {candidate.business_area && <span>{candidate.business_area}</span>}
-                  {formatDistance(candidate.distance_m) && <span>{formatDistance(candidate.distance_m)}</span>}
-                  {candidate.rating != null && <span>评分 {candidate.rating}</span>}
-                  {candidate.per_capita != null && <span>人均 {candidate.per_capita}</span>}
-                </span>
-              </button>
-            ))}
-          </div>
-          <div className="rounded-xl border border-line/58 bg-surface/78 p-3">
-            <p className="font-display text-sm font-semibold text-ink">{selected?.name ?? "选择一家餐厅"}</p>
-            <div className="mt-2 space-y-1 font-sc text-xs text-ink-muted">
-              <p>{selected?.address || "高德未返回地址"}</p>
-              <p>添加后会自动拉取高德详情，并打开右侧详情。</p>
-            </div>
-            <button type="button" onClick={create} disabled={!selected || creating} className="btn-primary mt-3 min-h-11 w-full rounded-xl px-4 font-sc text-sm disabled:opacity-50 focus-ring">
-              {creating ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "添加并查看详情"}
-            </button>
-          </div>
-        </div>
-      )}
-    </section>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetBody open={open}>
+        <SheetContent closeLabel="关闭抽一家" reducedMotion={reducedMotion} className="overflow-y-auto sm:mx-auto sm:max-w-3xl">
+          <SheetTitle className="pr-12 font-display text-xl font-semibold text-ink">抽一家去吃</SheetTitle>
+          <SheetDescription className="mt-1 pr-12 font-sc text-sm leading-relaxed text-ink-soft">
+            不知道吃什么的时候，交给运气。可以按人均、城市或附近距离先筛一筛。
+          </SheetDescription>
+          <RestaurantLottery onCreated={onCreated} onOpen={onOpenItem} />
+        </SheetContent>
+      </SheetBody>
+    </Sheet>
   );
 }
 
 function RestaurantLottery({ onCreated, onOpen }: { onCreated: () => void; onOpen: (id: number) => void }) {
+  const reducedMotion = useReducedMotion();
   const [budget, setBudget] = useState<[number | null, number | null]>([null, null]);
   const [radius, setRadius] = useState<number | null>(null);
   const [city, setCity] = useState("");
@@ -1266,15 +1333,25 @@ function RestaurantLottery({ onCreated, onOpen }: { onCreated: () => void; onOpe
   const [winner, setWinner] = useState<TodoItemOut | null>(null);
   const [candidate, setCandidate] = useState<TodoRestaurantCandidate | null>(null);
 
-  async function locate(nextRadius: number) {
+  function locate(nextRadius: number) {
+    if (radius === nextRadius) {
+      setRadius(null);
+      setLocation(null);
+      return;
+    }
     setRadius(nextRadius);
     if (!navigator.geolocation) {
-      toast.error("当前浏览器不支持定位");
+      setRadius(null);
+      toast.message("这个浏览器暂时拿不到位置，可以按人均或城市来抽");
       return;
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => setLocation(`${pos.coords.longitude},${pos.coords.latitude}`),
-      () => toast.error("定位未授权，可以继续只按人均或城市抽取"),
+      () => {
+        setRadius(null);
+        setLocation(null);
+        toast.message("没拿到位置也没关系，可以按人均或城市来抽");
+      },
       { enableHighAccuracy: true, timeout: 8000 },
     );
   }
@@ -1287,14 +1364,16 @@ function RestaurantLottery({ onCreated, onOpen }: { onCreated: () => void; onOpe
       const result = await api.lotteryTodoRestaurant({
         per_capita_min: budget[0],
         per_capita_max: budget[1],
-        location,
-        radius_km: radius,
+        location: radius ? location : null,
+        radius_km: radius && location ? radius : null,
         city: city.trim() || null,
       });
-      await new Promise((resolve) => setTimeout(resolve, 700));
+      if (!reducedMotion) await new Promise((resolve) => setTimeout(resolve, 700));
       setWinner(result.item);
       setCandidate(result.candidate);
-      if (!result.item && !result.candidate) toast.message("没有可抽取的餐厅");
+      if (!result.item && !result.candidate) toast.message("这次没抽到，换个条件再试试");
+    } catch {
+      return;
     } finally {
       setDrawing(false);
     }
@@ -1302,22 +1381,32 @@ function RestaurantLottery({ onCreated, onOpen }: { onCreated: () => void; onOpe
 
   async function saveCandidate() {
     if (!candidate) return;
-    const created = await api.createTodoRestaurant({ candidate });
-    toast.success("已保存抽中的餐厅");
-    setCandidate(null);
-    onCreated();
-    onOpen(created.id);
+    try {
+      const created = await api.createTodoRestaurant({ candidate });
+      toast.success("已经收进「今天想吃点」");
+      setCandidate(null);
+      onCreated();
+      onOpen(created.id);
+    } catch {
+      return;
+    }
   }
 
   return (
-    <section className="grid gap-4 pt-3 lg:grid-cols-[minmax(0,1fr)_360px]">
+    <section className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_280px]">
       <div className="rounded-2xl border border-line/62 bg-peach/10 p-4">
         <TodoLotteryScene spinning={drawing} />
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <SegmentedBudget value={budget} onChange={setBudget} />
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2" role="group" aria-label="附近距离">
             {[1, 3, 5, 10].map((value) => (
-              <button key={value} type="button" onClick={() => locate(value)} className={cn("btn-ghost min-h-11 rounded-xl px-3 font-sc text-sm focus-ring", radius === value && "bg-peach/28 text-rose-deep")}>
+              <button
+                key={value}
+                type="button"
+                onClick={() => locate(value)}
+                aria-pressed={radius === value}
+                className={cn("btn-ghost min-h-11 rounded-xl px-3 font-sc text-sm focus-ring", radius === value && "bg-peach/28 text-rose-deep")}
+              >
                 附近 {value}km
               </button>
             ))}
@@ -1325,9 +1414,10 @@ function RestaurantLottery({ onCreated, onOpen }: { onCreated: () => void; onOpe
         </div>
       </div>
       <aside className="rounded-2xl border border-line/62 bg-surface-raised/88 p-4">
-        <h2 className="font-display text-lg font-semibold text-ink">抽一家餐厅</h2>
-        <p className="mt-1 font-sc text-sm text-ink-muted">可按人均、城市或附近距离筛选。</p>
-        <input className="input-field mt-4 rounded-xl text-sm" value={city} onChange={(event) => setCity(event.target.value)} placeholder="城市/区域，可选" maxLength={100} />
+        <label className="block">
+          <span className="font-sc text-xs font-medium text-ink-muted">城市或区域（可选）</span>
+          <input className="input-field mt-1.5 rounded-xl" value={city} onChange={(event) => setCity(event.target.value)} placeholder="比如 杭州 西湖区" maxLength={100} />
+        </label>
         <button type="button" onClick={draw} disabled={drawing} className="btn-primary mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl font-sc text-sm focus-ring">
           {drawing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shuffle className="h-4 w-4" />}
           开始抽
@@ -1335,7 +1425,7 @@ function RestaurantLottery({ onCreated, onOpen }: { onCreated: () => void; onOpe
         {winner && (
           <button type="button" onClick={() => onOpen(winner.id)} className="mt-4 w-full rounded-xl bg-peach/18 p-4 text-left hairline focus-ring">
             <span className="font-display text-base font-semibold text-ink">{winner.title}</span>
-            <span className="mt-1 block font-sc text-xs text-ink-muted">点开查看详情</span>
+            <span className="mt-1 block font-sc text-xs text-ink-muted">就它了？点开看看详情</span>
           </button>
         )}
         {candidate && (
@@ -1343,7 +1433,7 @@ function RestaurantLottery({ onCreated, onOpen }: { onCreated: () => void; onOpe
             <p className="font-display text-base font-semibold text-ink">{candidate.name}</p>
             <p className="mt-1 font-sc text-xs text-ink-muted">{candidate.address || candidate.city}</p>
             <button type="button" onClick={saveCandidate} className="btn-primary mt-3 min-h-11 rounded-xl px-4 font-sc text-sm focus-ring">
-              保存这家
+              收进清单
             </button>
           </div>
         )}
@@ -1360,11 +1450,11 @@ function SegmentedBudget({ value, onChange }: { value: [number | null, number | 
     ["200+", [200, null]],
   ];
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid grid-cols-2 gap-2" role="group" aria-label="人均">
       {options.map(([label, option]) => {
         const selected = value[0] === option[0] && value[1] === option[1];
         return (
-          <button key={label} type="button" onClick={() => onChange(option)} className={cn("btn-ghost min-h-11 rounded-xl px-3 font-sc text-sm focus-ring", selected && "bg-peach/28 text-rose-deep")}>
+          <button key={label} type="button" onClick={() => onChange(option)} aria-pressed={selected} className={cn("btn-ghost min-h-11 rounded-xl px-3 font-sc text-sm focus-ring", selected && "bg-peach/28 text-rose-deep")}>
             {label}
           </button>
         );
@@ -1400,6 +1490,8 @@ function TodoDetailPanel({
 }) {
   const reducedMotion = useReducedMotion();
   const [detail, setDetail] = useState<TodoItemDetail | null>(null);
+  const [detailFailed, setDetailFailed] = useState(false);
+  const [detailAttempt, setDetailAttempt] = useState(0);
   const [comment, setComment] = useState("");
   const [saving, setSaving] = useState(false);
   const [scheduleDate, setScheduleDate] = useState(initialScheduleDate);
@@ -1412,13 +1504,39 @@ function TodoDetailPanel({
   const [weather, setWeather] = useState<TodoWeatherOut | null>(null);
 
   useEffect(() => {
+    let alive = true;
+    let inFlight = false;
     setDetail(null);
-    void api.getTodoItem(itemId).then(setDetail);
+    setDetailFailed(false);
+    const fetchDetail = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const next = await api.getTodoItem(itemId, { silent: true });
+        if (alive) {
+          setDetail(next);
+          setDetailFailed(false);
+        }
+      } catch {
+        if (alive) setDetailFailed(true);
+      } finally {
+        inFlight = false;
+      }
+    };
+    void fetchDetail();
     const timer = window.setInterval(() => {
-      void api.getTodoItem(itemId).then(setDetail);
+      if (!document.hidden) void fetchDetail();
     }, 8000);
-    return () => window.clearInterval(timer);
-  }, [itemId]);
+    const onVisibilityChange = () => {
+      if (!document.hidden) void fetchDetail();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [itemId, detailAttempt]);
 
   useEffect(() => {
     const savedDate = (detail?.schedules ?? schedules)[0]?.scheduled_on;
@@ -1467,6 +1585,8 @@ function TodoDetailPanel({
       setComment("");
       setDetail(await api.getTodoItem(itemId));
       await onChanged();
+    } catch {
+      return;
     } finally {
       setSaving(false);
     }
@@ -1474,9 +1594,14 @@ function TodoDetailPanel({
 
   async function uploadImage(file: File | null) {
     if (!file) return;
-    await api.postTodoImage(itemId, file);
-    setDetail(await api.getTodoItem(itemId));
-    await onChanged();
+    try {
+      await api.postTodoImage(itemId, file);
+      setDetail(await api.getTodoItem(itemId));
+      setPhotosOpen(true);
+      await onChanged();
+    } catch {
+      return;
+    }
   }
 
   async function saveNote(event?: FormEvent) {
@@ -1487,6 +1612,8 @@ function TodoDetailPanel({
       setDetail(await api.getTodoItem(itemId));
       setEditingNote(false);
       await onChanged();
+    } catch {
+      return;
     } finally {
       setSavingNote(false);
     }
@@ -1495,7 +1622,11 @@ function TodoDetailPanel({
   async function deleteImage(imageId: number) {
     await api.deleteTodoImage(imageId);
     setSelectedImage((currentImage) => (currentImage?.id === imageId ? null : currentImage));
-    setDetail(await api.getTodoItem(itemId));
+    try {
+      setDetail(await api.getTodoItem(itemId, { silent: true }));
+    } catch {
+      setDetail((current) => (current ? { ...current, images: current.images.filter((image) => image.id !== imageId) } : current));
+    }
     await onChanged();
   }
 
@@ -1508,7 +1639,7 @@ function TodoDetailPanel({
       setDetail(await api.getTodoItem(itemId));
       await onChanged();
     } catch {
-      // apiRequest already shows the server-provided error toast.
+      return;
     } finally {
       setSavingSchedule(false);
     }
@@ -1522,7 +1653,7 @@ function TodoDetailPanel({
       setDetail(await api.getTodoItem(itemId));
       await onChanged();
     } catch {
-      // apiRequest already shows the server-provided error toast.
+      return;
     } finally {
       setSavingSchedule(false);
     }
@@ -1559,9 +1690,10 @@ function TodoDetailPanel({
       />
       <motion.aside
         {...panelMotion}
-        className="fixed inset-x-0 bottom-0 z-[80] box-border flex w-full max-w-full flex-col overflow-hidden rounded-t-[1.35rem] border border-line/70 bg-surface text-ink shadow-[0_-24px_52px_-36px_rgb(var(--ink)/0.55)] max-h-[min(100dvh,100%)] lg:sticky lg:inset-auto lg:top-0 lg:z-auto lg:h-dvh lg:w-[390px] lg:flex-none lg:max-h-none lg:rounded-none lg:border-y-0 lg:border-r-0 lg:shadow-[-18px_0_42px_-34px_rgb(var(--ink)/0.5)]"
+        className="fixed inset-x-0 bottom-0 z-[80] box-border flex w-full max-w-full flex-col overflow-hidden rounded-t-[1.35rem] border border-line/70 bg-surface text-ink shadow-[0_-24px_52px_-36px_rgb(var(--ink)/0.55)] max-h-[min(92dvh,100%)] lg:sticky lg:inset-auto lg:top-[calc(var(--lb-header-clearance)+0.25rem)] lg:z-auto lg:h-[calc(100dvh-var(--lb-header-clearance)-var(--lb-nav-clearance)-0.5rem)] lg:w-[360px] lg:flex-none lg:max-h-none lg:rounded-[20px] lg:shadow-[0_2px_8px_rgb(var(--ink)/0.07)]"
         role="dialog"
         aria-modal="true"
+        aria-label={current?.title ? `任务详情：${current.title}` : "任务详情"}
       >
         <header className="border-b border-line/60 p-4">
           <div className="flex items-start gap-3">
@@ -1594,9 +1726,25 @@ function TodoDetailPanel({
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {!detail ? (
-            <div className="grid h-40 place-items-center">
-              <Loader2 className="h-5 w-5 animate-spin text-ink-muted" />
-            </div>
+            detailFailed ? (
+              <div className="grid h-40 place-items-center text-center" role="alert">
+                <div>
+                  <p className="font-sc text-sm text-ink-soft">详情暂时没打开</p>
+                  <button
+                    type="button"
+                    onClick={() => setDetailAttempt((value) => value + 1)}
+                    className="btn-ghost mt-3 inline-flex min-h-11 items-center gap-2 rounded-full px-4 font-sc text-sm focus-ring"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    再试一次
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid h-40 place-items-center">
+                <Loader2 className="h-5 w-5 animate-spin text-ink-muted motion-reduce:animate-none" />
+              </div>
+            )
           ) : (
             <div className="space-y-5">
               <section>
@@ -1744,7 +1892,16 @@ function TodoDetailPanel({
             <label className="btn-ghost inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl px-4 font-sc text-sm focus-ring">
               <ImagePlus className="h-4 w-4" />
               上传照片
-              <input type="file" accept="image/*" className="sr-only" onChange={(event) => uploadImage(event.target.files?.[0] ?? null)} />
+              <input
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  event.target.value = "";
+                  void uploadImage(file);
+                }}
+              />
             </label>
             <button type="button" onClick={() => onArchive(itemId)} className="grid h-11 w-11 place-items-center rounded-xl text-ink-muted hover:bg-ink/5 hover:text-rose-deep focus-ring" aria-label="收起项目">
               <Trash2 className="h-4 w-4" />
@@ -1796,6 +1953,14 @@ function TodoWeatherHint({ weather }: { weather: TodoWeatherOut }) {
   );
 }
 
+function mealOrderingLabel(value: string | null): string | null {
+  if (!value) return null;
+  const normalized = value.toLowerCase();
+  if (["1", "true", "yes", "y"].includes(normalized)) return "支持";
+  if (["0", "false", "no", "n"].includes(normalized)) return "暂不支持";
+  return value;
+}
+
 function RestaurantEvidence({ restaurant }: { restaurant: NonNullable<TodoItemDetail["restaurant"]> }) {
   const facts = restaurant.display_facts?.length
     ? restaurant.display_facts
@@ -1809,8 +1974,8 @@ function RestaurantEvidence({ restaurant }: { restaurant: NonNullable<TodoItemDe
         { label: "人均", value: restaurant.per_capita != null ? `约 ${restaurant.per_capita} 元` : null },
         { label: "营业时间", value: restaurant.opening_hours },
         { label: "坐标", value: restaurant.location },
-        { label: "高德 POI ID", value: restaurant.amap_poi_id },
-        { label: "是否支持点餐", value: restaurant.meal_ordering != null ? `高德字段 meal_ordering: ${restaurant.meal_ordering}` : null },
+        { label: "地图编号", value: restaurant.amap_poi_id },
+        { label: "是否支持点餐", value: mealOrderingLabel(restaurant.meal_ordering) },
         { label: "门店照片", value: restaurant.first_photo_url, href: restaurant.first_photo_url },
         { label: "地图导航", value: restaurant.amap_navigation_url, href: restaurant.amap_navigation_url },
       ];
@@ -1818,11 +1983,13 @@ function RestaurantEvidence({ restaurant }: { restaurant: NonNullable<TodoItemDe
   return (
     <section className="rounded-2xl border border-line/62 bg-surface-raised/66 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 className="font-sc text-sm font-medium text-ink">高德取证</h3>
+        <h3 className="font-sc text-sm font-medium text-ink">地点信息</h3>
         <StatusPill status={restaurant.parse_status} />
       </div>
-      {restaurant.parse_status === "failed" && restaurant.parse_error && (
-        <p className="mb-2 rounded-xl bg-red-50 p-2 font-sc text-xs text-red-700">{restaurant.parse_error}</p>
+      {restaurant.parse_status === "failed" && (
+        <p className="mb-2 rounded-xl bg-red-50 p-2 font-sc text-xs text-red-700 dark:bg-red-500/12 dark:text-red-100">
+          这次没查到完整的地点信息，下面是已经知道的部分。
+        </p>
       )}
       <dl className="divide-y divide-line/52 overflow-hidden rounded-xl border border-line/52 bg-surface/78">
         {facts.map((fact) => (
@@ -1834,7 +2001,7 @@ function RestaurantEvidence({ restaurant }: { restaurant: NonNullable<TodoItemDe
                   {fact.label === "门店照片" ? "打开门店照片" : fact.label === "地图导航" ? "打开高德地图标记" : fact.value}
                 </a>
               ) : (
-                fact.value || "未返回"
+                fact.value || "暂无"
               )}
             </dd>
           </div>
@@ -1845,26 +2012,23 @@ function RestaurantEvidence({ restaurant }: { restaurant: NonNullable<TodoItemDe
 }
 
 function TodoImageThumb({ image, onOpen }: { image: TodoImageOut; onOpen: () => void }) {
-  const [src, setSrc] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    let objectUrl: string | null = null;
-    void fetchTodoImageBlob("thumb", image.id).then((url) => {
-      objectUrl = url;
-      if (alive) setSrc(url);
-    });
-    return () => {
-      alive = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [image.id]);
-  return src ? (
-    <button type="button" onClick={onOpen} className="aspect-square w-full overflow-hidden rounded-xl focus-ring" aria-label="查看大图">
-      <img src={src} alt="打卡照片" className="h-full w-full object-cover transition hover:scale-[1.03]" />
-    </button>
-  ) : (
-    <div className="aspect-square w-full rounded-xl bg-line/40" />
-  );
+  const { url: src, status } = useAuthedBlobUrl({ kind: "todo-thumb", id: image.id });
+  if (src) {
+    return (
+      <button type="button" onClick={onOpen} className="aspect-square w-full overflow-hidden rounded-xl focus-ring" aria-label="查看大图">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt="打卡照片" className="h-full w-full object-cover transition motion-safe:hover:scale-[1.03]" />
+      </button>
+    );
+  }
+  if (status === "error") {
+    return (
+      <button type="button" onClick={onOpen} className="grid aspect-square w-full place-items-center rounded-xl bg-peach/14 px-2 text-center font-sc text-[11px] text-ink-muted focus-ring">
+        没加载出来
+      </button>
+    );
+  }
+  return <div className="aspect-square w-full animate-pulse rounded-xl bg-line/40 motion-reduce:animate-none" />;
 }
 
 function TodoImagePreview({
@@ -1876,28 +2040,16 @@ function TodoImagePreview({
   onClose: () => void;
   onDelete: () => void | Promise<void>;
 }) {
-  const [src, setSrc] = useState<string | null>(null);
+  const { url: src, status } = useAuthedBlobUrl({ kind: "todo-image", id: image.id });
   const [deleting, setDeleting] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    let objectUrl: string | null = null;
-    setSrc(null);
-    void fetchTodoImageBlob("file", image.id).then((url) => {
-      objectUrl = url;
-      if (alive) setSrc(url);
-    });
-    return () => {
-      alive = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [image.id]);
 
   async function deleteCurrent() {
     setDeleting(true);
     try {
       await onDelete();
       toast.success("照片已删除");
+    } catch {
+      return;
     } finally {
       setDeleting(false);
     }
@@ -1931,9 +2083,12 @@ function TodoImagePreview({
         </div>
         <div className="grid min-h-[40dvh] place-items-center overflow-hidden rounded-2xl bg-black/28">
           {src ? (
-            <img src={src} alt="Todo 照片大图" className="max-h-[82dvh] w-auto max-w-full object-contain" />
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={src} alt="打卡照片大图" className="max-h-[82dvh] w-auto max-w-full object-contain" />
+          ) : status === "error" ? (
+            <p className="font-sc text-sm text-white/85">照片没加载出来，稍后再试试</p>
           ) : (
-            <Loader2 className="h-6 w-6 animate-spin text-white" />
+            <Loader2 className="h-6 w-6 animate-spin text-white motion-reduce:animate-none" />
           )}
         </div>
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-// Event detail screen for memories, meetings, and received gifts with editable metadata, private images, and a mobile-safe composer.
+// Event detail screen for memories, meetings, and received gifts with creator-only metadata editing, a shared meeting editor both partners can open from the calendar heart, private images, and a mobile-safe composer.
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AuthGate } from "@/components/auth-gate";
-import { TimelineHeader } from "@/components/timeline-header";
+import { AppHeader } from "@/components/app-header";
 import { Avatar } from "@/components/avatar";
 import { Composer } from "@/components/composer";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -322,7 +322,7 @@ function EventDetailInner() {
   if (!event) {
     return (
       <>
-        <TimelineHeader back={{ href: "/timeline" }} />
+        <AppHeader back={{ href: "/timeline" }} />
         <LoadingScreen />
       </>
     );
@@ -330,49 +330,58 @@ function EventDetailInner() {
 
   const creator = lookupAuthor(event.creator_id);
   const isMine = event.creator_id === me.user.id;
-  const isMeeting = event.meeting_session_id !== null || event.event_kind === "offline_meeting";
+  const isMeeting = event.meeting_session !== null;
   const isGift = event.event_kind === "gift_received";
   const submission = event.submission_state;
   const locked = !submission.unlocked && event.visibility_mode === "mutual_submit";
+  const canOpenMeetingHeart = isMine || isMeeting;
+  const meetingHeartLabel = isMeeting ? "编辑这次见面" : "记成一次见面";
 
   return (
     <div className="viewport-guard relative z-[60] min-h-dvh w-full bg-[rgb(var(--cream)/1)] pb-[calc(env(safe-area-inset-bottom,0px)+5.5rem)]">
-      <TimelineHeader
+      <AppHeader
         back={{ href: "/timeline" }}
         title={isGift ? "一份收礼" : "一笔小事"}
         rightSlot={
-          isMine ? (
+          isMine || canOpenMeetingHeart ? (
             <>
-              <button
-                onClick={beginEditing}
-                disabled={editing || savingEdit}
-                className="grid h-10 w-10 place-items-center rounded-full text-ink-soft transition hover:bg-peach/16 hover:text-rose-deep focus-ring disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="编辑记录"
-                title="编辑记录"
-              >
-                <Pencil className="h-4.5 w-4.5" />
-              </button>
-              <button
-                onClick={handleToggleMeetingKind}
-                disabled={updatingKind || editing}
-                className={cn(
-                  "grid h-10 w-10 place-items-center rounded-full transition focus-ring disabled:cursor-wait disabled:opacity-60",
-                  isMeeting
-                    ? "bg-rose/12 text-rose-deep hover:bg-rose/18"
-                    : "text-ink-soft hover:bg-peach/16 hover:text-rose-deep",
-                )}
-                aria-label={isMeeting ? "编辑这次见面" : "标记为线下见面"}
-                title={isMeeting ? "编辑这次见面" : "标记为线下见面"}
-              >
-                <CalendarHeart className="h-5 w-5" />
-              </button>
-              <button
-                onClick={() => setConfirmDelete(true)}
-                className="grid h-10 w-10 place-items-center rounded-full text-rose-deep hover:bg-rose-deep/10 focus-ring"
-                aria-label="删除事件"
-              >
-                <Trash2 className="h-5 w-5" />
-              </button>
+              {isMine && (
+                <button
+                  onClick={beginEditing}
+                  disabled={editing || savingEdit}
+                  className="grid h-11 w-11 place-items-center rounded-full text-ink-soft transition hover:bg-peach/16 hover:text-rose-deep focus-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="编辑记录"
+                  title="编辑记录"
+                >
+                  <Pencil className="h-[18px] w-[18px]" />
+                </button>
+              )}
+              {canOpenMeetingHeart && (
+                <button
+                  onClick={handleToggleMeetingKind}
+                  disabled={updatingKind || editing}
+                  className={cn(
+                    "grid h-11 w-11 place-items-center rounded-full transition focus-ring disabled:cursor-wait disabled:opacity-60",
+                    isMeeting
+                      ? "bg-rose/12 text-rose-deep hover:bg-rose/18"
+                      : "text-ink-soft hover:bg-peach/16 hover:text-rose-deep",
+                  )}
+                  aria-label={meetingHeartLabel}
+                  title={meetingHeartLabel}
+                >
+                  <CalendarHeart className="h-5 w-5" />
+                </button>
+              )}
+              {isMine && (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="grid h-11 w-11 place-items-center rounded-full text-rose-deep hover:bg-rose-deep/10 focus-ring"
+                  aria-label="删除这条记录"
+                  title="删除这条记录"
+                >
+                  <Trash2 className="h-5 w-5" />
+                </button>
+              )}
             </>
           ) : undefined
         }
@@ -406,7 +415,7 @@ function EventDetailInner() {
             {isMeeting && (
               <span className="pill inline-flex items-center gap-1.5 bg-rose/10 text-rose-deep">
                 <CalendarHeart className="h-3 w-3" />
-                {event.meeting_session?.title ?? "线下见面"}
+                {event.meeting_session?.title ?? "见面"}
               </span>
             )}
             {isGift && (

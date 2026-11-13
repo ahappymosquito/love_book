@@ -1,11 +1,12 @@
 "use client";
 
-// Timeline image bubble that loads a small authenticated thumbnail before fetching the full image for preview.
+// Timeline image bubble that loads a small authenticated thumbnail through useAuthedBlobUrl before fetching the full image for preview on tap.
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { fetchFileBlob } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { useAuthedBlobUrl } from "@/lib/use-authed-blob-url";
 
 interface ImageThumbProps {
   imageId: number;
@@ -22,40 +23,11 @@ export function ImageThumb({
   onClick,
   className,
 }: ImageThumbProps) {
-  const [url, setUrl] = useState<string | null>(localUrl || null);
+  const remote = useAuthedBlobUrl(localUrl || pending ? null : { kind: "image-thumb", id: imageId });
+  const url = localUrl || pending ? (localUrl ?? null) : remote.url;
+  const loading = !localUrl && !pending && remote.status === "loading";
   const [fullUrl, setFullUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(!localUrl);
   const [opening, setOpening] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    let nextUrl: string | null = null;
-    if (localUrl || pending) {
-      setUrl(localUrl ?? null);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    fetchFileBlob("image-thumbs", imageId)
-      .then((u) => {
-        if (cancelled) {
-          URL.revokeObjectURL(u);
-          return;
-        }
-        nextUrl = u;
-        setUrl(u);
-        setLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-      if (nextUrl && !localUrl) URL.revokeObjectURL(nextUrl);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imageId]);
 
   useEffect(() => {
     return () => {
@@ -107,10 +79,10 @@ export function ImageThumb({
           decoding="async"
         />
       ) : loading ? (
-        <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+        <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/40 to-transparent motion-reduce:animate-none" />
       ) : (
         <div className="absolute inset-0 grid place-items-center text-xs text-ink-muted font-sc">
-          无法加载
+          图片没加载出来
         </div>
       )}
       {pending && (

@@ -1,6 +1,6 @@
 "use client";
 
-// Admin console with scrapbook panels for pairs, tokens, contacts, validated AI enable state, AMap-grounded AI test status, avatars, and clipboard-safe links.
+// Admin console with scrapbook panels for pairs, tokens, contacts, validated AI enable state, AMap-grounded AI test status, avatars, and clipboard-safe links; todo category labels come from the shared lib/todo-meta.
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -32,6 +32,7 @@ import { AvatarPicker } from "@/components/avatar-picker";
 import { formatAbsolute, fromLocalInputValue, toLocalInputValue } from "@/lib/format";
 import { AVATAR_PRESETS, type AdminAIConfigOut, type AdminAIConnectionTestOut, type AIProtocol, type PairCreated, type PairOut, type TodoCategory } from "@/lib/types";
 import { cn } from "@/lib/cn";
+import { TODO_CATEGORY_LABELS } from "@/lib/todo-meta";
 
 function toDateInputValue(date: Date): string {
   const year = date.getFullYear();
@@ -475,12 +476,7 @@ export default function AdminPage() {
   );
 }
 
-const CATEGORY_LABELS: Record<TodoCategory, string> = {
-  food: "吃喝",
-  play: "玩乐",
-  stay: "住宿",
-  wish: "许愿",
-};
+const CATEGORY_LABELS = TODO_CATEGORY_LABELS;
 
 const ADMIN_TEST_SAMPLES: Array<{ key: string; label: string; keyword: string; city: string; expected: TodoCategory | null }> = [
   { key: "food", label: "江西小炒", keyword: "江西小炒(西溪北苑东区店)", city: "杭州", expected: "food" },

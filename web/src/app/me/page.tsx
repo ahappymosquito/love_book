@@ -1,6 +1,6 @@
 "use client";
 
-// Grouped settings surface for identity, location, shared quotes, security-password access, logout, and closing the pair.
+// Grouped settings surface for identity, location, shared quotes, security-password access, logout (shared useLogout), and closing the pair; relationship days use the Asia/Shanghai calendar.
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -29,21 +29,16 @@ import { AuthGate } from "@/components/auth-gate";
 import { Avatar } from "@/components/avatar";
 import { AvatarPicker } from "@/components/avatar-picker";
 import { DissolvePairDialog } from "@/components/dissolve-pair-dialog";
-import { TimelineHeader } from "@/components/timeline-header";
-import { api, pairDissolvedFromError } from "@/lib/api";
+import { AppHeader } from "@/components/app-header";
+import { api, APIError, friendlyErrorMessage, pairDissolvedFromError } from "@/lib/api";
+import { shanghaiDateKey } from "@/lib/dates";
 import { useAppStore } from "@/lib/store";
+import { useLogout } from "@/lib/use-logout";
 import type { DefaultQuoteOut, QuoteOut, SecurityPasswordOut } from "@/lib/types";
-
-function todayDateOnly(): string {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
-}
 
 function daysTogether(startedOn: string): number {
   const start = new Date(`${startedOn}T00:00:00`);
-  const end = new Date(`${todayDateOnly()}T00:00:00`);
+  const end = new Date(`${shanghaiDateKey()}T00:00:00`);
   return Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1);
 }
 
@@ -60,6 +55,7 @@ function MeInner() {
   const me = useAppStore((s) => s.me)!;
   const setMe = useAppStore((s) => s.setMe);
   const logout = useAppStore((s) => s.logout);
+  const handleLogout = useLogout();
   const setToken = useAppStore((s) => s.setToken);
   const setFarewell = useAppStore((s) => s.setFarewell);
   const [displayName, setDisplayName] = useState(me.user.display_name);
@@ -297,17 +293,10 @@ function MeInner() {
       setConfirmSecurityPassword("");
       toast.success(security?.configured ? "安全密码已重置" : "安全密码已设置");
     } catch (error) {
-      const message = error instanceof Error && error.message ? error.message : "安全密码保存失败，请稍后再试";
-      toast.error(message);
+      if (!(error instanceof APIError)) toast.error("安全密码保存失败，请稍后再试");
     } finally {
       setSavingSecurity(false);
     }
-  }
-
-  function handleLogout() {
-    logout();
-    toast.success("已退出，期待再见");
-    router.replace("/");
   }
 
   async function handleDissolve(message: string) {
@@ -330,8 +319,7 @@ function MeInner() {
         router.replace("/");
         return;
       }
-      const text = error instanceof Error && error.message ? error.message : "暂时合不上，请稍后再试";
-      toast.error(text);
+      toast.error(error instanceof APIError ? friendlyErrorMessage(error) : "暂时合不上，请稍后再试");
     } finally {
       setDissolving(false);
     }
@@ -339,7 +327,7 @@ function MeInner() {
 
   return (
     <div className="viewport-guard min-h-dvh w-full">
-      <TimelineHeader title="设置" />
+      <AppHeader title="设置" showLogout={false} />
 
       <main className="mx-auto w-full max-w-4xl min-w-0 px-4 pt-5 sm:px-6 scroll-pad-bottom">
         <motion.section

@@ -1,6 +1,6 @@
 "use client";
 
-// Authenticated five-slot Liquid Glass navigation with unified shared-lens motion, mobile-safe width, and a prominent create action.
+// Authenticated five-slot Liquid Glass navigation with unified shared-lens motion, mobile-safe width, and a prominent create action; on desktop its width follows the shared page-width table so it lines up with the header and main content.
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -10,6 +10,7 @@ import { BookHeart, CalendarCheck2, ListTodo, Moon } from "lucide-react";
 import { CreateNavAction } from "./create-nav-action";
 import { cn } from "@/lib/cn";
 import { MOTION_TRANSITIONS } from "@/lib/motion";
+import { PAGE_CHROME_WIDTH_SM_CLASS, pageWidthForPath } from "@/lib/page-width";
 import { useAppStore } from "@/lib/store";
 
 const USER_APP_PREFIXES = ["/timeline", "/love-receipts", "/create", "/cycle", "/todo", "/habits", "/me"];
@@ -40,10 +41,10 @@ export function BottomNav() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 box-border max-w-full px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.55rem)] pt-2"
+      className="fixed inset-x-0 bottom-0 z-40 box-border max-w-full px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.55rem)] pt-2 sm:px-6"
       aria-label="底部导航"
     >
-      <div className="liquid-nav-shell mx-auto grid h-[72px] w-full max-w-[520px] grid-cols-5 items-center px-2 sm:max-w-5xl sm:px-4">
+      <div className={cn("liquid-nav-shell mx-auto grid h-[72px] w-full max-w-[520px] grid-cols-5 items-center px-2 sm:px-4", PAGE_CHROME_WIDTH_SM_CLASS[pageWidthForPath(pathname)])}>
         <NavItem href="/timeline" label="首页" active={createWindowPhase === "closed" && active === "timeline"} reducedMotion={reducedMotion} icon={<BookHeart className="h-5 w-5" />} />
         <NavItem href="/cycle" label="周期" active={createWindowPhase === "closed" && active === "cycle"} reducedMotion={reducedMotion} icon={<Moon className="h-5 w-5" />} />
         <CreateNavAction

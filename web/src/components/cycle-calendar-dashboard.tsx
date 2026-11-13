@@ -1,6 +1,7 @@
 "use client";
 
 // Cycle dashboard with a solid calendar canvas, Liquid Glass date and view controls, readable prediction hierarchy, and shared mobile-safe record editing.
+// Prediction fields may be null before the first period record, which shows a warm "record your first period" state; the mobile quick-record capsule floats above the bottom nav, and "today" follows the Asia/Shanghai calendar.
 
 import {
   addDays,
@@ -8,7 +9,6 @@ import {
   endOfMonth,
   endOfWeek,
   format,
-  isSameDay,
   isSameMonth,
   parseISO,
   startOfMonth,
@@ -44,10 +44,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { GlassSurface } from "@/components/ui/glass-surface";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { readCycleReminderDays, saveCycleReminderDays } from "@/lib/cycle-reminder";
+import { dateFromKey, shanghaiDateKey } from "@/lib/dates";
 import { useAppStore } from "@/lib/store";
 import type { CycleDashboardOut, CycleFlow, CycleMood, CyclePhase, DailyLog, DailyLogInput } from "@/lib/types";
 
@@ -199,18 +201,26 @@ function confidenceLabel(value: "high" | "medium" | "low"): string {
   return value === "high" ? "较高" : value === "medium" ? "中等" : "较低";
 }
 
+function hasPrediction(stats: CycleDashboardOut["stats"]): boolean {
+  return (stats.has_prediction ?? true) && Boolean(stats.next_period_start && stats.next_period_end);
+}
+
+function formatDay(value: string | null, pattern: string): string {
+  return value ? format(parseISO(value), pattern) : "待记录";
+}
+
 function formatPeriodWindow(stats: CycleDashboardOut["stats"], compact = false): string {
   const pattern = compact ? "M/d" : "M 月 d 日";
-  return `${format(parseISO(stats.next_period_start), pattern)} - ${format(parseISO(stats.next_period_end), pattern)}`;
+  return `${formatDay(stats.next_period_start, pattern)} - ${formatDay(stats.next_period_end, pattern)}`;
 }
 
 function formatStartWindow(stats: CycleDashboardOut["stats"], compact = false): string {
   const pattern = compact ? "M/d" : "M 月 d 日";
-  return `${format(parseISO(stats.prediction_start), pattern)} - ${format(parseISO(stats.prediction_end), pattern)}`;
+  return `${formatDay(stats.prediction_start, pattern)} - ${formatDay(stats.prediction_end, pattern)}`;
 }
 
 function hasStartWindow(stats: CycleDashboardOut["stats"]): boolean {
-  return stats.prediction_start !== stats.prediction_end;
+  return Boolean(stats.prediction_start && stats.prediction_end) && stats.prediction_start !== stats.prediction_end;
 }
 
 function nextPeriodHint(stats: CycleDashboardOut["stats"]): string {
@@ -265,12 +275,13 @@ function TermLink({
 
 export function CycleCalendarDashboard() {
   const pairId = useAppStore((s) => s.me?.pair_id);
-  const [viewDate, setViewDate] = useState(() => new Date());
+  const [viewDate, setViewDate] = useState(() => dateFromKey(shanghaiDateKey()));
   const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [dashboard, setDashboard] = useState<CycleDashboardOut | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(toISODate(new Date()));
+  const [selectedDate, setSelectedDate] = useState(() => shanghaiDateKey());
   const [editing, setEditing] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [filters, setFilters] = useState<FilterState>({ symptom: "", hasNote: false, periodOnly: false });
   const [reminderDays, setReminderDays] = useState(3);
   const isMobile = useMediaQuery("(max-width: 767px)");
@@ -302,16 +313,30 @@ export function CycleCalendarDashboard() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (new URLSearchParams(window.location.search).get("quickLog") !== "today") return;
-    const today = new Date();
-    setViewDate(today);
-    setSelectedDate(toISODate(today));
+    const todayKey = shanghaiDateKey();
+    setViewDate(dateFromKey(todayKey));
+    setSelectedDate(todayKey);
     setEditing(true);
+    setDetailOpen(true);
   }, []);
 
+  const todayKey = shanghaiDateKey();
   const logsByDate = useMemo(() => dateKey(dashboard?.logs ?? []), [dashboard]);
   const selectedLog = logsByDate.get(selectedDate) ?? null;
   const filteredDates = useMemo(() => applyFilters(dashboard?.logs ?? [], filters), [dashboard, filters]);
-  const todayLog = logsByDate.get(toISODate(new Date()));
+  const todayLog = logsByDate.get(todayKey);
+  const todayRecorded = todayLog?.source === "recorded";
+
+  function openDay(date: string, edit: boolean) {
+    setSelectedDate(date);
+    setEditing(edit);
+    setDetailOpen(true);
+  }
+
+  function quickLogToday() {
+    setViewDate(dateFromKey(todayKey));
+    openDay(todayKey, true);
+  }
 
   async function saveLog(date: string, input: DailyLogInput) {
     const range = dashboardRange(viewDate, viewMode);
@@ -341,41 +366,27 @@ export function CycleCalendarDashboard() {
   }
 
   return (
-    <div className="viewport-guard min-h-dvh w-full pb-[calc(env(safe-area-inset-bottom,0px)+9rem)]">
+    <div className="viewport-guard min-h-dvh w-full pb-[calc(env(safe-area-inset-bottom,0px)+10.5rem)] md:pb-[calc(env(safe-area-inset-bottom,0px)+7.5rem)]">
       <AppHeader
         title="周期日历"
         subtitle="记录和预测仅供参考"
         rightSlot={
-          <Button size="sm" onClick={() => setEditing(true)} className="rounded-full">
+          <Button size="sm" onClick={quickLogToday} className="hidden rounded-full md:inline-flex">
             <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">快速记录</span>
+            快速记录
           </Button>
         }
       />
 
       <main className="mx-auto grid w-full max-w-7xl min-w-0 gap-5 px-4 pt-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section className="min-w-0 space-y-5">
-          {dashboard && (
-            <HeaderSummaryCards
-              stats={dashboard.stats}
-              todayRecorded={todayLog?.source === "recorded"}
-              onQuickLog={() => {
-                setSelectedDate(toISODate(new Date()));
-                setEditing(true);
-              }}
-            />
-          )}
+          {dashboard?.is_empty || (dashboard && !hasPrediction(dashboard.stats)) ? (
+            <EmptyState onStart={quickLogToday} />
+          ) : dashboard ? (
+            <HeaderSummaryCards stats={dashboard.stats} todayRecorded={todayRecorded} onQuickLog={quickLogToday} />
+          ) : null}
 
           <ReminderSettingsCard value={reminderDays} onChange={changeReminderDays} />
-
-          {dashboard?.is_empty ? (
-            <EmptyState
-              onStart={() => {
-                setSelectedDate(toISODate(new Date()));
-                setEditing(true);
-              }}
-            />
-          ) : null}
 
           <Card className="overflow-hidden">
             <CardHeader className="gap-4 sm:flex sm:flex-row sm:items-center sm:justify-between">
@@ -390,9 +401,8 @@ export function CycleCalendarDashboard() {
                 onPrev={() => setViewDate((d) => (viewMode === "week" ? addDays(d, -7) : subMonths(d, 1)))}
                 onNext={() => setViewDate((d) => (viewMode === "week" ? addDays(d, 7) : addMonths(d, 1)))}
                 onToday={() => {
-                  const today = new Date();
-                  setViewDate(today);
-                  setSelectedDate(toISODate(today));
+                  setViewDate(dateFromKey(todayKey));
+                  setSelectedDate(todayKey);
                 }}
               />
             </CardHeader>
@@ -411,18 +421,16 @@ export function CycleCalendarDashboard() {
                       <Loader2 className="h-6 w-6 animate-spin" />
                     </div>
                   ) : viewMode === "list" ? (
-                    <RecordList logs={dashboard.logs} filteredDates={filteredDates} onSelect={setSelectedDate} />
+                    <RecordList logs={dashboard.logs} filteredDates={filteredDates} onSelect={(date) => openDay(date, false)} />
                   ) : (
                     <CalendarMonthView
                       mode={viewMode}
                       viewDate={viewDate}
                       logs={dashboard.logs}
                       selectedDate={selectedDate}
+                      todayKey={todayKey}
                       filteredDates={filteredDates}
-                      onSelect={(date) => {
-                        setSelectedDate(date);
-                        setEditing(false);
-                      }}
+                      onSelect={(date) => openDay(date, false)}
                     />
                   )}
                 </motion.div>
@@ -430,16 +438,16 @@ export function CycleCalendarDashboard() {
             </CardContent>
           </Card>
 
-          {dashboard && <CycleTimeline stats={dashboard.stats} />}
+          {dashboard && hasPrediction(dashboard.stats) && <CycleTimeline stats={dashboard.stats} />}
           <PhaseLegend />
-          {dashboard && <StatsCards dashboard={dashboard} />}
+          {dashboard && hasPrediction(dashboard.stats) && <StatsCards dashboard={dashboard} />}
 
           <Card className="p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-3">
                 <ShieldCheck className="mt-0.5 h-5 w-5 text-rose" />
                 <p className="font-sc text-sm leading-relaxed text-ink-soft">
-                  数据保存在当前服务中，当前 pair 双方可共同查看和编辑。预测结果仅供参考。
+                  这份记录只在你们两个人之间共享，双方都可以查看和补充。预测只作参考，身体的感受最重要。
                 </p>
               </div>
             </div>
@@ -459,26 +467,31 @@ export function CycleCalendarDashboard() {
         </aside>
       </main>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 box-border max-w-full border-t border-line/60 bg-surface/90 p-3 backdrop-blur-xl md:hidden">
-        <Button
-          className="w-full"
-          size="lg"
-          onClick={() => {
-            setSelectedDate(toISODate(new Date()));
-            setEditing(true);
-          }}
-        >
-          <Plus className="h-4 w-4" />
-          快速记录今天
-        </Button>
+      <div className="nav-clearance-bottom fixed inset-x-0 z-30 box-border max-w-full px-4 md:hidden">
+        <GlassSurface variant="prominent" shape="capsule" className="mx-auto flex w-full max-w-[520px] items-center gap-2 py-1.5 pl-4 pr-1.5">
+          <span className="min-w-0 flex-1 truncate font-sc text-sm text-ink-soft">
+            {todayRecorded ? "今天已经记过啦" : "今天的状态还没记"}
+          </span>
+          <Button className="flex-none rounded-full" onClick={quickLogToday}>
+            <Plus className="h-4 w-4" />
+            {todayRecorded ? "再补一点" : "快速记录"}
+          </Button>
+        </GlassSurface>
       </div>
 
       {isMobile && (
-        <Sheet open={Boolean(selectedLog)} onOpenChange={(open) => !open && setSelectedDate("")}>
-          <SheetBody open={Boolean(selectedLog)}>
+        <Sheet
+          open={detailOpen}
+          onOpenChange={(open) => {
+            if (open) return;
+            setDetailOpen(false);
+            setEditing(false);
+          }}
+        >
+          <SheetBody open={detailOpen}>
             <SheetContent>
               <SheetTitle className="font-display text-xl text-ink">日期详情</SheetTitle>
-              <SheetDescription className="font-sc text-sm text-ink-soft">编辑当天状态，保存后会同步到当前 pair。</SheetDescription>
+              <SheetDescription className="font-sc text-sm text-ink-soft">记下这一天的状态，保存后对方也能看到。</SheetDescription>
               <div className="mt-5 max-h-[72dvh] overflow-y-auto pr-1">
                 <DayDetailPanel
                   log={selectedLog}
@@ -554,7 +567,12 @@ export function HeaderSummaryCards({
 }) {
   const nextText = `预计 ${formatPeriodWindow(stats)}`;
   const cards = [
-    { icon: HeartPulse, label: "当前周期", value: `周期第 ${stats.current_cycle_day} 天`, hint: phaseMeta[stats.current_phase].name },
+    {
+      icon: HeartPulse,
+      label: "当前周期",
+      value: stats.current_cycle_day != null ? `周期第 ${stats.current_cycle_day} 天` : "等下一次记录",
+      hint: phaseMeta[stats.current_phase].name,
+    },
     { icon: Droplet, label: "下次经期", value: nextText, hint: nextPeriodHint(stats) },
     { icon: ClipboardList, label: "今日状态", value: todayRecorded ? "今日已记录" : "今日尚未记录", hint: "10 秒快速记录" },
   ];
@@ -674,6 +692,7 @@ export function CalendarMonthView({
   viewDate,
   logs,
   selectedDate,
+  todayKey,
   filteredDates,
   onSelect,
 }: {
@@ -681,6 +700,7 @@ export function CalendarMonthView({
   viewDate: Date;
   logs: DailyLog[];
   selectedDate: string;
+  todayKey: string;
   filteredDates: Set<string>;
   onSelect: (date: string) => void;
 }) {
@@ -705,7 +725,7 @@ export function CalendarMonthView({
               date={day}
               log={logMap.get(key)}
               selected={selectedDate === key}
-              today={isSameDay(day, new Date())}
+              today={key === todayKey}
               muted={mode === "month" && !isSameMonth(day, viewDate)}
               filtered={filteredDates.has(key)}
               prevPhase={logMap.get(toISODate(addDays(day, -1)))?.phase}
@@ -1081,6 +1101,7 @@ function OptionGrid<T extends string>({
 }
 
 export function CycleTimeline({ stats }: { stats: CycleDashboardOut["stats"] }) {
+  if (stats.current_cycle_day == null || stats.average_cycle_length <= 0) return null;
   const progress = Math.min(100, Math.max(0, (stats.current_cycle_day / stats.average_cycle_length) * 100));
   const ovulationIndex = Math.max(stats.average_period_length + 1, stats.average_cycle_length - 14);
   const fertileStart = Math.max(stats.average_period_length, ovulationIndex - 5);
@@ -1125,9 +1146,9 @@ export function StatsCards({ dashboard }: { dashboard: CycleDashboardOut }) {
   const items: Array<{ label: string; value: string; hint?: string }> = [
     { label: "平均周期长度", value: `${stats.average_cycle_length} 天` },
     { label: "平均经期长度", value: `${stats.average_period_length} 天` },
-    { label: "最近一次经期开始", value: format(parseISO(stats.last_period_start), "M 月 d 日") },
+    { label: "最近一次经期开始", value: formatDay(stats.last_period_start, "M 月 d 日") },
     { label: "下次经期预测", value: formatPeriodWindow(stats, true) },
-    { label: "开始日参考范围", value: hasStartWindow(stats) ? formatStartWindow(stats, true) : format(parseISO(stats.next_period_start), "M/d") },
+    { label: "开始日参考范围", value: hasStartWindow(stats) ? formatStartWindow(stats, true) : formatDay(stats.next_period_start, "M/d") },
     { label: "预测可信度", value: confidenceLabel(stats.confidence), hint: "由记录数量和周期波动估算，较低时开始日可能前后浮动。" },
     { label: "本月已记录天数", value: `${dashboard.logs.filter((log) => log.source === "recorded").length} 天` },
   ];
@@ -1148,20 +1169,20 @@ export function EmptyState({ onStart }: { onStart: () => void }) {
   return (
     <Card className="overflow-hidden p-6">
       <div className="grid gap-5 md:grid-cols-[180px_1fr] md:items-center">
-        <div className="relative h-36 overflow-hidden rounded-3xl bg-peach/20">
+        <div className="relative grid h-36 place-items-center overflow-hidden rounded-3xl bg-peach/20" aria-hidden="true">
           <div className="absolute left-6 top-8 h-20 w-20 rounded-full border-8 border-white/75" />
-          <div className="absolute bottom-7 right-6 h-10 w-10 rounded-full bg-violet-300/70" />
-          <div className="absolute inset-x-5 bottom-5 h-3 rounded-full bg-white/70" />
+          <div className="absolute bottom-7 right-6 h-10 w-10 rounded-full bg-rose/25" />
+          <Droplet className="relative h-9 w-9 text-rose-deep" strokeWidth={1.8} />
         </div>
         <div>
-          <h2 className="font-display text-xl font-semibold text-ink">还没有周期记录</h2>
+          <h2 className="font-display text-xl font-semibold text-ink">从第一次经期记录开始</h2>
           <p className="mt-2 font-sc text-sm leading-relaxed text-ink-soft">
-            可以先记录一次经期，之后日历会按历史记录给出参考预测。
+            记下最近一次经期开始的那天，日历就会慢慢学会你的节奏，给出温和的参考预测。之后每天点一下就能补充状态。
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
             <Button onClick={onStart}>
               <Plus className="h-4 w-4" />
-              开始记录
+              记下第一次
             </Button>
           </div>
         </div>

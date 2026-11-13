@@ -1,6 +1,7 @@
 "use client";
 
 // 无 token 时全屏像素花田加纸面墨水弹窗，底部居中展示备案号链接；有 token 或入口口令时直接进入，不挂游戏。已合上的 pair 只展示告别那句话。
+// 登录后的 next 跳转只解码一次（URLSearchParams 已解码），并经 sanitizeNext 限制为站内路径。
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -11,6 +12,7 @@ import { LoadingScreen } from "@/components/loading-screen";
 import { XiaohuaRunner, type XiaohuaRunnerHandle } from "@/components/xiaohua-runner";
 import { api, APIError, pairDissolvedFromError } from "@/lib/api";
 import { RUNNER_CHAPTER_LABELS } from "@/lib/xiaohua-runner";
+import { sanitizeNext } from "@/lib/safe-next";
 import { useAppStore } from "@/lib/store";
 import type { GameLeaderboardOut } from "@/lib/types";
 
@@ -28,18 +30,6 @@ function IcpFilingLink() {
       <a href={ICP_URL} target="_blank" rel="noopener noreferrer">{ICP_NUMBER}</a>
     </footer>
   );
-}
-
-function sanitizeNext(value: string | null | undefined): string | null {
-  if (!value) return null;
-  let decoded = value;
-  try {
-    decoded = decodeURIComponent(value);
-  } catch {
-    decoded = value;
-  }
-  if (!decoded.startsWith("/") || decoded.startsWith("//")) return null;
-  return decoded;
 }
 
 async function reportLoginFingerprint() {

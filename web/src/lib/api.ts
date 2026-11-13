@@ -1,6 +1,7 @@
 "use client";
 
 // Browser API client for authentication, closed-pair farewells, runner rankings, profiles, timelines, private media, plans, habits, cycles, quotes, and admin workflows.
+// Failure toasts use friendly, status-based Chinese copy instead of raw server detail; background polls can opt into silent mode.
 // In production it uses the host Nginx same-origin /api reverse proxy; in development it can fall back locally.
 
 import { toast } from "sonner";
@@ -88,6 +89,27 @@ export function pairDissolvedFromError(error: unknown): PairDissolvedOut | null 
   return error instanceof APIError ? pairDissolvedFromUnknown(error.detail) : null;
 }
 
+const CJK_PATTERN = /[\u3400-\u9fff]/;
+
+function friendlyStatusMessage(status: number, message: string): string {
+  if (message && CJK_PATTERN.test(message) && message.length <= 80) return message;
+  if (status === 0) return "网络好像断开了，检查一下网络再试试";
+  if (status === 401) return "登录状态过期了，请重新进入";
+  if (status === 403) return "这一步只有创建的人可以操作";
+  if (status === 404) return "这条内容已经找不到了";
+  if (status === 409) return "内容刚刚有变化，刷新后再试一次";
+  if (status === 413) return "文件有点大，换一张小一点的试试";
+  if (status === 422 || status === 400) return "填写的内容有点问题，检查一下再试";
+  if (status === 429) return "操作有点频繁，稍等一会儿再试";
+  if (status >= 500) return "这会儿没能完成，请稍后再试";
+  return "没能完成，请稍后再试";
+}
+
+export function friendlyErrorMessage(error: unknown): string {
+  if (error instanceof APIError) return friendlyStatusMessage(error.status, error.message);
+  return "没能完成，请稍后再试";
+}
+
 interface RequestOptions {
   method?: string;
   json?: unknown;
@@ -145,7 +167,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "网络错误";
-    if (!silent) toast.error(`网络错误：${msg}`);
+    const aborted = err instanceof DOMException && err.name === "AbortError";
+    if (!silent && !aborted) toast.error(friendlyStatusMessage(0, ""));
     throw new APIError(0, msg);
   }
 
@@ -177,7 +200,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     const dissolved = pairDissolvedFromUnknown(detail);
     const msg = dissolved?.message ?? (typeof detail === "string" ? detail : JSON.stringify(detail));
     if (!silent && !dissolved) {
-      toast.error(`请求失败：${msg}`);
+      toast.error(withAdmin ? `请求失败：${msg}` : friendlyStatusMessage(resp.status, msg));
     }
     throw new APIError(resp.status, msg, dissolved ?? detail);
   }
@@ -344,11 +367,6 @@ export const api = {
     });
   },
   deleteCycleLog: (date: string) => apiRequest<void>(`/cycles/logs/${date}`, { method: "DELETE" }),
-  clearCycleLogs: () => apiRequest<void>("/cycles/logs", { method: "DELETE" }),
-  seedCycleExampleData: () =>
-    apiRequest<DailyLog[]>("/cycles/example-data", {
-      method: "POST",
-    }),
 
   // Habits
   getHabitDashboard: (params: { start: string; end: string }) => {
@@ -372,7 +390,8 @@ export const api = {
   },
 
   // Todo
-  getTodoDashboard: (month: string) => apiRequest<TodoDashboardOut>(`/todos/dashboard?month=${month}`),
+  getTodoDashboard: (month: string, options?: { silent?: boolean }) =>
+    apiRequest<TodoDashboardOut>(`/todos/dashboard?month=${month}`, { silent: options?.silent }),
   createTodoItem: (payload: { category: TodoCategory; title: string; note?: string | null }) =>
     apiRequest<TodoItemOut>("/todos/items", { method: "POST", json: payload }),
   updateTodoItem: (
@@ -391,7 +410,8 @@ export const api = {
   deleteTodoSchedule: (id: number) => apiRequest<void>(`/todos/schedules/${id}`, { method: "DELETE" }),
   classifyTodoItem: (id: number) => apiRequest<TodoItemOut>(`/todos/items/${id}/classify`, { method: "POST" }),
   classifyOpenTodoItems: () => apiRequest<TodoClassifyOpenOut>("/todos/items/classify-open", { method: "POST" }),
-  listTodoCandidates: () => apiRequest<TodoCandidateOut[]>("/todos/candidates"),
+  listTodoCandidates: (options?: { silent?: boolean }) =>
+    apiRequest<TodoCandidateOut[]>("/todos/candidates", { silent: options?.silent }),
   createTodoCandidate: (payload: { raw_title: string; category?: TodoCategory | null }) =>
     apiRequest<TodoCandidateOut>("/todos/candidates", { method: "POST", json: payload }),
   confirmTodoCandidate: (
@@ -413,7 +433,8 @@ export const api = {
     radius_km?: number | null;
     city?: string | null;
   }) => apiRequest<TodoLotteryOut>("/todos/restaurants/lottery", { method: "POST", json: payload }),
-  getTodoItem: (id: number) => apiRequest<TodoItemDetail>(`/todos/items/${id}`),
+  getTodoItem: (id: number, options?: { silent?: boolean }) =>
+    apiRequest<TodoItemDetail>(`/todos/items/${id}`, { silent: options?.silent }),
   getTodoWeather: (id: number) => apiRequest<TodoWeatherOut | null>(`/todos/items/${id}/weather`, { silent: true }),
   postTodoComment: (id: number, text: string) =>
     apiRequest<TodoCommentOut>(`/todos/items/${id}/comments`, { method: "POST", json: { text } }),

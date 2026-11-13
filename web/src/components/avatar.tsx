@@ -1,11 +1,11 @@
 "use client";
 
-// Shared avatar renderer that loads private uploaded avatar images and falls back to emoji or the name initial.
+// Shared avatar renderer: loads the private uploaded image through useAuthedBlobUrl and falls back to the emoji, then the name initial, when the image is missing, fails to load, or fails to decode.
 
-import { useEffect, useState } from "react";
-import { fetchAvatarBlob } from "@/lib/api";
+import { useState } from "react";
 import { cn } from "@/lib/cn";
 import type { UserOut } from "@/lib/types";
+import { useAuthedBlobUrl } from "@/lib/use-authed-blob-url";
 
 interface AvatarProps {
   user?: Pick<UserOut, "id" | "display_name" | "avatar" | "avatar_has_image" | "avatar_updated_at"> | null;
@@ -41,30 +41,11 @@ export function Avatar({
   const resolvedEmoji = user?.avatar ?? emoji ?? null;
   const resolvedHasImage = user?.avatar_has_image ?? avatarHasImage ?? false;
   const resolvedUpdatedAt = user?.avatar_updated_at ?? avatarUpdatedAt ?? null;
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    let nextUrl: string | null = null;
-    setImageUrl(null);
-    if (!resolvedId || !resolvedHasImage) return;
-    fetchAvatarBlob(resolvedId)
-      .then((url) => {
-        if (cancelled) {
-          URL.revokeObjectURL(url);
-          return;
-        }
-        nextUrl = url;
-        setImageUrl(url);
-      })
-      .catch(() => {
-        if (!cancelled) setImageUrl(null);
-      });
-    return () => {
-      cancelled = true;
-      if (nextUrl) URL.revokeObjectURL(nextUrl);
-    };
-  }, [resolvedId, resolvedHasImage, resolvedUpdatedAt]);
+  const { url: imageUrl } = useAuthedBlobUrl(
+    resolvedId && resolvedHasImage ? { kind: "avatar", userId: resolvedId, version: resolvedUpdatedAt } : null,
+  );
+  const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
+  const showImage = Boolean(imageUrl) && imageUrl !== brokenUrl;
 
   const initial = (resolvedName || "路").trim().slice(0, 1).toUpperCase();
   const display = resolvedEmoji && resolvedEmoji.trim().length > 0 ? resolvedEmoji : initial;
@@ -80,7 +61,7 @@ export function Avatar({
       )}
       aria-label={resolvedName ?? undefined}
     >
-      {imageUrl ? (
+      {showImage && imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={imageUrl}
@@ -88,6 +69,7 @@ export function Avatar({
           className="h-full w-full object-cover"
           draggable={false}
           decoding="async"
+          onError={() => setBrokenUrl(imageUrl)}
         />
       ) : (
         <span className="font-display leading-none">{display}</span>

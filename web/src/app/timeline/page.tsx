@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home with a queued relationship quote, static empty state, compact gift rows, meeting ranges, and reminders.
+// Timeline home with a queued relationship quote, static empty state, compact gift rows, meeting ranges, and reminders; months and "today" follow the Asia/Shanghai calendar, and only events inside a meeting range count as 见面.
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -29,6 +29,7 @@ import {
   isCycleReminderDismissed,
   readCycleReminderDays,
 } from "@/lib/cycle-reminder";
+import { shanghaiDateKey, shanghaiMonthKey } from "@/lib/dates";
 import { formatAbsolute, formatRelative } from "@/lib/format";
 import { giftFeelingMeta } from "@/lib/gift-feelings";
 import { MOTION_DURATION, MOTION_EASE, MOTION_TRANSITIONS } from "@/lib/motion";
@@ -45,10 +46,7 @@ const QUOTE_REFILL_THRESHOLD = 2;
 type TimelineView = "all" | "meetings";
 
 function todayDateOnly(): string {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
+  return shanghaiDateKey();
 }
 
 function toDateOnly(date: Date): string {
@@ -78,9 +76,11 @@ function immediateAnniversary(startedOn: string): AnniversaryOut {
 }
 
 function monthKeyForEvent(event: EventSummary): string {
-  const date = new Date(event.occurred_at ?? event.created_at);
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  return `${date.getFullYear()}-${month}`;
+  return shanghaiMonthKey(event.occurred_at ?? event.created_at);
+}
+
+function isMeetingEvent(event: EventSummary): boolean {
+  return event.meeting_session_id !== null;
 }
 
 function monthLabel(key: string): string {
@@ -249,19 +249,13 @@ function TimelineInner() {
       .map(([key, monthEvents]) => ({ key, events: monthEvents }));
   }, [events]);
 
-  const meetingEvents = useMemo(
-    () => (events ?? []).filter((event) => event.meeting_session_id !== null || event.event_kind === "offline_meeting"),
-    [events],
-  );
+  const meetingEvents = useMemo(() => (events ?? []).filter(isMeetingEvent), [events]);
 
   const meetingGroups = useMemo(() => {
     const eventMap = new Map<number, EventSummary[]>();
-    const orphanEvents: EventSummary[] = [];
     for (const event of meetingEvents) {
       if (event.meeting_session_id) {
         eventMap.set(event.meeting_session_id, [...(eventMap.get(event.meeting_session_id) ?? []), event]);
-      } else {
-        orphanEvents.push(event);
       }
     }
     const groups = meetingSessions
@@ -272,24 +266,6 @@ function TimelineInner() {
       const rightTime = new Date(right.session.started_at ?? right.events[0]?.occurred_at ?? right.session.created_at).getTime();
       return rightTime - leftTime;
     });
-    if (orphanEvents.length > 0) {
-      groups.push({
-        session: {
-          id: 0,
-          pair_id: 0,
-          title: "未整理的见面",
-          started_on: (orphanEvents[orphanEvents.length - 1]?.occurred_at ?? orphanEvents[orphanEvents.length - 1]?.created_at ?? "").slice(0, 10),
-          ended_on: (orphanEvents[0]?.occurred_at ?? orphanEvents[0]?.created_at ?? "").slice(0, 10),
-          started_at: null,
-          ended_at: null,
-          created_by_id: 0,
-          created_at: orphanEvents[0].created_at,
-          updated_at: orphanEvents[0].created_at,
-          event_count: orphanEvents.length,
-        },
-        events: orphanEvents,
-      });
-    }
     return groups;
   }, [meetingEvents, meetingSessions]);
 
@@ -298,13 +274,15 @@ function TimelineInner() {
     const today = todayDateOnly();
     const todayRecorded = cycleDashboard.logs.some((log) => log.date === today && log.source === "recorded");
     if (todayRecorded || isCycleReminderDismissed(me.pair_id, today)) return null;
+    const nextPeriodStart = cycleDashboard.stats.next_period_start;
+    if (!nextPeriodStart) return null;
     const reminderDays = readCycleReminderDays(me.pair_id);
-    const daysLeft = daysUntil(cycleDashboard.stats.next_period_start, today);
+    const daysLeft = daysUntil(nextPeriodStart, today);
     if (daysLeft < 0 || daysLeft > reminderDays) return null;
     return {
       today,
       daysLeft,
-      nextPeriodStart: cycleDashboard.stats.next_period_start,
+      nextPeriodStart,
     };
   }, [cycleDashboard, cyclePromptDismissed, me]);
 
@@ -416,12 +394,12 @@ function TimelineInner() {
               className="min-w-0"
             >
               {timelineView === "meetings" ? (
-                meetingEvents.length === 0 ? (
+                meetingGroups.length === 0 ? (
                   <MeetingEmptyState onCreate={openCreateWindow} />
                 ) : (
                   <MeetingTimeRiver
                     groups={meetingGroups}
-                    eventCount={meetingEvents.length}
+                    eventCount={meetingGroups.reduce((total, group) => total + group.events.length, 0)}
                     onChanged={load}
                   />
                 )
@@ -588,7 +566,7 @@ function MeetingTimeRiver({
     <section className="meeting-river-shell content-surface overflow-hidden px-5 py-5 sm:px-7 sm:py-6">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line/55 pb-4">
         <div>
-          <p className="font-sc text-xs font-medium text-rose-deep">线下见面</p>
+          <p className="font-sc text-xs font-medium text-rose-deep">见面</p>
           <h2 className="mt-1 font-display text-xl font-semibold leading-tight text-ink sm:text-2xl">
             {groups.length} 次见面，留下 {eventCount} 条小事
           </h2>
@@ -598,7 +576,7 @@ function MeetingTimeRiver({
       <div className="meeting-river mt-5 space-y-6">
         {groups.map((group) => (
           <MeetingGroup
-            key={group.session.id || "orphans"}
+            key={group.session.id}
             group={group}
             onChanged={onChanged}
           />
@@ -616,17 +594,13 @@ function MeetingGroup({
   onChanged: () => Promise<void>;
 }) {
   const [editorOpen, setEditorOpen] = useState(false);
-  const canOrganize = group.session.id > 0;
 
   return (
     <div className="relative pl-8 sm:pl-10">
       <div className="meeting-month-node" aria-hidden="true" />
       <div className="mb-3 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1.5">
-        <button type="button" className={cn(
-          "min-h-11 max-w-full truncate rounded-xl px-1 text-left font-display text-lg font-semibold text-ink transition focus-ring",
-          canOrganize && "hover:text-rose-deep",
-        )} disabled={!canOrganize} onClick={() => setEditorOpen(true)}
-          title={canOrganize ? "编辑见面标题和日期" : undefined}>
+        <button type="button" className="min-h-11 max-w-full truncate rounded-xl px-1 text-left font-display text-lg font-semibold text-ink transition hover:text-rose-deep focus-ring"
+          onClick={() => setEditorOpen(true)} title="编辑见面标题和日期">
           {group.session.title}
         </button>
         <span className="font-sc text-xs text-ink-muted">{meetingSessionDateLabel(group.session)}</span>
@@ -645,7 +619,7 @@ function MeetingGroup({
           </motion.div>
         ))}
       </div>
-      <MeetingEditorDialog open={editorOpen} session={canOrganize ? group.session : null}
+      <MeetingEditorDialog open={editorOpen} session={group.session}
         onOpenChange={setEditorOpen} onSaved={async () => onChanged()} onDeleted={async () => onChanged()} />
     </div>
   );
@@ -704,13 +678,13 @@ function MeetingEmptyState({ onCreate }: { onCreate: () => void }) {
       <div className="min-w-0">
         <div className="inline-flex items-center gap-2 rounded-full bg-rose/10 px-3 py-1.5 font-sc text-xs font-medium text-rose-deep">
           <CalendarHeart className="h-3.5 w-3.5" />
-          还没有单独标记见面
+          还没有见面记录
         </div>
         <h2 className="mt-4 max-w-2xl font-display text-[1.55rem] font-semibold leading-tight text-ink sm:text-[1.9rem]">
           下次见面时，把那一天放进这条小河里。
         </h2>
         <p className="mt-3 max-w-xl font-sc text-sm leading-relaxed text-ink-soft">
-          新建记录时选择“线下见面”，它就会出现在这里。以前的小事也可以进入详情后补上标记。
+          点「记一次见面」，那几天里写下的小事都会收进来。以前的小事，也可以在详情里点日历爱心补上。
         </p>
         <button
           type="button"
@@ -729,7 +703,7 @@ function MeetingBadge() {
   return (
     <span className="pill inline-flex items-center gap-1 bg-rose/10 text-rose-deep">
       <CalendarHeart className="h-3.5 w-3.5" />
-      线下见面
+      见面
     </span>
   );
 }
@@ -864,7 +838,7 @@ function MonthEventGroup({
 function EventRow({ event }: { event: EventSummary }) {
   const me = useAppStore((state) => state.me)!;
   const author = event.creator_id === me.user.id ? me.user : me.counterpart;
-  const isMeeting = event.meeting_session_id !== null || event.event_kind === "offline_meeting";
+  const isMeeting = isMeetingEvent(event);
   const isGift = event.event_kind === "gift_received";
 
   if (isGift) {
@@ -936,7 +910,7 @@ function CycleCheckInPrompt({
 
   return (
     <motion.div
-      className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom,0px)+5.45rem)] z-40 mx-auto box-border w-full max-w-3xl px-4 sm:bottom-6 sm:px-6"
+      className="nav-clearance-bottom fixed inset-x-0 z-40 mx-auto box-border w-full max-w-3xl px-4 sm:px-6"
       initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 9 }}

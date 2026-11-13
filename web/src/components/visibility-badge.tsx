@@ -1,5 +1,7 @@
 "use client";
 
+// 时间线可见方式与提交状态小标签：公开记录只显示一次"立即可见"，双方提交后可见的记录再显示等待 / 已解锁状态，文字保持可读对比度。
+
 import { Eye, Lock, Sparkles, Hourglass } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { SubmissionState, VisibilityMode } from "@/lib/types";
@@ -12,7 +14,7 @@ export function VisibilityBadge({ mode }: { mode: VisibilityMode }) {
         "pill inline-flex items-center gap-1.5",
         isPublic
           ? "bg-sage/18 text-ink-soft"
-          : "bg-peach/28 text-rose-deep dark:text-rose",
+          : "bg-peach/28 text-rose-deep",
       )}
     >
       {isPublic ? <Eye className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
@@ -28,17 +30,10 @@ export function SubmissionBadge({
   state: SubmissionState;
   mode: VisibilityMode;
 }) {
-  if (mode === "public") {
-    return (
-      <span className="pill inline-flex items-center gap-1.5 bg-peach/25 text-rose-deep dark:bg-rose-soft/30 dark:text-rose">
-        <Sparkles className="h-3 w-3" />
-        随时可见
-      </span>
-    );
-  }
+  if (mode === "public") return null;
   if (state.unlocked) {
     return (
-      <span className="pill inline-flex items-center gap-1.5 bg-sage/15 text-sage">
+      <span className="pill inline-flex items-center gap-1.5 bg-sage/18 text-ink-soft">
         <Sparkles className="h-3 w-3" />
         已解锁
       </span>

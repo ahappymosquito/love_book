@@ -1,4 +1,4 @@
-// Shared TypeScript contracts for authentication, runner rankings, timelines, profiles, meetings, quotes, habits, todo boards, AMap, admin AI, cycles, and reminders.
+// Shared TypeScript contracts for authentication, runner rankings, timelines, profiles, meetings, quotes, habits, todo boards, AMap, admin AI, cycles (prediction dates may be null before the first period record), and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
 export type EventKind = "memory" | "offline_meeting" | "gift_received";
@@ -354,19 +354,20 @@ export interface DailyLogInput {
 }
 
 export interface CycleStats {
-  current_cycle_day: number;
+  has_prediction?: boolean;
+  current_cycle_day: number | null;
   current_phase: CyclePhase;
   average_cycle_length: number;
   average_period_length: number;
-  last_period_start: string;
-  next_period_start: string;
-  next_period_end: string;
-  ovulation_date: string;
-  fertile_start: string;
-  fertile_end: string;
+  last_period_start: string | null;
+  next_period_start: string | null;
+  next_period_end: string | null;
+  ovulation_date: string | null;
+  fertile_start: string | null;
+  fertile_end: string | null;
   confidence: "high" | "medium" | "low";
-  prediction_start: string;
-  prediction_end: string;
+  prediction_start: string | null;
+  prediction_end: string | null;
   cycle_variation_days: number;
 }
 
