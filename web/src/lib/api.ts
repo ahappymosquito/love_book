@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authentication, closed-pair farewells, runner rankings, profiles, timelines, private media, plans, habits, cycles, quotes, and admin workflows.
+// Browser API client for authentication, closed-pair farewells, runner rankings, profiles, timelines, wrapped gifts (wrap, open, receiver response), private media, plans, habits, cycles, quotes, and admin workflows.
 // Failure toasts use friendly, status-based Chinese copy instead of raw server detail; background polls can opt into silent mode.
 // In production it uses the host Nginx same-origin /api reverse proxy; in development it can fall back locally.
 
@@ -22,6 +22,7 @@ import type {
   EventKind,
   EventSummary,
   GiftFeeling,
+  GiftWrapStyle,
   HabitDashboardOut,
   HabitTaskOut,
   HabitToggleOut,
@@ -481,23 +482,29 @@ export const api = {
       method: "POST",
       json: payload,
     }),
-  createReceivedGift: (payload: {
+  wrapGift: (payload: {
     title: string;
-    feedback?: string;
-    feelings?: GiftFeeling[];
+    message?: string;
+    teaser?: string;
+    wrapStyle: GiftWrapStyle;
+    openAt?: string | null;
     occurredAt?: string | null;
-    rating?: number | null;
     files: File[];
   }) => {
     const fd = new FormData();
     fd.append("title", payload.title);
-    fd.append("feedback", payload.feedback ?? "");
-    payload.feelings?.forEach((feeling) => fd.append("feelings", feeling));
+    fd.append("message", payload.message ?? "");
+    fd.append("teaser", payload.teaser ?? "");
+    fd.append("wrap_style", payload.wrapStyle);
+    if (payload.openAt) fd.append("open_at", payload.openAt);
     if (payload.occurredAt) fd.append("occurred_at", payload.occurredAt);
-    if (payload.rating) fd.append("rating", String(payload.rating));
     payload.files.forEach((file) => fd.append("files", file, file.name));
-    return apiRequest<EventDetail>("/events/gifts", { method: "POST", body: fd });
+    return apiRequest<EventDetail>("/events/gifts/wrap", { method: "POST", body: fd });
   },
+  openGift: (id: number) =>
+    apiRequest<EventDetail>(`/events/${id}/gift/open`, { method: "POST", silent: true }),
+  respondGift: (id: number, payload: { feelings: GiftFeeling[]; rating: number | null; feedback: string }) =>
+    apiRequest<EventDetail>(`/events/${id}/gift/response`, { method: "PUT", json: payload }),
   updateEvent: (
     id: number,
     payload: {
@@ -509,6 +516,9 @@ export const api = {
       visibility_mode?: VisibilityMode;
       gift_rating?: number | null;
       gift_feelings?: GiftFeeling[];
+      gift_teaser?: string | null;
+      gift_wrap_style?: GiftWrapStyle;
+      gift_open_at?: string | null;
     },
   ) =>
     apiRequest<EventDetail>(`/events/${id}`, {

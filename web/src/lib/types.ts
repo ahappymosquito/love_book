@@ -1,7 +1,9 @@
-// Shared TypeScript contracts for authentication, runner rankings, timelines, profiles, meetings, quotes, habits, todo boards, AMap, admin AI, cycles (prediction dates may be null before the first period record), and reminders.
+// Shared TypeScript contracts for authentication, runner rankings, timelines (including wrapped gifts the sender seals and the receiver unwraps; legacy gift_received rows read as already-opened gifts), profiles, meetings, quotes, habits, todo boards, AMap, admin AI, cycles (prediction dates may be null before the first period record), and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
-export type EventKind = "memory" | "offline_meeting" | "gift_received";
+export type EventKind = "memory" | "offline_meeting" | "gift" | "gift_received";
+export type GiftState = "wrapped" | "opened";
+export type GiftWrapStyle = "rose" | "peach" | "sage" | "cream" | "starry";
 export type GiftFeeling =
   | "happy"
   | "surprised"
@@ -77,6 +79,16 @@ export interface EventSummary {
   event_kind: EventKind;
   gift_rating: number | null;
   gift_feelings: GiftFeeling[];
+  gift_state: GiftState | null;
+  gift_receiver_id: number | null;
+  gift_wrap_style: GiftWrapStyle | null;
+  gift_teaser: string | null;
+  gift_open_at: string | null;
+  gift_opened_at: string | null;
+  gift_feedback: string | null;
+  gift_responded_at: string | null;
+  gift_masked: boolean;
+  gift_can_open: boolean;
   preview_image: { id: number; width: number | null; height: number | null } | null;
   image_count: number;
   visibility_mode: VisibilityMode;

@@ -1,6 +1,6 @@
 "use client";
 
-// Global create Sheet that opens a three-type chooser after the bottom navigation lens gathers into the center action.
+// Global create Sheet that opens the memory / meeting / 送一份礼物 chooser after the bottom navigation lens gathers into the center action.
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";

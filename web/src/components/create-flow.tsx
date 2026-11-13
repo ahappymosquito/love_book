@@ -1,20 +1,20 @@
 "use client";
 
-// Three-way creation chooser shared by the global create Sheet and direct /create page.
+// Three-way creation chooser shared by the global create Sheet and direct /create page: a memory, a meeting, or "送一份礼物" which opens the gift wrapping form.
 
 import { useState } from "react";
 import { ArrowLeft, CalendarHeart, Gift, Sparkles } from "lucide-react";
 import { CreateEventForm } from "@/components/create-event-form";
-import { ReceivedGiftForm } from "@/components/received-gift-form";
+import { GiftWrapForm } from "@/components/gift-wrap-form";
 import type { EventDetail } from "@/lib/types";
 
-type CreateKind = "memory" | "offline_meeting" | "gift_received";
+type CreateKind = "memory" | "offline_meeting" | "gift";
 
 export function CreateFlow({ onCreated }: { onCreated: (event: EventDetail) => void }) {
   const [kind, setKind] = useState<CreateKind | null>(null);
 
-  if (kind === "gift_received") {
-    return <FlowStep onBack={() => setKind(null)}><ReceivedGiftForm onCreated={onCreated} /></FlowStep>;
+  if (kind === "gift") {
+    return <FlowStep onBack={() => setKind(null)}><GiftWrapForm onCreated={onCreated} /></FlowStep>;
   }
   if (kind) {
     return <FlowStep onBack={() => setKind(null)}><CreateEventForm eventKind={kind} onCreated={onCreated} /></FlowStep>;
@@ -36,10 +36,10 @@ export function CreateFlow({ onCreated }: { onCreated: (event: EventDetail) => v
       tone: "bg-sage/14 text-ink-soft",
     },
     {
-      value: "gift_received" as const,
+      value: "gift" as const,
       icon: Gift,
-      title: "记一份收礼",
-      description: "记录收到的礼物、感受、评分和照片。",
+      title: "送一份礼物",
+      description: "包好藏进手账，等 TA 亲手拆开。",
       tone: "bg-peach/22 text-ink",
     },
   ];

@@ -1,22 +1,23 @@
 "use client";
 
-// Timeline home with a queued relationship quote, static empty state, compact gift rows, meeting ranges, and reminders; months and "today" follow the Asia/Shanghai calendar, and only events inside a meeting range count as 见面.
+// Timeline home styled as a scrapbook (手账): a queued relationship quote, then each month as a paper page with a hand-lettered tab that opens with a page-turn, journal cards with tiny deterministic tilt, washi tape, stickers and polaroid photos, ticket-styled meeting spreads with an export link, and wrapped/opened gift cards with the unwrap overlay; a header 手账 button links to /journal. Months and "today" follow the Asia/Shanghai calendar, and only events inside a meeting range count as 见面.
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   BookHeart,
+  BookOpen,
   CalendarHeart,
-  ChevronDown,
   ChevronRight,
   Droplet,
-  Gift,
   Plus,
 } from "lucide-react";
 import { AuthGate } from "@/components/auth-gate";
 import { Avatar } from "@/components/avatar";
 import { EventImagePreview } from "@/components/event-image-preview";
+import { GiftTimelineCard } from "@/components/gift-timeline-card";
+import { PolaroidFrame, ScrapbookCard, StickerGlyph } from "@/components/scrapbook-decor";
 import { LoadingScreen } from "@/components/loading-screen";
 import { MeetingEditorDialog } from "@/components/meeting-editor-dialog";
 import { AppHeader } from "@/components/app-header";
@@ -31,7 +32,8 @@ import {
 } from "@/lib/cycle-reminder";
 import { shanghaiDateKey, shanghaiMonthKey } from "@/lib/dates";
 import { formatAbsolute, formatRelative } from "@/lib/format";
-import { giftFeelingMeta } from "@/lib/gift-feelings";
+import { cardTilt, monthTabLabel, paperPatternFor } from "@/lib/gift-scrapbook";
+import { isGiftEvent } from "@/lib/gift-state";
 import { MOTION_DURATION, MOTION_EASE, MOTION_TRANSITIONS } from "@/lib/motion";
 import { useAppStore } from "@/lib/store";
 import type { AnniversaryOut, CycleDashboardOut, EventSummary, MeetingSessionOut } from "@/lib/types";
@@ -358,7 +360,20 @@ function TimelineInner() {
 
   return (
     <div className="viewport-guard min-h-dvh w-full">
-      <AppHeader mode="compact" />
+      <AppHeader
+        mode="compact"
+        rightSlot={
+          <Link
+            href="/journal"
+            className="inline-flex h-11 flex-none items-center gap-1.5 rounded-full px-3 font-sc text-sm font-medium text-ink-soft transition hover:bg-peach/16 hover:text-rose-deep focus-ring"
+            aria-label="打开我们的手账"
+            title="手账"
+          >
+            <BookOpen className="h-[18px] w-[18px]" aria-hidden="true" />
+            <span className="hidden min-[380px]:inline">手账</span>
+          </Link>
+        }
+      />
 
       <main className="mx-auto w-full max-w-5xl min-w-0 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+7.6rem)] pt-5 sm:px-6 sm:pt-6">
         <HomeHero
@@ -404,7 +419,7 @@ function TimelineInner() {
                   />
                 )
               ) : (
-                <div className="space-y-4">
+                <div className="scrapbook-stack space-y-5 sm:space-y-6">
                   {eventGroups.map((group) => (
                     <MonthEventGroup
                       key={group.key}
@@ -412,6 +427,7 @@ function TimelineInner() {
                       events={group.events}
                       expanded={expandedMonths.has(group.key)}
                       onToggle={() => toggleMonth(group.key)}
+                      onChanged={load}
                     />
                   ))}
                 </div>
@@ -563,17 +579,17 @@ function MeetingTimeRiver({
   onChanged: () => Promise<void>;
 }) {
   return (
-    <section className="meeting-river-shell content-surface overflow-hidden px-5 py-5 sm:px-7 sm:py-6">
-      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line/55 pb-4">
+    <section className="scrapbook-page scrapbook-paper-dots px-4 py-5 sm:px-7 sm:py-6">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-dashed border-line/70 pb-4">
         <div>
           <p className="font-sc text-xs font-medium text-rose-deep">见面</p>
-          <h2 className="mt-1 font-display text-xl font-semibold leading-tight text-ink sm:text-2xl">
+          <h2 className="scrapbook-hand mt-1 text-xl font-semibold leading-tight text-ink sm:text-2xl">
             {groups.length} 次见面，留下 {eventCount} 条小事
           </h2>
         </div>
       </div>
 
-      <div className="meeting-river mt-5 space-y-6">
+      <div className="mt-5 space-y-7">
         {groups.map((group) => (
           <MeetingGroup
             key={group.session.id}
@@ -594,28 +610,51 @@ function MeetingGroup({
   onChanged: () => Promise<void>;
 }) {
   const [editorOpen, setEditorOpen] = useState(false);
+  const reducedMotion = useReducedMotion();
 
   return (
-    <div className="relative pl-8 sm:pl-10">
-      <div className="meeting-month-node" aria-hidden="true" />
-      <div className="mb-3 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1.5">
-        <button type="button" className="min-h-11 max-w-full truncate rounded-xl px-1 text-left font-display text-lg font-semibold text-ink transition hover:text-rose-deep focus-ring"
-          onClick={() => setEditorOpen(true)} title="编辑见面标题和日期">
-          {group.session.title}
-        </button>
-        <span className="font-sc text-xs text-ink-muted">{meetingSessionDateLabel(group.session)}</span>
-        <span className="font-sc text-xs text-rose-deep">{group.events.length} 条小事</span>
+    <div className="min-w-0">
+      <div className="scrapbook-ticket mb-4">
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            className="scrapbook-hand block min-h-11 max-w-full truncate rounded-xl text-left text-lg font-semibold text-ink transition hover:text-rose-deep focus-ring"
+            onClick={() => setEditorOpen(true)}
+            title="编辑见面标题和日期"
+          >
+            {group.session.title}
+          </button>
+          <p className="font-sc text-xs text-ink-muted">
+            {meetingSessionDateLabel(group.session)}
+            <span aria-hidden="true"> · </span>
+            {group.events.length} 条小事
+          </p>
+          <Link
+            href={`/journal?scope=meeting&meeting_id=${group.session.id}`}
+            className="mt-1.5 inline-flex min-h-9 items-center gap-1 rounded-full px-1 font-sc text-xs font-medium text-rose-deep underline-offset-4 hover:underline focus-ring"
+          >
+            <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+            导出这次见面
+          </Link>
+        </div>
+        <span className="scrapbook-ticket-stamp" aria-hidden="true">
+          <CalendarHeart className="h-5 w-5" />
+        </span>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         {group.events.map((event, index) => (
           <motion.div
             key={event.id}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: Math.min(index * 0.035, 0.14), duration: 0.22 }}
+            initial={reducedMotion ? false : { opacity: 0, y: -10, scale: 1.015 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={reducedMotion ? MOTION_TRANSITIONS.reduced : { ...MOTION_TRANSITIONS.layout, delay: Math.min(index, 6) * 0.045 }}
           >
-            <MeetingRiverEvent event={event} />
+            {isGiftEvent(event) ? (
+              <GiftTimelineCard event={event} onChanged={onChanged} />
+            ) : (
+              <MeetingRiverEvent event={event} />
+            )}
           </motion.div>
         ))}
       </div>
@@ -629,21 +668,10 @@ function MeetingRiverEvent({ event }: { event: EventSummary }) {
   const me = useAppStore((state) => state.me)!;
   const author = event.creator_id === me.user.id ? me.user : me.counterpart;
   const eventTime = event.occurred_at ?? event.created_at;
-  const isGift = event.event_kind === "gift_received";
-
-  if (isGift) {
-    return (
-      <Link href={`/timeline/${event.id}`} className="group block rounded-2xl focus-ring">
-        <article className="meeting-river-event meeting-river-event-gift px-4 py-3.5 sm:px-5">
-          <GiftTimelineContent event={event} />
-        </article>
-      </Link>
-    );
-  }
 
   return (
-    <Link href={`/timeline/${event.id}`} className="group block rounded-2xl focus-ring">
-      <article className="meeting-river-event px-4 py-4 sm:px-5">
+    <Link href={`/timeline/${event.id}`} className="scrapbook-entry block rounded-2xl focus-ring">
+      <ScrapbookCard id={event.id} tone="meeting">
         <div className="flex items-start gap-3">
           <Avatar user={author} size="md" />
           <div className="min-w-0 flex-1">
@@ -652,7 +680,7 @@ function MeetingRiverEvent({ event }: { event: EventSummary }) {
               <span className="h-1 w-1 rounded-full bg-line" />
               <span>{formatAbsolute(eventTime, false)}</span>
             </div>
-            <h3 className="mt-1 line-clamp-2 font-display text-lg font-semibold leading-snug text-ink">
+            <h3 className="scrapbook-hand mt-1 line-clamp-2 break-words text-lg font-semibold leading-snug text-ink">
               {event.title}
             </h3>
             {event.description && (
@@ -666,22 +694,23 @@ function MeetingRiverEvent({ event }: { event: EventSummary }) {
               <SubmissionBadge state={event.submission_state} mode={event.visibility_mode} />
             </div>
           </div>
+          <EventPolaroid event={event} />
         </div>
-      </article>
+      </ScrapbookCard>
     </Link>
   );
 }
 
 function MeetingEmptyState({ onCreate }: { onCreate: () => void }) {
   return (
-    <section className="glass-card overflow-hidden rounded-[2rem] p-5 sm:p-6">
+    <section className="scrapbook-page scrapbook-paper-grid p-5 sm:p-6">
       <div className="min-w-0">
         <div className="inline-flex items-center gap-2 rounded-full bg-rose/10 px-3 py-1.5 font-sc text-xs font-medium text-rose-deep">
           <CalendarHeart className="h-3.5 w-3.5" />
           还没有见面记录
         </div>
-        <h2 className="mt-4 max-w-2xl font-display text-[1.55rem] font-semibold leading-tight text-ink sm:text-[1.9rem]">
-          下次见面时，把那一天放进这条小河里。
+        <h2 className="scrapbook-hand mt-4 max-w-2xl text-[1.55rem] font-semibold leading-tight text-ink sm:text-[1.9rem]">
+          下次见面时，把那一天贴进这本手账里。
         </h2>
         <p className="mt-3 max-w-xl font-sc text-sm leading-relaxed text-ink-soft">
           点「记一次见面」，那几天里写下的小事都会收进来。以前的小事，也可以在详情里点日历爱心补上。
@@ -708,78 +737,12 @@ function MeetingBadge() {
   );
 }
 
-function GiftEventTags({
-  feelings,
-  showMeetingTag,
-}: {
-  feelings: EventSummary["gift_feelings"];
-  showMeetingTag: boolean;
-}) {
-  const visibleFeelings = feelings.slice(0, showMeetingTag ? 1 : 2);
-
+function EventPolaroid({ event }: { event: EventSummary }) {
+  if (!event.preview_image) return null;
   return (
-    <div className="mt-2.5 flex flex-wrap items-center gap-1.5" aria-label="收礼事件标签">
-      <span className="inline-flex min-h-6 items-center gap-1 rounded-full bg-peach/28 px-2 font-sc text-[11px] font-medium text-ink">
-        <Gift className="h-3 w-3 text-peach-deep" />
-        收礼
-      </span>
-      {showMeetingTag && (
-        <span className="inline-flex min-h-6 items-center rounded-full bg-rose/10 px-2 font-sc text-[11px] text-rose-deep">
-          见面
-        </span>
-      )}
-      {visibleFeelings.map((feeling) => (
-        <span
-          key={feeling}
-          className="inline-flex min-h-6 items-center rounded-full bg-surface/78 px-2 font-sc text-[11px] text-ink-soft"
-        >
-          {giftFeelingMeta(feeling).label}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function GiftTimelineContent({
-  event,
-  showMeetingTag = false,
-}: {
-  event: EventSummary;
-  showMeetingTag?: boolean;
-}) {
-  const eventTime = event.occurred_at ?? event.created_at;
-
-  return (
-    <div className="flex items-center gap-3 sm:gap-4">
-      <GiftCardMedia event={event} />
-      <div className="min-w-0 flex-1">
-        <h3 className="line-clamp-2 font-display text-base font-semibold leading-snug text-ink sm:text-lg">
-          {event.title}
-        </h3>
-        <time
-          dateTime={eventTime}
-          className="mt-1.5 block font-sc text-xs text-ink-muted"
-          title={formatAbsolute(eventTime)}
-        >
-          {formatAbsolute(eventTime, false)}
-        </time>
-        <GiftEventTags feelings={event.gift_feelings} showMeetingTag={showMeetingTag} />
-      </div>
-    </div>
-  );
-}
-
-function GiftCardMedia({ event }: { event: EventSummary }) {
-  return (
-    <div className="relative h-20 w-20 flex-none overflow-hidden rounded-xl bg-peach/18 sm:h-24 sm:w-24">
-      {event.preview_image ? (
-        <EventImagePreview imageId={event.preview_image.id} alt={`${event.title}的照片`} className="h-full w-full" />
-      ) : (
-        <div className="grid h-full w-full place-items-center text-peach-deep" aria-hidden="true">
-          <Gift className="h-8 w-8" strokeWidth={1.7} />
-        </div>
-      )}
-    </div>
+    <PolaroidFrame tilt={-cardTilt(event.id + 7)} className="w-[4.5rem] flex-none sm:w-24">
+      <EventImagePreview imageId={event.preview_image.id} alt={`${event.title}的照片`} className="aspect-square w-full" />
+    </PolaroidFrame>
   );
 }
 
@@ -788,48 +751,74 @@ function MonthEventGroup({
   events,
   expanded,
   onToggle,
+  onChanged,
 }: {
   month: string;
   events: EventSummary[];
   expanded: boolean;
   onToggle: () => void;
+  onChanged: () => Promise<void>;
 }) {
   const reducedMotion = useReducedMotion();
+  const tab = monthTabLabel(month);
+  const panelId = `month-page-${month}`;
 
   return (
-    <section className="content-surface overflow-hidden">
+    <section className={cn("scrapbook-page", `scrapbook-paper-${paperPatternFor(month)}`, expanded && "is-open")}>
       <button
         type="button"
         onClick={onToggle}
-        className="flex min-h-[72px] w-full items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-white/42 focus-ring sm:px-6"
+        className="scrapbook-month-header focus-ring"
         aria-expanded={expanded}
+        aria-controls={panelId}
       >
-        <div className="min-w-0">
-          <h2 className="font-display text-lg font-semibold leading-tight text-ink sm:text-xl">{monthLabel(month)}</h2>
-          <p className="mt-1 font-sc text-xs text-ink-muted">{events.length} 段小事收在这个月里</p>
-        </div>
-        <span className="grid h-10 w-10 flex-none place-items-center rounded-full bg-rose/10 text-rose-deep">
-          {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        <span className="min-w-0">
+          <span className="block font-sc text-xs font-medium text-ink-muted">{tab.year}</span>
+          <span className="scrapbook-hand block text-2xl font-semibold leading-tight text-ink sm:text-[1.7rem]">{tab.month}</span>
+          <span className="mt-0.5 block font-sc text-xs text-ink-muted">{events.length} 段小事收在这一页</span>
+        </span>
+        <span className="scrapbook-bookmark" aria-hidden="true">
+          <StickerGlyph kind="heart" tone="rose" className="h-3.5 w-3.5" />
+          <motion.span
+            className="grid place-items-center"
+            animate={{ rotate: expanded ? 90 : 0 }}
+            transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.state}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </motion.span>
         </span>
       </button>
 
       <MotionCollapse open={expanded}>
-        <ul className="divide-y divide-line/50 border-t border-line/55 bg-surface-raised/42">
-          {events.map((event, index) => (
-            <motion.li
-              key={event.id}
-              initial={reducedMotion ? false : { opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={
-                reducedMotion
-                  ? MOTION_TRANSITIONS.reduced
-                  : { ...MOTION_TRANSITIONS.state, delay: Math.min(index, 6) * 0.02 }
-              }
-            >
-              <EventRow event={event} />
-            </motion.li>
-          ))}
-        </ul>
+        <motion.div
+          id={panelId}
+          className="scrapbook-page-body"
+          style={{ transformPerspective: 900, transformOrigin: "50% 0%" }}
+          initial={reducedMotion ? { opacity: 0 } : { opacity: 0, rotateX: -14, y: -6 }}
+          animate={{ opacity: 1, rotateX: 0, y: 0 }}
+          transition={reducedMotion ? MOTION_TRANSITIONS.reduced : { ...MOTION_TRANSITIONS.layout, duration: 0.42 }}
+        >
+          <ul className="space-y-4 px-3.5 pb-5 pt-3 sm:space-y-5 sm:px-6 sm:pb-6">
+            {events.map((event, index) => (
+              <motion.li
+                key={event.id}
+                initial={reducedMotion ? false : { opacity: 0, y: -12, scale: 1.02 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={
+                  reducedMotion
+                    ? MOTION_TRANSITIONS.reduced
+                    : { ...MOTION_TRANSITIONS.layout, delay: 0.08 + Math.min(index, 6) * 0.045 }
+                }
+              >
+                {isGiftEvent(event) ? (
+                  <GiftTimelineCard event={event} showMeetingTag={isMeetingEvent(event)} onChanged={onChanged} />
+                ) : (
+                  <EventRow event={event} />
+                )}
+              </motion.li>
+            ))}
+          </ul>
+        </motion.div>
       </MotionCollapse>
     </section>
   );
@@ -839,21 +828,10 @@ function EventRow({ event }: { event: EventSummary }) {
   const me = useAppStore((state) => state.me)!;
   const author = event.creator_id === me.user.id ? me.user : me.counterpart;
   const isMeeting = isMeetingEvent(event);
-  const isGift = event.event_kind === "gift_received";
-
-  if (isGift) {
-    return (
-      <Link href={`/timeline/${event.id}`} className="group block rounded-2xl focus-ring">
-        <article className={cn("timeline-event-row timeline-event-row-gift px-5 py-3.5 sm:px-6", isMeeting && "timeline-event-row-meeting")}>
-          <GiftTimelineContent event={event} showMeetingTag={isMeeting} />
-        </article>
-      </Link>
-    );
-  }
 
   return (
-    <Link href={`/timeline/${event.id}`} className="group block rounded-2xl focus-ring">
-      <article className={cn("timeline-event-row px-5 py-4 sm:px-6", isMeeting && "timeline-event-row-meeting")}>
+    <Link href={`/timeline/${event.id}`} className="scrapbook-entry block rounded-2xl focus-ring">
+      <ScrapbookCard id={event.id} tone={isMeeting ? "meeting" : "memory"}>
         <div className="flex items-start gap-3">
           <Avatar user={author} size="md" />
           <div className="min-w-0 flex-1">
@@ -863,7 +841,7 @@ function EventRow({ event }: { event: EventSummary }) {
               <span title={formatAbsolute(event.created_at)}>{formatRelative(event.created_at)}</span>
             </div>
 
-            <h3 className="mt-1 line-clamp-2 font-display text-lg font-semibold leading-snug text-ink">
+            <h3 className="scrapbook-hand mt-1 line-clamp-2 break-words text-lg font-semibold leading-snug text-ink">
               {event.title}
             </h3>
 
@@ -876,7 +854,7 @@ function EventRow({ event }: { event: EventSummary }) {
             <div className="mt-3 flex flex-wrap gap-2">
               {isMeeting && <MeetingBadge />}
               {isMeeting && event.meeting_session && (
-                <span className="pill inline-flex items-center gap-1 bg-peach/22 text-ink-soft">
+                <span className="pill inline-flex max-w-full items-center gap-1 truncate bg-peach/22 text-ink-soft">
                   {event.meeting_session.title}
                 </span>
               )}
@@ -890,8 +868,9 @@ function EventRow({ event }: { event: EventSummary }) {
               )}
             </div>
           </div>
+          <EventPolaroid event={event} />
         </div>
-      </article>
+      </ScrapbookCard>
     </Link>
   );
 }
@@ -957,17 +936,17 @@ function ListSkeleton() {
   return (
     <div className="space-y-4">
       {[0, 1].map((groupIndex) => (
-        <section key={groupIndex} className="glass-card overflow-hidden rounded-[1.85rem]">
-          <div className="flex min-h-[72px] items-center justify-between px-5 py-4 sm:px-6">
+        <section key={groupIndex} className="scrapbook-page scrapbook-paper-dots">
+          <div className="flex min-h-[84px] items-center justify-between px-5 py-4 sm:px-6">
             <div className="space-y-2">
-              <div className="h-4 w-28 rounded-full bg-line/45" />
-              <div className="h-3 w-36 rounded-full bg-line/30" />
+              <div className="h-3 w-12 rounded-full bg-line/40" />
+              <div className="h-6 w-20 rounded-full bg-line/45" />
             </div>
-            <div className="h-10 w-10 rounded-full bg-line/35" />
+            <div className="h-10 w-12 rounded-l-full bg-line/35" />
           </div>
-          <div className="space-y-0 divide-y divide-line/50 border-t border-line/55 bg-surface-raised/42">
+          <div className="space-y-4 px-3.5 pb-5 sm:px-6">
             {[0, 1].map((rowIndex) => (
-              <div key={rowIndex} className="px-5 py-4 sm:px-6">
+              <div key={rowIndex} className="scrapbook-card scrapbook-card-memory">
                 <div className="flex items-start gap-3">
                   <div className="h-10 w-10 rounded-full bg-line/35" />
                   <div className="flex-1 space-y-2">
@@ -987,11 +966,11 @@ function ListSkeleton() {
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
-    <section className="content-surface px-5 py-8 text-center sm:px-7 sm:py-10">
+    <section className="scrapbook-page scrapbook-paper-grid px-5 py-8 text-center sm:px-7 sm:py-10">
       <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-peach/22 text-rose-deep">
         <BookHeart className="h-7 w-7" />
       </div>
-      <h2 className="mt-4 font-display text-xl font-semibold text-ink sm:text-2xl">从今天的小事开始</h2>
+      <h2 className="scrapbook-hand mt-4 text-xl font-semibold text-ink sm:text-2xl">从今天的小事开始</h2>
       <p className="mx-auto mt-2 max-w-md font-sc text-sm leading-6 text-ink-soft">记下一顿饭、一句想说的话，或一次临时决定的小约会。</p>
       <button type="button" onClick={onCreate} className="btn-primary mt-5 inline-flex min-h-12 items-center gap-2 rounded-full px-5 font-sc text-sm font-medium focus-ring">
         <Plus className="h-4 w-4" />
