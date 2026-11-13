@@ -1,4 +1,5 @@
-# Repair the stable-latest aliases from an existing immutable Love Book release without rebuilding images.
+# Repair the convenience latest pointer from an existing immutable Love Book release without rebuilding.
+# Source X.Y.Z images only exist after release-images smoke-tested them; production pins X.Y.Z, not latest.
 name: promote-existing-release
 
 on:
@@ -11,7 +12,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 env:
   REGISTRY: ghcr.io
@@ -23,6 +23,9 @@ jobs:
     name: promote existing stable release
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Validate release version and GitHub Release
         env:
@@ -48,7 +51,7 @@ jobs:
           docker buildx imagetools inspect "${BACKEND_IMAGE}:${VERSION}"
           docker buildx imagetools inspect "${FRONTEND_IMAGE}:${VERSION}"
 
-      - name: Promote matching images to latest
+      - name: Point latest at the matching pair
         env:
           VERSION: ${{ inputs.version }}
         shell: bash

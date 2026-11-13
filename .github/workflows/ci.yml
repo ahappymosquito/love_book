@@ -1,6 +1,7 @@
+# Validate every normal change (version, locked backend tests, frontend build) with read-only token
+# scope and a bounded job timeout; never publishes images or release artifacts.
 name: ci
 
-# Validate every normal change without publishing images or other release artifacts.
 on:
   push:
     branches: ["**"]
@@ -14,6 +15,7 @@ jobs:
   verify:
     name: test · build · version
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 

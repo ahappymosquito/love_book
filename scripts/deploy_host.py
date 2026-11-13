@@ -1,4 +1,8 @@
-"""从 LOVE_BOOK_SSH_HOSTS 读取 ~/.ssh/config 主机名，供智能体完成打包到发布。未配置 Host 时，cn-ts3 按 ts3 检查、cn 按 root 发布。"""
+"""从 LOVE_BOOK_SSH_HOSTS 读取 ~/.ssh/config 主机名，供智能体完成打包到发布。未配置 Host 时，cn-ts3 按 ts3 检查、cn 按 root 发布。
+
+生产镜像固定为 VERSION 对应的不可变 GHCR 版本标签：update 通过 LOVE_BOOK_IMAGE_TAG 把标签交给服务器更新器，
+完成后读取 /api/health，版本与 VERSION 不一致即失败。具备 update 能力的主机上，run 与 update 一样需要 --yes 授权。
+"""
 
 from __future__ import annotations
 
@@ -9,7 +13,8 @@ import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.error import URLError
@@ -20,18 +25,23 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ENV_FILE = PROJECT_ROOT / ".env"
 DEFAULT_EXAMPLE_FILE = PROJECT_ROOT / ".env.example"
 VERSION_SCRIPT = PROJECT_ROOT / "scripts" / "version.py"
+VERSION_FILE = PROJECT_ROOT / "VERSION"
 ENV_PREFIX = "LOVE_BOOK_SSH_"
 
 NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+SEMVER_PATTERN = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 DEFAULT_COMPOSE_DIR = "/home/ts3/love-book"
 DEFAULT_HEALTH_URL = "https://tingle272.xyz/api/health"
 DEFAULT_SITE_URL = "https://tingle272.xyz/"
 DEFAULT_BACKUP_ROOT = "/home/ts3/backups/love_book"
 DEFAULT_BACKUP_COMMAND = "/home/ts3/bin/love-book-backup"
 DEFAULT_UPDATE_COMMAND = "bash /home/ts3/love-book/update.sh"
-DEFAULT_BACKEND_IMAGE = "ghcr.io/ahappymosquito/love_book-backend:latest"
-DEFAULT_FRONTEND_IMAGE = "ghcr.io/ahappymosquito/love_book-frontend:latest"
+BACKEND_IMAGE_REPO = "ghcr.io/ahappymosquito/love_book-backend"
+FRONTEND_IMAGE_REPO = "ghcr.io/ahappymosquito/love_book-frontend"
+IMAGE_TAG_ENV = "LOVE_BOOK_IMAGE_TAG"
 DEFAULT_CONNECT_TIMEOUT = 20
+HEALTH_VERIFY_ATTEMPTS = 6
+HEALTH_VERIFY_DELAY_SECONDS = 5.0
 REQUIRED_PACKAGE_FILES = (
     "Dockerfile",
     "web/Dockerfile",
@@ -69,6 +79,7 @@ class DeployHost:
     update_host: str
     backup_command: str
     backup_root: str
+    image_tag: str
     backend_image: str
     frontend_image: str
     connect_timeout: int
@@ -88,6 +99,23 @@ class HostCatalog:
 def posix_quote(value: str) -> str:
     """按 POSIX 单引号规则引用远程命令参数，避免 Windows shlex.quote 改用双引号。"""
     return "'" + value.replace("'", "'\"'\"'") + "'"
+
+
+def read_app_version(path: Path | None = None) -> str:
+    """读取 VERSION；它是前后端镜像标签的唯一来源。"""
+    source = path if path is not None else VERSION_FILE
+    try:
+        version = source.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise DeployHostError(f"Cannot read {source}: {exc}") from exc
+    if not SEMVER_PATTERN.fullmatch(version):
+        raise DeployHostError(f"VERSION must be a stable SemVer X.Y.Z, got {version!r}")
+    return version
+
+
+def release_image_tag(version: str) -> str:
+    """release-images 工作流推送的不可变镜像标签是不带 v 的 X.Y.Z；v 前缀只属于 Git 标签。"""
+    return version
 
 
 def split_csv(value: str) -> list[str]:
@@ -222,6 +250,7 @@ def is_update_user(user: str) -> bool:
 
 def build_host(name: str, update_host: str, user: str) -> DeployHost:
     updater = is_update_user(user)
+    image_tag = release_image_tag(read_app_version())
     backup_command = DEFAULT_BACKUP_COMMAND
     if updater:
         backup_command = f"runuser -u ts3 -- env HOME=/home/ts3 {DEFAULT_BACKUP_COMMAND}"
@@ -253,8 +282,9 @@ def build_host(name: str, update_host: str, user: str) -> DeployHost:
         update_host=linked,
         backup_command=backup_command,
         backup_root=DEFAULT_BACKUP_ROOT,
-        backend_image=DEFAULT_BACKEND_IMAGE,
-        frontend_image=DEFAULT_FRONTEND_IMAGE,
+        image_tag=image_tag,
+        backend_image=f"{BACKEND_IMAGE_REPO}:{image_tag}",
+        frontend_image=f"{FRONTEND_IMAGE_REPO}:{image_tag}",
         connect_timeout=DEFAULT_CONNECT_TIMEOUT,
         capabilities=capabilities,
         notes=notes,
@@ -428,9 +458,11 @@ def cmd_show(host: DeployHost) -> int:
         "site_url": host.site_url,
         "update_style": host.update_style,
         "update_command": host.update_command,
+        "update_remote": update_remote_command(host) if host.update_command else None,
         "update_host": host.update_host or None,
         "backup_command": host.backup_command or None,
         "backup_root": host.backup_root or None,
+        "image_tag": host.image_tag,
         "backend_image": host.backend_image,
         "frontend_image": host.frontend_image,
         "connect_timeout": host.connect_timeout,
@@ -467,6 +499,48 @@ def fetch_health(url: str) -> str:
         return ""
 
 
+def parse_health_version(body: str) -> str:
+    """从 /health 的 {"status","version","git_sha"} JSON 里取 version；无法解析时返回空串。"""
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    version = payload.get("version")
+    return version.strip() if isinstance(version, str) else ""
+
+
+def verify_health_version(
+    url: str,
+    expected: str,
+    *,
+    attempts: int = HEALTH_VERIFY_ATTEMPTS,
+    delay: float = HEALTH_VERIFY_DELAY_SECONDS,
+    fetch: Callable[[str], str] | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> str:
+    """更新后轮询健康检查，直到线上 version 等于 VERSION；否则抛错让 update 以非零退出。"""
+    reader = fetch if fetch is not None else fetch_health
+    seen = ""
+    for attempt in range(max(1, attempts)):
+        body = reader(url)
+        seen = parse_health_version(body)
+        if seen == expected:
+            return body
+        if attempt + 1 < attempts:
+            sleep(delay)
+    raise DeployHostError(
+        f"线上版本与 VERSION 不一致 / Production version mismatch: "
+        f"expected {expected}, got {seen or 'unavailable'} from {url}"
+    )
+
+
+def update_remote_command(host: DeployHost) -> str:
+    """把固定镜像标签交给服务器更新器，避免生产跟随 latest。"""
+    return f"{IMAGE_TAG_ENV}={posix_quote(host.image_tag)} {host.update_command}"
+
+
 def run_version_check(tag: str | None = None) -> str:
     command = [sys.executable, str(VERSION_SCRIPT), "check"]
     if tag:
@@ -484,15 +558,19 @@ def cmd_package(tag: str | None, catalog: HostCatalog) -> int:
     if missing:
         raise DeployHostError("Missing required packaging files:\n- " + "\n- ".join(missing))
     print("required_files=ok")
-    version = (PROJECT_ROOT / "VERSION").read_text(encoding="utf-8").strip()
+    version = read_app_version()
+    image_tag = release_image_tag(version)
     print(f"package_version={version}")
+    print(f"backend_image={BACKEND_IMAGE_REPO}:{image_tag}")
+    print(f"frontend_image={FRONTEND_IMAGE_REPO}:{image_tag}")
     update_host = catalog_update_host(catalog)
     print("下一步（推送标签和发布镜像需要当次明确授权）：")
     print(f"  git tag -a v{version} -m \"Love Book {version}\"")
     print(f"  git push origin v{version}")
-    print("  等待 GitHub Actions release-images 成功")
+    print("  等待 GitHub Actions release-images 成功（镜像冒烟通过后才会推送版本标签）")
     print(f"  python scripts/deploy_host.py check --host {catalog.default_host}")
     print(f"  python scripts/deploy_host.py update --host {update_host} --yes")
+    print(f"  update 会传 {IMAGE_TAG_ENV}={image_tag}，并核对 /api/health 的 version")
     return 0
 
 
@@ -507,12 +585,15 @@ def cmd_recipe(catalog: HostCatalog) -> int:
 2. python scripts/deploy_host.py package --tag vX.Y.Z
 3. 运行后端测试和前端生产构建
 4. 经用户明确授权后创建并推送 annotated tag vX.Y.Z
-5. 等待 GitHub Actions 构建同版本前后端镜像并提升 latest
+5. 等待 GitHub Actions release-images：前后端镜像冒烟通过后推送不可变标签 X.Y.Z
+   （latest 只是便捷指针，不是生产发布依据）
 6. python scripts/deploy_host.py check --host {catalog.default_host}
 7. python scripts/deploy_host.py status --host {catalog.default_host}
-8. python scripts/deploy_host.py update --host {update_host} --yes
-9. curl -fsS https://tingle272.xyz/api/health  确认 version 与 VERSION 一致
+8. python scripts/deploy_host.py update --host {update_host} --dry-run
+9. 再次授权后 python scripts/deploy_host.py update --host {update_host} --yes
+   更新器收到 {IMAGE_TAG_ENV}=X.Y.Z；结束后脚本核对 /api/health 的 version，不一致即失败
 
+具备 update 能力的主机上，run 同样需要 --yes（可先 --dry-run）。
 当前主机来自 {catalog.source}。加主机只需把名字写进 LOVE_BOOK_SSH_HOSTS。
 """.strip()
     )
@@ -547,9 +628,10 @@ def cmd_update(
         print(f"update_host_follow {host.name} -> {target.name}")
     if not host_has(target, "update"):
         raise DeployHostError(f"Host {target.name} is not allowed to run production updates")
-    remote = target.update_command
+    remote = update_remote_command(target)
     argv = build_ssh_argv(target, remote)
     print(f"ssh_alias={target.ssh_alias}")
+    print(f"image_tag={target.image_tag}")
     print(f"remote={remote}")
     if dry_run:
         print("dry_run=true")
@@ -564,19 +646,29 @@ def cmd_update(
     print_stream(result.stdout)
     require_success(result, f"Production update failed on {target.name}")
     print_stream(result.stderr)
-    health = fetch_health(target.health_url)
-    if health:
-        print(f"local_health={health}")
+    health = verify_health_version(target.health_url, read_app_version())
+    print(f"local_health={health}")
+    print(f"health_version_ok={target.image_tag}")
     print(f"Update finished via {target.name}")
     return 0
 
 
-def cmd_run(host: DeployHost, remote_parts: list[str]) -> int:
+def cmd_run(host: DeployHost, remote_parts: list[str], *, yes: bool = False, dry_run: bool = False) -> int:
     if not remote_parts:
         raise DeployHostError("run requires a remote command after --")
     if not host_has(host, "run"):
         raise DeployHostError(f"Host {host.name} is not allowed to run arbitrary remote commands")
     remote = " ".join(posix_quote(part) if re.search(r"[\s\"']", part) else part for part in remote_parts)
+    if dry_run:
+        print(f"ssh_alias={host.ssh_alias}")
+        print(f"remote={remote}")
+        print("dry_run=true")
+        return 0
+    if host_has(host, "update") and not yes:
+        raise DeployHostError(
+            f"Refusing to run a remote command on production admin host {host.name} without --yes. "
+            "Re-run with --dry-run to print the command, or --yes after explicit authorization."
+        )
     result = run_ssh(host, remote, timeout=max(120, host.connect_timeout + 60))
     print_stream(result.stdout)
     print_stream(result.stderr)
@@ -613,6 +705,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = subparsers.add_parser("run", help="在命名主机上执行一条远程命令")
     run.add_argument("--host", help="命名主机，默认 LOVE_BOOK_SSH_HOSTS 第一项")
+    run.add_argument("--yes", action="store_true", help="在 User=root 的发布主机上确认执行")
+    run.add_argument("--dry-run", action="store_true", help="只打印远程命令，不执行")
     run.add_argument("remote_command", nargs=argparse.REMAINDER, help="远程命令，建议写在 -- 后面")
     return parser
 
@@ -646,7 +740,7 @@ def main(argv: list[str] | None = None) -> int:
         remote_parts = list(args.remote_command)
         if remote_parts and remote_parts[0] == "--":
             remote_parts = remote_parts[1:]
-        return cmd_run(host, remote_parts)
+        return cmd_run(host, remote_parts, yes=args.yes, dry_run=args.dry_run)
     except DeployHostError as exc:
         print(str(exc), file=sys.stderr)
         return 1

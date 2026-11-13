@@ -1,5 +1,8 @@
 # Love Book production compose: backend and frontend on loopback.
 # Public 80/443 is host nginx (deploy/nginx). Local development uses start_dev.bat.
+# Frontend starts only after the backend image healthcheck passes and has its own healthcheck.
+# Production must pin both services to the same immutable X.Y.Z image tag (or digest), never latest.
+# Backend defaults to APP_ENV=production, so a placeholder ADMIN_KEY disables the admin API.
 # Copy .env.example to .env, then run: docker compose up -d --build
 name: love-book
 
@@ -21,6 +24,7 @@ services:
       - .env
     environment:
       PYTHONPATH: /app
+      APP_ENV: ${APP_ENV:-production}
       MEDIA_ROOT: /app/media
       MEDIA_STORAGE: local
     volumes:
@@ -55,7 +59,15 @@ services:
     networks:
       - love-book-net
     depends_on:
-      - backend
+      backend:
+        # backend 镜像自带 HEALTHCHECK（curl /health），健康后再启动前端。
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
     logging: *default-logging
 
 networks:

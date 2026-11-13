@@ -1,5 +1,6 @@
 # Frontend production image for the Next.js app; build-time API routing points to /api
 # so host Nginx can serve the UI and reverse-proxy backend requests from the same origin.
+# The runner keeps only production dependencies and runs `next start` as the unprivileged nextjs user.
 
 ARG NODE_MAJOR=22
 
@@ -9,14 +10,15 @@ ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Shanghai \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
+# apt reads the ASCII-armored NodeSource key directly (.asc), so gnupg is not needed.
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-        ca-certificates curl gnupg tzdata; \
+        ca-certificates curl tzdata; \
     mkdir -p /etc/apt/keyrings; \
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
-        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg; \
-    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
+        -o /etc/apt/keyrings/nodesource.asc; \
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.asc] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
         > /etc/apt/sources.list.d/nodesource.list; \
     apt-get update; \
     apt-get install -y --no-install-recommends nodejs; \
@@ -30,6 +32,12 @@ FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
+
+FROM base AS prod-deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund \
+    && npm cache clean --force
 
 FROM base AS builder
 WORKDIR /app
@@ -50,16 +58,22 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0
 
+RUN groupadd --system --gid 10001 nextjs \
+    && useradd --system --uid 10001 --gid nextjs --home-dir /app --no-create-home --shell /usr/sbin/nologin nextjs
+
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
 COPY --from=builder /app/next.config.mjs ./next.config.mjs
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=prod-deps /app/node_modules ./node_modules
+# next start writes its image/fetch cache under .next/cache at runtime.
+COPY --from=builder --chown=nextjs:nextjs /app/.next ./.next
+
+USER nextjs
 
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -fsS http://127.0.0.1:3000/ >/dev/null || exit 1
 
-CMD ["npx", "--no-install", "next", "start", "-H", "0.0.0.0", "-p", "3000"]
+CMD ["node", "node_modules/next/dist/bin/next", "start", "-H", "0.0.0.0", "-p", "3000"]

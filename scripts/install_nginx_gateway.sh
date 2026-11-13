@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 把仓库里的主机 Nginx 站点装到 /etc/nginx，不启动、不抢 80/443。
-# 仅在 root 下运行。Caddy 仍可继续对外。
+# 把仓库里的主机 Nginx 站点与片段（TLS、反代头、安全响应头、反代路由）装到 /etc/nginx，不启动、不 reload。
+# 仅在 root 下运行；装完后由运维执行 nginx -t && systemctl reload nginx。
 
 set -euo pipefail
 
@@ -20,6 +20,7 @@ install -d -m 0755 /etc/nginx/snippets
 
 install -m 0644 "${NGINX_SRC}/snippets/love-book-ssl.conf" /etc/nginx/snippets/love-book-ssl.conf
 install -m 0644 "${NGINX_SRC}/snippets/love-book-proxy-headers.conf" /etc/nginx/snippets/love-book-proxy-headers.conf
+install -m 0644 "${NGINX_SRC}/snippets/love-book-security-headers.conf" /etc/nginx/snippets/love-book-security-headers.conf
 install -m 0644 "${NGINX_SRC}/snippets/love-book-proxy.conf" /etc/nginx/snippets/love-book-proxy.conf
 install -m 0644 "${NGINX_SRC}/sites/tingle272.xyz.conf" /etc/nginx/sites-available/tingle272.xyz
 install -m 0644 "${NGINX_SRC}/sites/cdn.tingle272.xyz.conf" /etc/nginx/sites-available/cdn.tingle272.xyz
@@ -32,5 +33,4 @@ if [[ -L /etc/nginx/sites-enabled/love || -e /etc/nginx/sites-enabled/love ]]; t
     echo "Disabled leftover default_server site: love"
 fi
 
-echo "Nginx gateway files installed. Do not start nginx until Caddy has released 80/443."
-echo "Place certificates in /etc/nginx/certs/<name>/{fullchain.pem,privkey.pem} then run nginx -t."
+echo "Nginx gateway files installed. Run: nginx -t && systemctl reload nginx"

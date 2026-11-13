@@ -1,4 +1,6 @@
-# Build immutable stable-release images, promote the matching pair to latest, and publish the GitHub Release.
+# Build stable-release images, smoke-test both containers, publish immutable X.Y.Z / sha tags,
+# then move the convenience latest pointer and publish the GitHub Release.
+# Production pins the immutable X.Y.Z tag (LOVE_BOOK_IMAGE_TAG); latest is never the deploy source of truth.
 name: release-images
 
 # Stable semantic-version tags are the only event allowed to publish images.
@@ -6,13 +8,12 @@ on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+"]
 
+# Only jobs that push to GHCR or edit the Release get write scopes.
 permissions:
   contents: read
-  packages: write
 
 env:
   REGISTRY: ghcr.io
-  DEFAULT_API_BASE: /api
 
 concurrency:
   group: release-${{ github.ref }}
@@ -78,14 +79,80 @@ jobs:
           repo="${GITHUB_REPOSITORY##*/}"
           echo "repo=${repo,,}" >> "$GITHUB_OUTPUT"
 
-  backend:
-    name: publish backend
+  smoke:
+    name: smoke ${{ matrix.component }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: prep
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - component: backend
+            context: .
+            dockerfile: ./Dockerfile
+            description: FastAPI backend for Love Book
+            build_args: APP_GIT_SHA=${{ github.sha }}
+          - component: frontend
+            context: ./web
+            dockerfile: ./web/Dockerfile
+            description: Next.js frontend for Love Book
+            build_args: NEXT_PUBLIC_API_BASE=/api
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build candidate image without pushing
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: love-book-${{ matrix.component }}:candidate
+          labels: |
+            org.opencontainers.image.title=love-book-${{ matrix.component }}
+            org.opencontainers.image.description=${{ matrix.description }}
+            org.opencontainers.image.version=${{ needs.prep.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          build-args: ${{ matrix.build_args }}
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,scope=${{ matrix.component }},mode=max
+
+      - name: Run container smoke test
+        shell: bash
+        run: |
+          bash scripts/ci_smoke_image.sh \
+            "${{ matrix.component }}" \
+            "love-book-${{ matrix.component }}:candidate" \
+            "${{ needs.prep.outputs.version }}" \
+            "${{ github.sha }}"
+
+  publish:
+    name: publish ${{ matrix.component }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: [prep, smoke]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: backend
+            context: .
+            dockerfile: ./Dockerfile
+            description: FastAPI backend for Love Book
+            build_args: APP_GIT_SHA=${{ github.sha }}
+          - component: frontend
+            context: ./web
+            dockerfile: ./web/Dockerfile
+            description: Next.js frontend for Love Book
+            build_args: NEXT_PUBLIC_API_BASE=/api
+    steps:
+      - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -93,81 +160,40 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute immutable tags and labels
+      - name: Compute immutable tags
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ needs.prep.outputs.image_owner }}/${{ needs.prep.outputs.image_repo }}-backend
+          images: ${{ env.REGISTRY }}/${{ needs.prep.outputs.image_owner }}/${{ needs.prep.outputs.image_repo }}-${{ matrix.component }}
           tags: |
             type=raw,value=${{ needs.prep.outputs.version }}
             type=sha,prefix=sha-,format=short
-          labels: |
-            org.opencontainers.image.title=love-book-backend
-            org.opencontainers.image.description=FastAPI backend for Love Book
-            org.opencontainers.image.version=${{ needs.prep.outputs.version }}
-            org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: Build and publish backend
+      # Same inputs and gha cache scope as the smoke build, so the pushed layers are the smoke-tested ones.
+      - name: Publish smoke-tested image
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: ./Dockerfile
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            APP_GIT_SHA=${{ github.sha }}
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,scope=backend,mode=max
-
-  frontend:
-    name: publish frontend
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    needs: prep
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compute immutable tags and labels
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ needs.prep.outputs.image_owner }}/${{ needs.prep.outputs.image_repo }}-frontend
-          tags: |
-            type=raw,value=${{ needs.prep.outputs.version }}
-            type=sha,prefix=sha-,format=short
           labels: |
-            org.opencontainers.image.title=love-book-frontend
-            org.opencontainers.image.description=Next.js frontend for Love Book
+            org.opencontainers.image.title=love-book-${{ matrix.component }}
+            org.opencontainers.image.description=${{ matrix.description }}
             org.opencontainers.image.version=${{ needs.prep.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
-
-      - name: Build and publish frontend
-        uses: docker/build-push-action@v6
-        with:
-          context: ./web
-          file: ./web/Dockerfile
-          platforms: linux/amd64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: NEXT_PUBLIC_API_BASE=${{ env.DEFAULT_API_BASE }}
-          cache-from: type=gha,scope=frontend
-          cache-to: type=gha,scope=frontend,mode=max
+          build-args: ${{ matrix.build_args }}
+          cache-from: type=gha,scope=${{ matrix.component }}
 
   promote-latest:
-    name: promote stable latest
+    name: move convenience latest pointer
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    needs: [prep, backend, frontend]
+    needs: [prep, publish]
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -184,7 +210,7 @@ jobs:
           docker buildx imagetools inspect \
             "${REGISTRY}/${{ needs.prep.outputs.image_owner }}/${{ needs.prep.outputs.image_repo }}-frontend:${{ needs.prep.outputs.version }}"
 
-      - name: Promote matching images to latest
+      - name: Point latest at the smoke-tested pair
         shell: bash
         run: |
           docker buildx imagetools create \

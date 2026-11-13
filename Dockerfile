@@ -1,19 +1,17 @@
-# Backend runtime image using Poetry's lock file; Node/npx runs the AMap MCP server.
+# Backend image using Poetry's lock file. A build stage compiles the venv; the runtime stage keeps only
+# Python, curl (healthcheck) and Node/npx for the AMap MCP server, without compilers or gnupg.
+# Runs as root on purpose: the production love_book_media named volume is root-owned.
+# Uvicorn trusts proxy headers only from loopback and private Docker bridge ranges (FORWARDED_ALLOW_IPS).
 
-FROM ubuntu:24.04
+FROM ubuntu:24.04 AS python-deps
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_ROOT_USER_ACTION=ignore \
-    TZ=Asia/Shanghai \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
-
-ARG APP_GIT_SHA=development
-ENV APP_GIT_SHA=${APP_GIT_SHA}
 
 RUN set -eux; \
     apt-get update; \
@@ -22,24 +20,10 @@ RUN set -eux; \
         python3-pip \
         python3-venv \
         ca-certificates \
-        tzdata \
-        curl \
-        gnupg \
         build-essential \
         libssl-dev \
         libffi-dev \
     ; \
-    mkdir -p /etc/apt/keyrings; \
-    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
-        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg; \
-    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
-        > /etc/apt/sources.list.d/nodesource.list; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends nodejs; \
-    npm config set fund false; \
-    npm config set audit false; \
-    ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime; \
-    echo "${TZ}" > /etc/timezone; \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -53,9 +37,50 @@ ENV VIRTUAL_ENV=/app/.venv \
     POETRY_VIRTUALENVS_CREATE=false
 
 COPY pyproject.toml poetry.lock ./
-RUN poetry sync --only main --no-root --no-interaction \
-    && rm -rf /opt/poetry \
-    && rm -rf /root/.cache/pypoetry
+RUN poetry sync --only main --no-root --no-interaction
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    TZ=Asia/Shanghai \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+ARG APP_GIT_SHA=development
+ENV APP_GIT_SHA=${APP_GIT_SHA}
+
+# apt reads the ASCII-armored NodeSource key directly (.asc), so gnupg is not needed.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        python3 \
+        ca-certificates \
+        tzdata \
+        curl \
+    ; \
+    mkdir -p /etc/apt/keyrings; \
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+        -o /etc/apt/keyrings/nodesource.asc; \
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.asc] https://deb.nodesource.com/node_22.x nodistro main" \
+        > /etc/apt/sources.list.d/nodesource.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends nodejs; \
+    npm config set fund false; \
+    npm config set audit false; \
+    ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime; \
+    echo "${TZ}" > /etc/timezone; \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=python-deps /app/.venv /app/.venv
+
+# Host Nginx reaches the loopback-published port through the Docker bridge gateway (private range).
+ENV VIRTUAL_ENV=/app/.venv \
+    PATH="/app/.venv/bin:${PATH}" \
+    FORWARDED_ALLOW_IPS="127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 
 COPY VERSION ./VERSION
 COPY app ./app
@@ -68,4 +93,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 
 CMD ["python", "-m", "uvicorn", "app.main:app", \
      "--host", "0.0.0.0", "--port", "8000", \
-     "--proxy-headers", "--forwarded-allow-ips=*"]
+     "--proxy-headers"]
