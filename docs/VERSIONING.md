@@ -42,7 +42,9 @@ git commit -m "chore: release 0.5.0"
 git tag -a v0.5.0 -m "Love Book 0.5.0"
 ```
 
-候选镜像必须实际启动：后端 `/health` 需要返回候选版本和构建标识，前端首页需要返回 HTTP 200。只有明确推送 `vX.Y.Z` 标签才会发布 GHCR 镜像。发布工作流会拒绝与 `VERSION` 不一致的标签，并为前后端同时生成 `0.5.0` 与 `sha-xxxxxxx` 两类不可变标签；两套镜像都成功后才会把同一版本提升为稳定版 `latest` 并创建 GitHub Release。普通 `master` push 不会移动 `latest`。
+候选镜像必须实际启动：后端 `/health` 需要返回候选版本和构建标识，前端首页需要返回 HTTP 200。只有明确推送 `vX.Y.Z` 标签才会发布 GHCR 镜像。发布工作流 `release-images` 会拒绝与 `VERSION` 不一致的标签，然后按 `verify → smoke → publish → promote-latest → release` 执行：`smoke` 用 `scripts/ci_smoke_image.sh` 启动未推送的候选镜像（后端用隔离 SQLite，`/health` 的 `version` 等于 `VERSION`、`git_sha` 等于构建提交；前端首页 200；核对 OCI 版本标签），通过后才为前后端推送 `0.5.0` 与 `sha-xxxxxxx` 两类不可变标签，再移动 `latest` 并创建 GitHub Release。
+
+Git 标签带 `v`（`v0.5.0`），镜像标签不带（`0.5.0`）。`latest` 只是便捷指针，生产不跟随它；普通 `master` push 不会移动 `latest`。
 
 ## 智能体打包到生产
 
@@ -56,7 +58,9 @@ python scripts/deploy_host.py update --host cn --dry-run
 python scripts/deploy_host.py update --host cn --yes
 ```
 
-`update --yes` 会 SSH 到具备更新能力的主机，执行已安装的 `/home/ts3/love-book/update.sh`。该脚本拉取前后端稳定版 `latest`，确认两套镜像的 OCI 版本标签完全一致，仅在发现新版本时创建 `pre-release` 恢复点，然后启动并验证 `/api/health` 和首页。未经当次明确授权不得加 `--yes`。
+`update --yes` 会 SSH 到具备更新能力的主机，执行 `LOVE_BOOK_IMAGE_TAG='0.5.0' bash /home/ts3/love-book/update.sh`，标签取自本地 `VERSION`。更新器确认两套镜像的 OCI 版本标签完全一致，仅在发现新版本时创建 `pre-release` 恢复点，然后启动并验证 `/api/health` 和首页；`deploy_host.py` 随后轮询 `/api/health`，`version` 与 `VERSION` 不一致就以失败退出。未经当次明确授权不得加 `--yes`。
+
+服务器上的 `update.sh` 不在仓库里，仍需在服务器侧改为读取 `LOVE_BOOK_IMAGE_TAG` 并拉取 `:${TAG}`，改法见 [`DEPLOYMENT.md`](DEPLOYMENT.md) 的“待办：服务器 `update.sh` 改为按固定标签拉取”。
 
 ## 生产部署与验证
 
@@ -66,7 +70,7 @@ python scripts/deploy_host.py update --host cn --yes
 curl -fsS https://tingle272.xyz/api/health
 ```
 
-需要更强的供应链固定时，前后端应同时指定同一次发布生成的镜像 digest。
+生产前后端必须固定为同一个 `X.Y.Z` 镜像标签；需要更强的供应链固定时，前后端同时指定同一次发布生成的镜像 digest。不得使用 `latest`。
 
 ## 发布前备份
 

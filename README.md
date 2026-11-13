@@ -29,7 +29,7 @@ Copy-Item .env.example .env
 
 - 前端：<http://localhost:3000>
 - 后端：启动脚本会打印实际地址，优先 `http://127.0.0.1:8000`；本机 8000 被 Windows 保留时改用 `8100` 等端口
-- 健康检查 / Swagger：`/health` 与 `/docs` 挂在上面打印的后端地址上
+- 健康检查 / Swagger：`/health` 与 `/docs` 挂在上面打印的后端地址上（生产公网不开放 `/docs`）
 
 依赖已安装时直接运行 `.\start_dev.bat`，不会重复安装。配置、高德和 LLM 说明见 [本地开发文档](docs/DEVELOPMENT.md)。
 
@@ -40,8 +40,8 @@ love_book/
 ├─ app/                 FastAPI 后端、数据库模型与业务服务
 ├─ web/                 Next.js 前端
 ├─ tests/               后端与版本回归测试
-├─ scripts/             版本校验、SSH 发布与 Nginx 切换
-├─ deploy/              主机 Nginx 与回滚用 Caddy
+├─ scripts/             版本校验、SSH 发布、镜像冒烟与 TLS 续期
+├─ deploy/              主机 Nginx 站点、反代与安全头
 ├─ docs/
 │  ├─ ai/               产品与设计约束，供开发者和 AI 协作使用
 │  └─ audits/           带日期的历史审计记录
@@ -103,7 +103,7 @@ poetry run python -m pytest -q --basetemp=.pytest-tmp-local
 cmd /c npm run build
 ```
 
-根目录 `VERSION` 是唯一应用版本。只有与它完全一致的 `vX.Y.Z` 标签会触发 GitHub Actions 构建前后端镜像；两套镜像成功后会同时提升为稳定版 `latest` 并创建 GitHub Release。智能体打包到发布只读 `LOVE_BOOK_SSH_HOSTS`，再用 `python scripts/deploy_host.py`；生产更新器和备份程序仍安装在服务器上，不随仓库分发。详见 [版本与发布](docs/VERSIONING.md) 和 [生产部署](docs/DEPLOYMENT.md)。
+根目录 `VERSION` 是唯一应用版本。只有与它完全一致的 `vX.Y.Z` 标签会触发 GitHub Actions 构建前后端镜像；两套镜像先通过容器冒烟，才推送不带 `v` 的不可变镜像标签 `X.Y.Z`，随后移动便捷指针 `latest` 并创建 GitHub Release。生产固定使用 `X.Y.Z`，不跟随 `latest`。智能体打包到发布只读 `LOVE_BOOK_SSH_HOSTS`，再用 `python scripts/deploy_host.py`，更新后会核对线上 `/api/health` 的版本；生产更新器和备份程序仍安装在服务器上，不随仓库分发。详见 [版本与发布](docs/VERSIONING.md) 和 [生产部署](docs/DEPLOYMENT.md)。
 
 ## 数据安全
 

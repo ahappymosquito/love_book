@@ -38,22 +38,28 @@ app/
     dependencies.py       管理密钥和 Bearer token 鉴权
     routes/
       admin_auth.py       管理密钥校验接口
-      admin.py            管理接口入口（创建、列出 pair）
+      admin.py            管理接口入口（pair、登录记录、AI / 高德配置）
       auth.py             当前用户、密码登录与安全凭据接口
       game.py             匿名跑酷排行榜接口
-  security_credentials.py 登录名规范化、Argon2id 哈希与登录冷却
       quotes.py           情侣共享本地语录库接口
-      events.py           事件接口
+      events.py           事件与收礼事件接口
       meeting_sessions.py 共享见面标题/日期范围编辑、合并和取消接口
       contents.py         评论、留言 reaction、图片和内容接口
+      habits.py           每日习惯接口
+      cycles.py           周期日历接口
+      todos.py            Todo 看板、候选、高德地点与图片接口
+      love_receipts.py    旧回执只读接口
+      users.py            私有头像下载
+    image_uploads.py      图片上传落盘与提交失败时的文件清理
+  security_credentials.py 登录名规范化、Argon2id 哈希与登录冷却
 tests/
   test_api.py             核心接口测试
 deploy/
-  nginx/                  主机 Nginx 站点与 TLS 片段
-  caddy/Caddyfile         回滚用 Caddy 配置，生产不再启用
+  nginx/                  主机 Nginx 站点、反代、TLS 与安全头片段
 scripts/
   version.py              同步并校验统一应用版本
   deploy_host.py          按 LOVE_BOOK_SSH_HOSTS 做打包检查和生产发布
+  ci_smoke_image.sh       发布前镜像冒烟
 .env.example                  含 LOVE_BOOK_SSH_HOSTS
 VERSION                       前后端唯一应用版本
 CHANGELOG.md                  未发布与正式发布变更记录
@@ -76,6 +82,7 @@ poetry sync --no-root
 | --- | --- | --- |
 | `DATABASE_URL` | `sqlite:///./pair_events.db` | 数据库连接地址。默认使用当前目录下的 SQLite 文件。 |
 | `ADMIN_KEY` | `change-me` | 管理接口密钥，请求管理接口时放在 `X-Admin-Key` 请求头中。 |
+| `APP_ENV` | `development` | 设为 `production`（Docker Compose 默认）时，空或占位 `ADMIN_KEY`（`change-me`、`change-me-please`）会让 `/admin/*` 与 `/admin/auth` 返回 `503`；非生产环境只在启动时警告。 |
 | `MAX_IMAGE_BYTES` | `10485760` | 单张图片文件最大字节数，默认 10MB。 |
 | `MEDIA_ROOT` | `/app/media` | 图片原图和缩略图的本地媒体根目录；Docker 中由 `love_book_media` volume 持久化。 |
 | `MEDIA_STORAGE` | `local` | 当前图片存储后端，现阶段固定使用本地文件。 |
@@ -111,6 +118,8 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 - Swagger 文档：`http://127.0.0.1:<端口>/docs`
 - OpenAPI JSON：`http://127.0.0.1:<端口>/openapi.json`
 
+生产 Nginx 对公网的 `/docs`、`/redoc`、`/openapi.json`（含 `/api/` 前缀）返回 404，需要时通过 SSH 隧道访问服务器本机 `127.0.0.1:8000/docs`。
+
 应用启动时会自动创建数据库表。v1 暂未接入 Alembic 迁移。
 
 ## 前端启动（`web/`）
@@ -133,7 +142,7 @@ npm run dev
 - `/timeline/[id]` 事件详情（创建者可原地编辑标题、描述、发生时间和可见方式；日历爱心可创建见面或打开所属见面编辑窗口；评论 / 图片混排，底部输入栏支持文字和相册）
 - `/me` 我的页面（当前用户头像、用户名、邮箱、常用位置、共享语录和安全密码管理）
 - `/create` 新建事件
-- `/todo` 共享 todo 工作区（四板块待确认队列 / 中央任务 / 右侧详情布局，默认展示全部未完成事项，按要完成时间排序，含详情内日期安排、描述编辑、双方打卡评论完成、照片折叠大图预览、餐厅搜索、随机抽奖和打卡详情）
+- `/todo` 共享 todo 工作区（`xl` 及以上为左侧列表导航 / 中央任务 / 右侧详情布局，更窄时改为横向板块 chip 与“抽一家”按钮；默认展示全部未完成事项，按最早要完成时间排序、未安排排后，含详情内日期安排、描述编辑、双方打卡评论完成、照片折叠大图预览、餐厅搜索、随机抽奖和打卡详情）
 - `/cycle` 周期日历 Dashboard（月 / 周 / 列表视图、筛选、提醒设置和移动端详情面板）
 
 ## 前端设计上下文
@@ -154,7 +163,7 @@ token 分发链接形如 `http://localhost:3000/?token=xxx` 或 `https://tingle2
 X-Admin-Key: your-admin-key
 ```
 
-如果缺失或错误，会返回 `403`。
+如果缺失或错误，会返回 `403`。生产环境（`APP_ENV=production`）未配置真实 `ADMIN_KEY` 时，所有管理接口返回 `503`。
 
 ### 普通接口鉴权
 
@@ -207,32 +216,50 @@ Authorization: Bearer <token>
 
 ### 接口总览
 
+下表按 `app/main.py` 与 `app/api/routes/*.py` 中当前注册的全部路由整理。
+
 | 分组 | 方法 | 路径 | 鉴权 | 说明 |
 | --- | --- | --- | --- | --- |
+| system | GET | `/health` | 无 | 返回 `status`、应用 `version` 与构建 `git_sha` |
 | admin | POST | `/admin/auth` | 无 | 校验管理密钥，前端登录管理页用 |
 | admin | POST | `/admin/pairs` | `X-Admin-Key` | 创建一对用户并签发两个 token，可选过期时间 |
 | admin | GET | `/admin/pairs` | `X-Admin-Key` | 列出全部配对及其 token |
+| admin | PATCH | `/admin/pairs/{pair_id}` | `X-Admin-Key` | 修改双方邮箱和情侣日期 `love_started_on` |
+| admin | GET | `/admin/login-logs` | `X-Admin-Key` | 登录记录，`limit` 默认 200、上限 500，可按 `user_id` 过滤 |
+| admin | GET | `/admin/ai-config` | `X-Admin-Key` | 读取全站 AI / 高德配置 |
+| admin | PATCH | `/admin/ai-config` | `X-Admin-Key` | 保存协议、地址、token、模型、高德 key 和 AI 分类开关 |
+| admin | GET | `/admin/ai-config/models` | `X-Admin-Key` | 获取当前协议的模型列表 |
+| admin | POST | `/admin/ai-config/test` | `X-Admin-Key` | 高德取证 + LLM 补全诊断测试 |
 | auth | POST | `/auth/login/password` | 无 | 使用登录名和安全密码换取 90 天 Bearer 会话 |
 | auth | GET | `/auth/me` | `Bearer` | 获取当前用户、对方、pair_id |
+| auth | PATCH | `/auth/me` | `Bearer` | 修改自己的昵称、邮箱或 emoji 头像 |
+| auth | GET | `/auth/anniversary` | `Bearer` | 首页纪念日、节日与普通日语录 |
 | auth | GET | `/auth/me/security-password` | `Bearer` | 获取当前用户安全密码配置状态 |
 | auth | PUT | `/auth/me/security-password` | `Bearer` | 设置或重置登录名和安全密码，返回新会话 |
 | auth | POST | `/auth/me/dissolve` | `Bearer` | 合上当前 pair，可选留一句话；内容保留，双方无法再进手账 |
-| auth | PATCH | `/auth/me` | `Bearer` | 修改自己的昵称、邮箱或 emoji 头像 |
 | auth | PATCH | `/auth/me/location` | `Bearer` | 保存当前用户常用位置，支持坐标逆地理编码或地址地理编码 |
 | auth | DELETE | `/auth/me/location` | `Bearer` | 清除当前用户常用位置 |
 | auth | POST | `/auth/me/avatar` | `Bearer` | 上传自己的图片头像（multipart） |
 | auth | DELETE | `/auth/me/avatar` | `Bearer` | 清除自己的图片头像，回退 emoji/首字 |
+| auth | POST | `/auth/login-record` | `Bearer` | 记录一次登录（IP、UA、语言），返回 201 |
 | users | GET | `/users/{user_id}/avatar` | `Bearer` 或 `X-Admin-Key` | 下载私有图片头像，同 pair 或管理员可读 |
 | quotes | GET | `/quotes` | `Bearer` | 当前 pair 的共享语录列表 |
+| quotes | GET | `/quotes/sample` | `Bearer` | 批量随机取话语（如 `?limit=5`），不调用外部节假日服务 |
+| quotes | GET | `/quotes/defaults` | `Bearer` | 只读默认语录，不混入 pair 自定义语录 |
 | quotes | POST | `/quotes` | `Bearer` | 添加一条共享语录 |
 | quotes | DELETE | `/quotes/{quote_id}` | `Bearer` | 删除当前 pair 的共享语录 |
 | game | GET | `/game/leaderboard` | 无 | 匿名读取全站跑酷 Top 3 和入榜门槛 |
 | game | POST | `/game/leaderboard` | 无 | 匿名提交名字和成绩，返回是否入榜及最新榜单 |
 | events | POST | `/events` | `Bearer` | 创建事件 |
+| events | POST | `/events/gifts` | `Bearer` | 创建收礼事件（multipart，可带照片） |
 | events | GET | `/events` | `Bearer` | 当前 pair 的事件列表 |
 | events | GET | `/events/{event_id}` | `Bearer` | 事件详情（含已可见内容） |
 | events | PATCH | `/events/{event_id}` | `Bearer` | 修改事件，仅创建者 |
 | events | DELETE | `/events/{event_id}` | `Bearer` | 删除事件，仅创建者 |
+| meeting-sessions | GET | `/meeting-sessions` | `Bearer` | 当前 pair 的见面列表 |
+| meeting-sessions | POST | `/meeting-sessions` | `Bearer` | 创建见面日期范围，重叠时自动合并 |
+| meeting-sessions | PATCH | `/meeting-sessions/{session_id}` | `Bearer` | 修改见面标题与日期范围，双方可编辑 |
+| meeting-sessions | DELETE | `/meeting-sessions/{session_id}` | `Bearer` | 取消整个见面并重新归类事件 |
 | contents | POST | `/events/{event_id}/comments` | `Bearer` | 提交评论 |
 | contents | PUT | `/comments/{comment_id}/reaction` | `Bearer` | 设置或替换当前用户对留言的点赞 / 倒赞 |
 | contents | DELETE | `/comments/{comment_id}/reaction` | `Bearer` | 取消当前用户对留言的 reaction |
@@ -240,6 +267,46 @@ Authorization: Bearer <token>
 | contents | GET | `/events/{event_id}/contents` | `Bearer` | 按可见规则过滤后的内容列表 |
 | contents | GET | `/images/{image_id}/file` | `Bearer` | 下载图片文件 |
 | contents | GET | `/images/{image_id}/thumb` | `Bearer` | 下载图片缩略图 |
+| habits | GET | `/habits/dashboard` | `Bearer` | 区间内双方习惯与打卡（`start` / `end`） |
+| habits | POST | `/habits/tasks` | `Bearer` | 新增自己的习惯 |
+| habits | PATCH | `/habits/tasks/{task_id}` | `Bearer` | 修改自己习惯的标题 / 颜色 |
+| habits | DELETE | `/habits/tasks/{task_id}` | `Bearer` | 停用自己的习惯 |
+| habits | POST | `/habits/tasks/{task_id}/toggle` | `Bearer` | 对指定日期完成 / 取消 |
+| cycles | GET | `/cycles/dashboard` | `Bearer` | 区间记录、预测与统计（`start` / `end`） |
+| cycles | PUT | `/cycles/logs/{day}` | `Bearer` | 保存单日记录 |
+| cycles | PUT | `/cycles/logs/{day}/dashboard` | `Bearer` | 保存单日记录并返回重算后的 dashboard |
+| cycles | DELETE | `/cycles/logs/{day}` | `Bearer` | 删除单日记录 |
+| todos | GET | `/todos/dashboard` | `Bearer` | Todo 看板（任务、候选、AI 开关等） |
+| todos | POST | `/todos/items` | `Bearer` | 新建 todo（含直接许愿） |
+| todos | GET | `/todos/items/{item_id}` | `Bearer` | Todo 详情（评论、图片、日期、地点） |
+| todos | PATCH | `/todos/items/{item_id}` | `Bearer` | 修改标题、分类、描述等 |
+| todos | DELETE | `/todos/items/{item_id}` | `Bearer` | 删除 todo |
+| todos | POST | `/todos/items/{item_id}/schedules` | `Bearer` | 设置安排日期，替换旧日期 |
+| todos | DELETE | `/todos/schedules/{schedule_id}` | `Bearer` | 取消安排日期 |
+| todos | POST | `/todos/items/{item_id}/classify` | `Bearer` | 用 LLM 重新分类单条；AI 关闭时 409 |
+| todos | POST | `/todos/items/classify-open` | `Bearer` | 用 LLM 重新分类全部未完成；AI 关闭时 409 |
+| todos | GET | `/todos/items/{item_id}/weather` | `Bearer` | 安排日期的高德天气提醒，失败返回 `null` |
+| todos | POST | `/todos/items/{item_id}/comments` | `Bearer` | 打卡评论 |
+| todos | POST | `/todos/items/{item_id}/images` | `Bearer` | 上传 todo 照片（multipart） |
+| todos | GET | `/todos/candidates` | `Bearer` | 待确认候选列表 |
+| todos | POST | `/todos/candidates` | `Bearer` | 新增并解析候选（LLM / 高德） |
+| todos | POST | `/todos/candidates/{candidate_id}/confirm` | `Bearer` | 确认候选加入；失败 502 且保留候选 |
+| todos | DELETE | `/todos/candidates/{candidate_id}` | `Bearer` | 丢弃候选 |
+| todos | POST | `/todos/restaurants/search` | `Bearer` | 高德地点搜索 |
+| todos | POST | `/todos/restaurants` | `Bearer` | 直接按高德地点新建 todo |
+| todos | POST | `/todos/restaurants/lottery` | `Bearer` | 随机抽奖（人均、城市/区域、附近距离） |
+| todos | GET | `/todo-images/{image_id}/file` | `Bearer` | 下载 todo 原图 |
+| todos | GET | `/todo-images/{image_id}/thumb` | `Bearer` | 下载 todo 缩略图 |
+| todos | DELETE | `/todo-images/{image_id}` | `Bearer` | 删除 todo 图片并尽力清理文件 |
+| love-receipts | GET | `/love-receipts` | `Bearer` | 旧回执只读列表（历史跳转用） |
+| love-receipts | GET | `/love-receipts/{receipt_id}` | `Bearer` | 旧回执只读详情 |
+| love-receipts | POST | `/love-receipts` | `Bearer` | 已停用，固定返回 410 |
+| love-receipts | PATCH | `/love-receipts/{receipt_id}/status` | `Bearer` | 已停用，固定返回 410 |
+| love-receipts | POST | `/love-receipts/{receipt_id}/receipt` | `Bearer` | 已停用，固定返回 410 |
+| love-receipts | GET | `/love-receipt-images/{image_id}/file` | `Bearer` | 旧回执原图 |
+| love-receipts | GET | `/love-receipt-images/{image_id}/thumb` | `Bearer` | 旧回执缩略图 |
+
+错误响应的 `detail` 多为面向用户的简短中文说明，不再包含上游异常文本；具体异常只写入服务端日志。
 
 ### 1. 校验管理密钥
 
@@ -479,7 +546,7 @@ Content-Type: multipart/form-data
 
 ### 5.3 安全密码与密码会话
 
-`POST /auth/login/password` 接收 `{ "login_name": "xiaohua", "password": "..." }`，成功后返回 `access_token`、`token_type: "bearer"` 和 90 天后的 `expires_at`。错误账号与错误密码统一返回“登录名或安全密码不正确”；账号与 IP 连续失败达到 5 次后进入渐进冷却。
+`POST /auth/login/password` 接收 `{ "login_name": "xiaohua", "password": "..." }`，成功后返回 `access_token`、`token_type: "bearer"` 和 90 天后的 `expires_at`。错误账号与错误密码统一返回“登录名或安全密码不正确”。同一登录名或同一 IP 在 15 分钟内失败达到 5 次后返回 `429`（带 `Retry-After`），冷却从 30 秒起按次数翻倍、最长 15 分钟；登录成功会清零该登录名和 IP 的失败计数。计数保存在后端进程内存中，重启后清空。
 
 `GET /auth/me/security-password` 返回当前用户的规范化登录名、是否已配置及更新时间。`PUT /auth/me/security-password` 只需当前 Bearer 鉴权，接收登录名和新密码，设置或重置后撤销该用户全部旧 `password` 来源会话，并在响应中返回新会话和最新 `security` 状态；`entry` 来源入口 token 不受影响。
 
@@ -674,7 +741,7 @@ Content-Type: application/json
 - `image/webp`
 - `image/gif`
 
-单张图片最大字节数由环境变量 `MAX_IMAGE_BYTES` 控制，默认 10MB。超出返回 `413`，不支持的 MIME 类型返回 `415`。上传成功后原图写入 `MEDIA_ROOT/images/originals/{pair_id}/{event_id}/...`，约 360px JPEG 缩略图写入 `MEDIA_ROOT/images/thumbs/{pair_id}/{event_id}/...`，数据库只保存相对 key、MIME、尺寸和大小等元数据。详情页优先加载缩略图，点开大图时再加载原图。
+单张图片最大字节数由环境变量 `MAX_IMAGE_BYTES` 控制，默认 10MB。超出返回 `413`，不支持的 MIME 类型返回 `415`。上传成功后原图写入 `MEDIA_ROOT/images/originals/{pair_id}/{event_id}/...`，约 360px JPEG 缩略图写入 `MEDIA_ROOT/images/thumbs/{pair_id}/{event_id}/...`，数据库只保存相对 key、MIME、尺寸和大小等元数据。如果数据库提交失败，已写入的原图和缩略图会被清理。详情页优先加载缩略图，点开大图时再加载原图。
 
 curl 示例：
 
@@ -753,7 +820,7 @@ curl -X POST "http://127.0.0.1:8000/events/1/images" \
 
 `GET /images/{image_id}/thumb`
 
-返回 JPEG 缩略图。接口优先读取 `images.thumb_storage_key` 指向的本地媒体文件；旧记录没有 key 时回退读取 `images.thumb_data`，如果旧图片还没有缩略图，首次请求会从 `images.data` 懒生成并写回数据库。响应会带 `Cache-Control: private` 缓存头。
+返回 JPEG 缩略图。接口优先读取 `images.thumb_storage_key` 指向的本地媒体文件；旧记录没有 key 时回退读取 `images.thumb_data`；如果旧图片还没有缩略图，首次请求会从 `images.data` 懒生成，写入 `MEDIA_ROOT` 并保存 `thumb_storage_key`，不再写回数据库 BLOB。落盘失败时只返回本次生成的缩略图，不持久化。响应会带 `Cache-Control: private` 缓存头。
 
 ## 历史图片与旧回执
 
@@ -826,8 +893,8 @@ python -m pytest tests -q
 - 创建 pair 时可设置 `love_started_on` 情侣日期；旧数据未设置时回退到 pair 创建日期。
 - 登录后的 `/timeline` 会调用 `GET /auth/anniversary`，展示“双方昵称在一起第 N 天”、520/1314/整月纪念、固定恋爱节日、中国大陆节假日/调休信息和普通日本地语录。
 - `/timeline` 事件列表按发生时间 `occurred_at` 所在月份收纳，没有发生时间时回退创建时间 `created_at`；默认只展开当前月份，其他月份可手动展开。
-- 登录后的用户页面显示固定底边栏：`/timeline`、`/cycle`、`/create`、`/todo`、`/me`，中间加号进入 `/create` 记一笔，详情页归属 Timeline。
-- 首页标题区右侧月亮图标进入 `/cycle` 月经周期记录页面，桌面端和手机端都显示。
+- 登录后的用户页面显示固定底边栏：首页 `/timeline`、周期 `/cycle`、中间加号“记一笔”、Todo `/todo`、习惯 `/habits`；详情页归属 Timeline，`/me` 通过顶部头像进入。
+- 首页标题区不放 `/cycle`、`/todo` 快捷图标，入口统一走底边栏。
 - 首页不再常驻展示周期入口；仅在预计月经开始前本机配置的 N 天到预计当天、且今日尚未记录时弹出周期记录提醒，可进入 `/cycle?quickLog=today` 填写或选择当天暂时不写。
 - 一言模块已弃用；非特殊日后端从当前 pair 的 `quotes` 数据库语录库和 `default_quotes` 全站共享兜底语录表合并后的随机池中取一句。
 - Timeline 首页进入时预读 5 句语录，点击语录文案立即换句，剩余 2 句时后台补充；页面不展示刷新图标或动态小狗，语录管理继续集中在 `/me`。
@@ -838,8 +905,9 @@ python -m pytest tests -q
 - 后端新增 `/cycles` API，所有接口复用现有 Bearer token 鉴权，并按当前 pair 共享周期记录。
 - 新增 `cycle_daily_logs` 表，使用 `pair_id + date` 唯一约束保存单日记录；用户事实记录以是否经期、流量、症状、心情、BBT、宫颈黏液、备注、创建/更新用户与时间为准，非经期阶段由系统按已有周期数据推算。
 - `GET /cycles/dashboard?start=YYYY-MM-DD&end=YYYY-MM-DD` 返回区间内已记录日期、今天及之后的预测日期、已有经期锚点时今天之前未记录日期的非经期阶段展示、统计信息和空状态。
-- `PUT /cycles/logs/{date}`、`PUT /cycles/logs/{date}/dashboard?start=YYYY-MM-DD&end=YYYY-MM-DD`、`DELETE /cycles/logs/{date}`、`DELETE /cycles/logs`、`POST /cycles/example-data` 用于保存、保存并返回重算 dashboard、删除、清空和生成演示数据；写接口在返回前完成提交。正式前端界面只展示记录、查看、编辑和提醒设置，不再展示演示/清空/导入入口。
-- 预测逻辑只基于当前已保存记录做参考展示：经期开始日由连续经期日分段识别，周期长度过滤 21-45 天异常间隔，经期长度过滤 2-10 天异常段，最近 6 个有效周期参与计算且最近 3 个权重更高；数据不足时使用 28 天周期、5 天经期默认值。今天及之后的未记录日期会生成完整预测；今天之前的未记录日期在已有经期锚点时只展示非经期阶段，不回填经期。已记录非经期日的阶段同样由系统推算，但 `is_period=false` 的事实优先，不会被阶段推算改成经期。前端保存周期记录后会使用重算后的 dashboard 实时刷新下个周期预测和日历填充。
+- `stats.has_prediction` 表示是否存在有效经期锚点。没有锚点时为 `false`，`current_cycle_day`、`last_period_start`、`next_period_start`、`next_period_end`、`ovulation_date`、`fertile_start`、`fertile_end`、`prediction_start`、`prediction_end` 均为 `null`，未记录日期保持空白，不编造预测；前端此时展示首次记录邀请。
+- `PUT /cycles/logs/{date}`、`PUT /cycles/logs/{date}/dashboard?start=YYYY-MM-DD&end=YYYY-MM-DD`、`DELETE /cycles/logs/{date}` 用于保存、保存并返回重算 dashboard 和删除单日记录；写接口在返回前完成提交。演示数据和清空全部记录的接口已移除。
+- 预测逻辑只基于当前已保存记录做参考展示：经期开始日由连续经期日分段识别，只有 2-10 天的经期段才作为周期开始锚点（仍延续到昨天的进行中经期段只受 10 天上限约束），周期长度过滤 21-45 天异常间隔，最近 6 个有效周期参与计算且最近 3 个权重更高；有锚点但有效周期不足时使用 28 天周期、5 天经期默认值。今天及之后的未记录日期会生成完整预测；今天之前的未记录日期在已有经期锚点时只展示非经期阶段，不回填经期。已记录非经期日的阶段同样由系统推算，但 `is_period=false` 的事实优先，不会被阶段推算改成经期。前端保存周期记录后会使用重算后的 dashboard 实时刷新下个周期预测和日历填充。
 - 周期页面“下次经期”展示必须使用 `next_period_start` 到 `next_period_end`，并与日历预测经期色块保持一致；`prediction_start` 到 `prediction_end` 只表示开始日可能浮动范围，不能当作整段经期展示。
 - 周期术语不再使用独立知识卡；基础体温 BBT、宫颈黏液、易孕期、排卵日、卵泡期、黄体期等关键词在不干扰按钮和日期格点击的位置提供百科外链，默认使用大陆网络更稳定的百度百科搜索；可信度属于系统算法说明，只在页面内用短文案解释。
 - 周期提醒提前天数保存在当前浏览器 localStorage：`love-book:cycle-reminder-days:{pairId}`，默认 3 天、页面限制 1-7 天；当天“暂时不写”状态保存为 `love-book:cycle-reminder-dismissed:{pairId}:{yyyy-MM-dd}`。
@@ -848,9 +916,10 @@ python -m pytest tests -q
 ## Todo 看板、餐厅和模型配置
 
 - 登录后可从底边栏进入 `/todo` todo 看板和 `/cycle` 周期入口；`/todo` 复用当前 Bearer token 鉴权，数据按 pair 双方共享。
-- `/todo` 前端采用四板块工作区：桌面端主内容配右侧详情栏，移动端详情以覆盖底边栏的底部弹窗展示。默认展示所有未完成 todo，不按当天过滤；已设置要完成时间的 todo 按日期升序排在前面，未设置时间的 todo 排在后面，已完成/打卡 todo 在下方折叠板块展示。`?date=YYYY-MM-DD` 会预选详情内日期输入，但不会隐藏其它 todo；日期只能在详情内设置或取消，选中日期后立即保存，每个 todo 同时只保留一个日期，任务行右侧用日期 badge 展示并按时间状态着色。Todo 操作不发送邮件通知，Timeline 事件和留言邮件继续保留。
+- `/todo` 前端采用 Microsoft To Do 式工作区：`xl` 及以上左侧列表导航（四个板块、“等你确认”和“抽一家”），中间任务列表，右侧详情栏；更窄屏幕把导航收成横向板块 chip 加“抽一家”按钮，详情以覆盖底边栏的底部弹窗展示。抽奖在弹层中打开，Three.js 场景按需懒加载。快速新增失败时本地卡片保留并可重试；页面隐藏时暂停后台轮询。默认展示所有未完成 todo，不按当天过滤；已设置要完成时间的 todo 按日期升序排在前面，未设置时间的 todo 排在后面，已完成/打卡 todo 在下方折叠板块展示。`?date=YYYY-MM-DD` 会预选详情内日期输入，但不会隐藏其它 todo；日期只能在详情内设置或取消，选中日期后立即保存，每个 todo 同时只保留一个日期，任务行右侧用日期 badge 展示并按时间状态着色。Todo 操作不发送邮件通知，Timeline 事件和留言邮件继续保留。
 - Todo 项目独立于 `/timeline` 事件，不会自动写入时间线。默认玩乐项目为“唱歌、台球、看电影、拼乐高”，用户也可以自定义新增。
 - Todo 任务标签语义为“吃喝 / 玩乐 / 住宿 / 许愿”，`/todo` 主界面使用“今天想吃点 / 出去玩一玩 / 住一晚也好 / 悄悄许个愿”四个板块，其中许愿板块默认展开；四个板块用更明确但低饱和的背景 tint、边框、header 色带、图标底色、标题色和计数 badge 做区分。任务行不重复展示所属分类 badge，餐厅/地点正常解析完成时也不展示“已解析”，只在解析中或解析失败时显示状态提示。新增输入位于板块顶部，输入框右侧提供手动分类选择、“新增”和“许愿”操作；手动分类选择只显示吃喝 / 玩乐 / 住宿，不再显示许愿。“新增”会进入待确认队列并显示“正在解析”；AI 开启时后端优先用 LLM 分类到 `food/play/stay/wish` 并调用高德 MCP 搜索，LLM 失败会持久化关闭 AI 并回退到请求里的手动分类；AI 关闭时后端不调用 LLM，直接使用用户当前选择的 `food/play/stay` 手动分类。“许愿”会直接创建 todo、展开许愿板块并打开详情描述编辑，不进入待确认队列。待确认卡片在 AI 开启时展示 AI 分类，AI 关闭时展示手动分类和高德候选信息，用户可在卡片里改到任意板块后确认加入或丢弃，确认失败时保留卡片和错误提示；后端确认异常返回 502 并保留候选可重试。页面不再展示手动刷新分类按钮。
+- `POST /todos/items/{id}/classify` 与 `POST /todos/items/classify-open` 只在 AI 分类开启时可用，关闭时返回 `409`；LLM 调用失败返回 `502`，并在响应前把 `ai_settings.llm_enabled` 持久化为关闭。
 - MySQL / MariaDB 部署在后端启动时会自动修复 `todo_items.category` 和 `todo_candidates.category` 的旧 ENUM，确保 `food/play/stay/wish` 都能写入；因此住宿“确定加入”不应再因为 `Data truncated for column 'category'` 失败。
 - Todo 完成状态要求 pair 双方都至少写过一次打卡评论；评论详情展示作者名，图片上传和详情描述只作为记录内容，不参与完成判定。描述保存到 `todo_items.note`，可在详情页添加、编辑或清空。照片在详情内折叠展示，不按上传人分组。
 - 吃饭、玩乐和住宿候选通过后端 `npx -y @amap/amap-maps-mcp-server` 调用高德 MCP 搜索和详情解析；Windows 本地会经 `cmd.exe` 调用 `npx` 以兼容 Node.js 批处理入口，并按该包当前 SDK 的 newline JSON stdio 协议通信，MCP 冷启动默认保留 45 秒超时。当前用户保存常用位置后，餐馆和住宿搜索会先用 5km 周边搜按距离优先返回候选，不足 6 条再用关键字/城市文本搜索补齐并去重；候选卡显示距离、地址、商圈、评分和人均。用户只需要在底部填写想一起做的事，确认高德候选后前端自动刷新并打开详情面板，展示店名、城市、地址、商圈、类型、评分、人均、营业时间、坐标、POI ID、点餐字段、门店照片和高德导航链接。有地点城市和安排日期时，详情页会通过高德天气接口展示轻量天气提醒；天气失败静默降级。高德 key 可在管理端单独配置，`.env` / 服务器环境变量 `AMAP_MAPS_API_KEY` 作为初始默认和兜底。
@@ -867,7 +936,7 @@ python -m pytest tests -q
 - 下方清单是上下排列的全宽液态玻璃折叠板块，桌面和移动端都不做左右两栏；默认展开自己、折叠对方；点击自己的习惯会对当前选中日期完成/取消，支持点击昨天或更早日期补记。新增习惯输入框左侧只有一个颜色按钮，直接新增使用默认玫瑰色，点开后展示调色板、明亮预设色和自定义颜色；习惯颜色只在新增或编辑时选择一次，不在每条任务行重复铺开；完成后的任务行整体切换为鼠尾草绿色并播放完成反馈动画。
 - 后端新增 `/habits/dashboard?start=YYYY-MM-DD&end=YYYY-MM-DD`、`POST /habits/tasks`、`PATCH /habits/tasks/{id}`、`DELETE /habits/tasks/{id}`、`POST /habits/tasks/{id}/toggle`，全部复用 Bearer token 并按当前 pair 隔离。
 - 数据表包括 `habit_tasks`、`habit_checkins` 和 `habit_reminder_runs`；写接口返回前完成数据库提交。
-- FastAPI lifespan 内置轻量习惯提醒任务，每天服务器本地时间 00:01 检查昨天。用户昨天有启用习惯且未全部完成时发送邮件；全部完成、无邮箱、无启用习惯或习惯已停用时不发送。提醒邮件链接到 `/habits?date=YYYY-MM-DD`，可携带 token 免登录补记；只有邮件实际投递成功后才写入 `habit_reminder_runs` 去重记录，临时投递失败不会被误记为已发送，单次扫描异常也不会终止后续每日任务。
+- FastAPI lifespan 内置轻量习惯提醒任务，每天服务器本地时间 00:01 检查昨天。用户昨天有启用习惯且未全部完成时发送邮件；全部完成、无邮箱、无启用习惯或习惯已停用时不发送。提醒邮件链接到 `/habits?date=YYYY-MM-DD`，可携带 token 免登录补记；扫描在工作线程中执行，不阻塞事件循环；每封邮件实际投递成功后立即提交该用户的 `habit_reminder_runs` 去重记录，临时投递失败不会被误记为已发送，单个用户失败会记录日志并跳过，不会中断扫描，也不会让已发送用户在重试时收到重复邮件。
 
 ## 收礼事件与旧回执兼容
 
@@ -876,5 +945,5 @@ python -m pytest tests -q
 - 收礼事件返回标准 `EventDetail`，`event_kind` 为 `gift_received`，反馈复用 `description`，标签位于 `gift_feelings`，评分位于 `gift_rating`。事件摘要额外返回 `preview_image` 和 `image_count`，照片仍通过 `/images/{id}/file|thumb` 私有接口读取。
 - 创建事件及全部照片在同一事务中完成；数据库或媒体写入失败时回滚事件并清理已写文件。
 - 收礼日期落在见面范围内时仍保持 `gift_received`，同时写入 `meeting_session_id`，因此会出现在对应见面分组。
-- 启动迁移会把所有旧 `love_receipts` 幂等转换为收礼事件并复制媒体；旧心情迁入 `gift_feelings`，旧图片 ID 使用确定性目标路径和唯一映射避免重复。旧 `GET /love-receipts` 与详情仅供历史跳转；旧创建、状态推进和提交回执接口返回 `410 Gone`。
-- 普通登录页面的公共标题栏不显示退出；唯一的用户退出入口位于 `/me` 设置页。管理端继续保留独立的管理员退出操作。
+- 启动迁移会把所有旧 `love_receipts` 幂等转换为收礼事件并复制媒体；旧心情迁入 `gift_feelings`，旧图片 ID 使用确定性目标路径和唯一映射避免重复。旧 `GET /love-receipts` 与详情仅供历史跳转；旧创建、状态推进和提交回执接口不论参数如何都固定返回 `410 Gone`，不写库也不发邮件。
+- `/timeline`、`/cycle`、`/todo`、`/habits` 顶部 `AppHeader` 右侧提供退出按钮，点击后需二次确认；`/me` 设置页同样保留退出。管理端继续保留独立的管理员退出操作。

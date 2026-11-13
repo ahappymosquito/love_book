@@ -29,6 +29,14 @@
 3. 启动后端开发服务：优先 `http://127.0.0.1:8000`；若该端口被 Windows Hyper-V 保留（`WinError 10013`），则改用 `8100` 等可用端口，并给前端设置 `NEXT_PUBLIC_API_BASE`
 4. 启动前端开发服务：`http://localhost:3000`
 
+本地后端默认 `APP_ENV=development`，`.env` 里的占位 `ADMIN_KEY`（`change-me-please`）只会在启动时打印警告，管理端仍可使用。若本地把 `APP_ENV` 设为 `production`（或用 `docker compose` 启动，Compose 默认 `production`），占位密钥会让 `/admin/*` 返回 503，需要换成真实随机密钥。
+
+## 前端约定速查
+
+- 已登录页面的顶部栏、主内容和桌面底边栏共用 `web/src/lib/page-width.ts` 的宽度表，三者左右边缘对齐；新页面直接复用，不要另写 `max-w-*`。
+- 顶部栏和底边栏的避让高度用 `globals.css` 中的 `--lb-header-clearance` / `--lb-nav-clearance`（已含 safe-area），浮层和吸底控件按这两个变量留空。
+- “今天”、月份分组和日期判断统一走 `web/src/lib/dates.ts`，固定按 `Asia/Shanghai` 计算，不要用浏览器本地时区直接切日期。
+
 ## 环境要求
 
 - Poetry 2.2+ 已加入 PATH，Python 版本满足 `pyproject.toml`
@@ -37,7 +45,7 @@
 
 ## Todo / 高德 / LLM 配置
 
-- `/todo` 需要后端和前端同时启动，前端入口在 `/timeline` 首页标题区右侧。
+- `/todo` 需要后端和前端同时启动，前端入口在底边栏。
 - `.env` 可配置 `AMAP_MAPS_API_KEY`，用于餐厅搜索、详情解析和附近抽奖；管理端也可以单独覆盖并保存高德 key。
 - 管理端 AI 配置使用 `.env` 中的 `LLM_OPENAI_BASE_URL`、`LLM_ANTHROPIC_BASE_URL`、`LLM_API_KEY`、`LLM_PROTOCOL`、`LLM_MODEL` 作为初始默认。页面可保存协议、对应地址、token 和选中模型；获取模型列表后会在下拉框展示模型数量，选择模型会自动测试连接。
 - 本地测试使用 `poetry run python -m pytest`；如果 Windows 默认临时目录无权限，可传入 `--basetemp=.pytest-tmp-local`。pytest 会自己创建这个目录，不需要预先建 `.pytest-tmp/`。
