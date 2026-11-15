@@ -1,6 +1,7 @@
 "use client";
 
 // Responsive shared editor for a meeting title and inclusive Beijing date range, with merge preview and cancellation.
+// With `createDefaults` and no session it plans a new (possibly future) meeting instead; overlaps still merge into the earlier one.
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { AlertTriangle, Loader2, Trash2, X } from "lucide-react";
@@ -13,13 +14,15 @@ import { ConfirmDialog } from "./confirm-dialog";
 interface Props {
   open: boolean;
   session: MeetingSessionLite | null;
+  createDefaults?: { title: string; started_on: string; ended_on: string };
   onOpenChange: (open: boolean) => void;
   onSaved: (session: MeetingSessionOut) => void | Promise<void>;
   onDeleted: () => void | Promise<void>;
 }
 
-export function MeetingEditorDialog({ open, session, onOpenChange, onSaved, onDeleted }: Props) {
+export function MeetingEditorDialog({ open, session, createDefaults, onOpenChange, onSaved, onDeleted }: Props) {
   const reducedMotion = useReducedMotion();
+  const creating = !session && Boolean(createDefaults);
   const [title, setTitle] = useState("");
   const [startedOn, setStartedOn] = useState("");
   const [endedOn, setEndedOn] = useState("");
@@ -29,42 +32,47 @@ export function MeetingEditorDialog({ open, session, onOpenChange, onSaved, onDe
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
-    if (!open || !session) return;
-    setTitle(session.title);
-    setStartedOn(session.started_on);
-    setEndedOn(session.ended_on);
+    if (!open) return;
+    const source = session ?? createDefaults;
+    if (!source) return;
+    setTitle(source.title);
+    setStartedOn(source.started_on);
+    setEndedOn(source.ended_on);
     setConfirmDelete(false);
     api.listMeetingSessions().then(setSessions).catch(() => setSessions([]));
+    // createDefaults is a fresh object on each parent render; only reopening should reset the form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, session]);
 
   const overlaps = useMemo(() => {
-    if (!session || !startedOn || !endedOn || startedOn > endedOn) return [];
+    if ((!session && !creating) || !startedOn || !endedOn || startedOn > endedOn) return [];
     return sessions.filter((item) =>
-      item.id !== session.id && item.started_on <= endedOn && startedOn <= item.ended_on,
+      item.id !== session?.id && item.started_on <= endedOn && startedOn <= item.ended_on,
     );
-  }, [endedOn, session, sessions, startedOn]);
+  }, [creating, endedOn, session, sessions, startedOn]);
 
   const retained = useMemo(() => {
-    if (!session || !overlaps.length) return null;
-    const current = sessions.find((item) => item.id === session.id);
-    if (!current) return null;
-    return [current, ...overlaps].sort((a, b) =>
+    if (!overlaps.length) return null;
+    const current = session ? sessions.find((item) => item.id === session.id) : null;
+    if (session && !current) return null;
+    return [...(current ? [current] : []), ...overlaps].sort((a, b) =>
       a.created_at.localeCompare(b.created_at) || a.id - b.id,
     )[0];
   }, [overlaps, session, sessions]);
 
   async function save() {
-    if (!session || saving) return;
+    if ((!session && !creating) || saving) return;
     if (!title.trim()) return void toast.error("请填写见面标题");
     if (!startedOn || !endedOn) return void toast.error("请选择开始和结束日期");
     if (startedOn > endedOn) return void toast.error("结束日期不能早于开始日期");
     setSaving(true);
     try {
-      const updated = await api.updateMeetingSession(session.id, {
-        title: title.trim(), started_on: startedOn, ended_on: endedOn,
-      });
-      await onSaved(updated);
-      toast.success(overlaps.length ? "见面已合并并重新归类" : "见面信息已保存");
+      const payload = { title: title.trim(), started_on: startedOn, ended_on: endedOn };
+      const saved = session
+        ? await api.updateMeetingSession(session.id, payload)
+        : await api.createMeetingSession(payload);
+      await onSaved(saved);
+      toast.success(overlaps.length ? "见面已合并" : session ? "见面信息已保存" : "下一次见面定好啦");
       onOpenChange(false);
     } finally {
       setSaving(false);
@@ -87,7 +95,7 @@ export function MeetingEditorDialog({ open, session, onOpenChange, onSaved, onDe
 
   return <>
     <AnimatePresence>
-      {open && session && <motion.div
+      {open && (session || creating) && <motion.div
         className="fixed inset-0 z-[70] flex items-end justify-center overflow-x-hidden sm:items-center sm:p-6"
         initial={reducedMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       >
@@ -99,14 +107,17 @@ export function MeetingEditorDialog({ open, session, onOpenChange, onSaved, onDe
         >
           <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-line sm:hidden" />
           <div className="flex items-start justify-between gap-4">
-            <div><h2 id="meeting-editor-title" className="font-display text-xl font-semibold text-ink">编辑这次见面</h2>
-              <p className="mt-1 font-sc text-sm leading-6 text-ink-soft">日期范围内的小事会自动收进这次见面。</p></div>
+            <div><h2 id="meeting-editor-title" className="font-display text-xl font-semibold text-ink">{creating ? "定下一次见面" : "编辑这次见面"}</h2>
+              <p className="mt-1 font-sc text-sm leading-6 text-ink-soft">
+                {creating ? "定好日子，就可以一起把想做的事放进来。" : "日期范围内的小事会自动收进这次见面。"}
+              </p></div>
             <button className="focus-ring grid size-11 shrink-0 place-items-center rounded-full text-ink-soft hover:bg-rose-soft/60"
               onClick={() => onOpenChange(false)} disabled={saving} aria-label="关闭"><X className="size-5" /></button>
           </div>
           <div className="mt-6 space-y-5">
             <label className="block font-sc text-sm text-ink">见面标题
               <input className="input-field mt-2 w-full" value={title} maxLength={200} autoFocus disabled={saving}
+                placeholder="比如：周末去杭州找你"
                 onChange={(event) => setTitle(event.target.value)} /></label>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <label className="block font-sc text-sm text-ink">开始日期
@@ -119,19 +130,19 @@ export function MeetingEditorDialog({ open, session, onOpenChange, onSaved, onDe
           </div>
           {retained && <div className="mt-5 flex gap-3 rounded-2xl border border-peach/45 bg-peach/10 p-4 text-sm text-ink-soft">
             <AlertTriangle className="mt-0.5 size-5 shrink-0 text-rose-deep" /><p className="leading-6">
-              这个范围会和 {overlaps.length} 次已有见面重叠。保存后自动合并，并保留较早创建的标题“{retained.id === session.id ? title.trim() || session.title : retained.title}”。
+              这个范围会和 {overlaps.length} 次已有见面重叠。保存后自动合并，并保留较早创建的标题“{session && retained.id === session.id ? title.trim() || session.title : retained.title}”。
             </p></div>}
-          <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <button className="focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-4 text-sm text-rose-deep hover:bg-rose-soft/55"
-              onClick={() => setConfirmDelete(true)} disabled={saving}><Trash2 className="size-4" />取消这次见面</button>
-            <button className="btn-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-6 text-sm font-medium"
-              onClick={save} disabled={saving}>{saving && <Loader2 className="size-4 animate-spin" />}{saving ? "保存中…" : "保存见面"}</button>
+          <div className={creating ? "mt-7 flex justify-end" : "mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between"}>
+            {!creating && <button className="focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-4 text-sm text-rose-deep hover:bg-rose-soft/55"
+              onClick={() => setConfirmDelete(true)} disabled={saving}><Trash2 className="size-4" />取消这次见面</button>}
+            <button className="btn-primary inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-medium sm:w-auto"
+              onClick={save} disabled={saving}>{saving && <Loader2 className="size-4 animate-spin" />}{saving ? "保存中…" : creating ? "就这么定了" : "保存见面"}</button>
           </div>
         </motion.section>
       </motion.div>}
     </AnimatePresence>
     <ConfirmDialog open={confirmDelete} title="取消这次见面？"
-      description="这个日期范围会被删除，其中的小事会按剩余见面范围重新归类。"
+      description="这个日期范围会被删除，其中的小事会按剩余见面范围重新归类，清单里的准备会回到心愿池。"
       confirmLabel="确认取消" destructive loading={deleting} onConfirm={remove}
       onCancel={() => !deleting && setConfirmDelete(false)} />
   </>;

@@ -1,6 +1,6 @@
-"""FastAPI factory exposing build identity, product routes (including gift wrap and journal export), and a resilient habit-reminder loop.
+"""FastAPI factory exposing build identity, product routes (including gift wrap and journal export), and resilient habit and cycle reminder loops.
 
-The daily reminder scan (blocking DB + SMTP) runs in a worker thread with its own session so it never
+Each daily reminder scan (blocking DB + SMTP) runs in a worker thread with its own session so it never
 stalls the event loop. Startup warns, or refuses in production, when ADMIN_KEY is still the default.
 """
 
@@ -8,6 +8,7 @@ from collections.abc import AsyncGenerator
 import asyncio
 from contextlib import suppress
 from contextlib import asynccontextmanager
+from datetime import datetime
 import logging
 
 from fastapi import FastAPI
@@ -16,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import admin, admin_auth, auth, contents, cycles, events, game, habits, journal, love_receipts, meeting_sessions, quotes, todos, users
 from app.core.config import get_settings
 from app.core.database import SessionLocal, init_db
+from app.cycle_reminders import scan_cycle_reminders, seconds_until_next_cycle_reminder
 from app.habits import reminder_target_date, scan_habit_reminders, seconds_until_next_reminder
 from app.version import APP_GIT_SHA, APP_VERSION
 
@@ -27,6 +29,11 @@ def run_habit_reminder_scan() -> int:
         return scan_habit_reminders(db, reminder_target_date())
 
 
+def run_cycle_reminder_scan() -> int:
+    with SessionLocal() as db:
+        return scan_cycle_reminders(db, datetime.now().astimezone().date())
+
+
 async def habit_reminder_loop() -> None:
     while True:
         await asyncio.sleep(seconds_until_next_reminder())
@@ -34,6 +41,15 @@ async def habit_reminder_loop() -> None:
             await asyncio.to_thread(run_habit_reminder_scan)
         except Exception:
             logger.exception("Habit reminder scan failed; the daily loop will continue")
+
+
+async def cycle_reminder_loop() -> None:
+    while True:
+        await asyncio.sleep(seconds_until_next_cycle_reminder())
+        try:
+            await asyncio.to_thread(run_cycle_reminder_scan)
+        except Exception:
+            logger.exception("Cycle reminder scan failed; the daily loop will continue")
 
 
 def warn_if_default_admin_key() -> None:
@@ -50,13 +66,15 @@ def warn_if_default_admin_key() -> None:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     warn_if_default_admin_key()
     init_db()
-    reminder_task = asyncio.create_task(habit_reminder_loop())
+    reminder_tasks = [asyncio.create_task(habit_reminder_loop()), asyncio.create_task(cycle_reminder_loop())]
     try:
         yield
     finally:
-        reminder_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await reminder_task
+        for task in reminder_tasks:
+            task.cancel()
+        for task in reminder_tasks:
+            with suppress(asyncio.CancelledError):
+                await task
 
 
 def create_app() -> FastAPI:

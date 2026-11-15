@@ -2,6 +2,7 @@
 
 // Cycle dashboard with a solid calendar canvas, Liquid Glass date and view controls, readable prediction hierarchy, and shared mobile-safe record editing.
 // Prediction fields may be null before the first period record, which shows a warm "record your first period" state; the mobile quick-record capsule floats above the bottom nav, and "today" follows the Asia/Shanghai calendar.
+// Below the local home-page reminder sits the pair-shared email reminder card (CycleEmailReminderCard), refreshed whenever the predicted next period changes.
 
 import {
   addDays,
@@ -40,6 +41,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type React from "react";
 import { toast } from "sonner";
 import { AppHeader } from "@/components/app-header";
+import { CycleEmailReminderCard } from "@/components/cycle-email-reminder-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -388,6 +390,7 @@ export function CycleCalendarDashboard() {
           ) : null}
 
           <ReminderSettingsCard value={reminderDays} onChange={changeReminderDays} />
+          <CycleEmailReminderCard refreshKey={dashboard?.stats.next_period_start ?? null} />
 
           <Card className="overflow-hidden">
             <CardHeader className="gap-4 sm:flex sm:flex-row sm:items-center sm:justify-between">

@@ -1,14 +1,18 @@
-"""User media routes for private avatar image downloads with pair or (constant-time) admin-key authorization."""
+"""User media routes for private avatar image downloads with pair or (constant-time) admin-key authorization.
+
+In development a missing local avatar file is fetched from MEDIA_REMOTE_API_BASE (see app.media_remote).
+"""
 
 import logging
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import Response
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import admin_key_matches, bearer_scheme, get_pair_for_user
 from app.core.database import get_db
+from app.media_remote import remote_media_response
 from app.models import DeviceToken, User
 from app.services import token_is_expired
 from app.storage import PRIVATE_MEDIA_CACHE_HEADERS, MediaStorageError, read_media_file
@@ -39,6 +43,7 @@ def _authorized_for_avatar(
 @router.get("/{user_id}/avatar")
 def get_user_avatar(
     user_id: int,
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     x_admin_key: str | None = Header(default=None),
     db: Session = Depends(get_db),
@@ -54,6 +59,8 @@ def get_user_avatar(
         logger.exception("Avatar image read failed for user %s", user_id)
         raise HTTPException(status_code=500, detail="头像暂时读取不了，请稍后再试") from exc
     if stored is None:
+        if (remote := remote_media_response(request)) is not None:
+            return remote
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Avatar image not found")
     return Response(
         content=stored,

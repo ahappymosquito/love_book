@@ -1,5 +1,5 @@
 # Backend image using Poetry's lock file. A build stage compiles the venv; the runtime stage keeps only
-# Python, curl (healthcheck) and Node/npx for the AMap MCP server, without compilers or gnupg.
+# Python, tzdata and curl (healthcheck), without compilers, Node.js or gnupg.
 # Runs as root on purpose: the production love_book_media named volume is root-owned.
 # Uvicorn trusts proxy headers only from loopback and private Docker bridge ranges (FORWARDED_ALLOW_IPS).
 
@@ -51,7 +51,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
 ARG APP_GIT_SHA=development
 ENV APP_GIT_SHA=${APP_GIT_SHA}
 
-# apt reads the ASCII-armored NodeSource key directly (.asc), so gnupg is not needed.
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
@@ -60,15 +59,6 @@ RUN set -eux; \
         tzdata \
         curl \
     ; \
-    mkdir -p /etc/apt/keyrings; \
-    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
-        -o /etc/apt/keyrings/nodesource.asc; \
-    echo "deb [signed-by=/etc/apt/keyrings/nodesource.asc] https://deb.nodesource.com/node_22.x nodistro main" \
-        > /etc/apt/sources.list.d/nodesource.list; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends nodejs; \
-    npm config set fund false; \
-    npm config set audit false; \
     ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime; \
     echo "${TZ}" > /etc/timezone; \
     rm -rf /var/lib/apt/lists/*

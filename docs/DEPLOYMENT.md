@@ -158,12 +158,11 @@ cp .env.example .env
 | `APP_WEB_URL` | `https://tingle272.xyz` | 邮件通知中的前端入口链接 |
 | `MEDIA_ROOT` | `/app/media` | 图片媒体根目录 |
 | `MEDIA_STORAGE` | `local` | 当前图片存储后端 |
-| `SMTP_*` | 你自己的邮件服务 | 用于事件 / 评论通知 |
-| `AMAP_MAPS_API_KEY` | 高德 Web 服务 Key | `/todo` 搜索与附近抽奖；管理端可覆盖 |
-| `LLM_*` | 你自己的模型服务 | 管理端获取模型列表和测试连接 |
+| `SMTP_*` | 你自己的邮件服务 | 用于事件 / 评论通知、习惯提醒和周期邮件提醒 |
+| `MEDIA_REMOTE_API_BASE` | 留空 | 只给本地开发回源线上图片用；生产留空，`APP_ENV=production` 时即使填了也不会启用 |
 | `LOVE_BOOK_SSH_HOSTS` | `cn-ts3,cn` | 开发机给智能体看的 SSH Host 名；生产容器不读取。私钥仍放 `~/.ssh/config` |
 
-真实密钥只放 `.env` 或服务器环境变量。管理端 AI / 模型配置会写入数据库，迁移服务器时需要和业务数据一起备份。开发机 `.env` 里的 `LOVE_BOOK_SSH_HOSTS` 只给智能体发布流程使用，不要写进生产 Compose。
+真实密钥只放 `.env` 或服务器环境变量。高德和模型服务已经移除，服务器 `.env` 里残留的 `AMAP_MAPS_API_KEY`、`LLM_*` 不再被读取，可以删掉。开发机 `.env` 里的 `LOVE_BOOK_SSH_HOSTS` 只给智能体发布流程使用，不要写进生产 Compose。
 
 ## 4. 部署命令
 
@@ -185,7 +184,7 @@ services:
 
 Compose 默认给后端设置 `APP_ENV=${APP_ENV:-production}`。前端自带 healthcheck（请求本机 `/`），并在后端 healthcheck 通过（`service_healthy`）后才启动。
 
-后端镜像为多阶段构建：构建阶段编译 Poetry 虚拟环境，运行阶段只保留 Python、curl（健康检查）和 Node.js / npx（高德 MCP）。后端容器仍以 root 运行，因为生产 `love_book_media` volume 归 root 所有。前端镜像只装生产依赖，以非 root 用户 `nextjs`（uid 10001）运行。
+后端镜像为多阶段构建：构建阶段编译 Poetry 虚拟环境，运行阶段只保留 Python、tzdata 和 curl（健康检查），不再安装 Node.js。后端容器仍以 root 运行，因为生产 `love_book_media` volume 归 root 所有。前端镜像只装生产依赖，以非 root 用户 `nextjs`（uid 10001）运行。
 
 常用命令：
 
@@ -230,9 +229,9 @@ docker compose down
 
 应用启动时 `app.core.database.init_db()` 会自动建表，并对老库做轻量补列。新上传图片写入 `MEDIA_ROOT`，数据库只保存相对 storage key；旧 BLOB 记录仍可回退读取。
 
-迁移服务器时必须同时备份数据库和 `love_book_media` volume。语音能力已经移除；已有部署中的 `voices` 表和文件会作为不可达备份保留。
+迁移服务器时必须同时备份数据库和 `love_book_media` volume。语音能力已经移除；已有部署中的 `voices` 表和文件会作为不可达备份保留。旧 Todo 的 `todo_candidates`、`todo_schedules`、`todo_restaurants`、`ai_settings` 表和 `users.location_*` 列同样只作为备份保留，启动时不会删除；升级后第一次启动会给 `todo_items` 补见面清单需要的列并回填一次。周期邮件提醒新增 `cycle_reminder_settings` 和 `cycle_reminder_runs` 两张表，由 `init_db()` 自动创建。
 
-后端镜像安装 Node.js 22 以运行高德 MCP，图片缩略图依赖 Pillow。
+后端镜像不再安装 Node.js，图片缩略图依赖 Pillow。
 
 ## 8. 故障排查
 

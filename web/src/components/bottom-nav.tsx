@@ -55,7 +55,7 @@ export function BottomNav() {
             if (active !== "create" && createWindowPhase === "closed") openCreateWindow();
           }}
         />
-        <NavItem href="/todo" label="Todo" active={createWindowPhase === "closed" && active === "todo"} reducedMotion={reducedMotion} icon={<ListTodo className="h-5 w-5" />} />
+        <NavItem href="/todo" label="清单" active={createWindowPhase === "closed" && active === "todo"} reducedMotion={reducedMotion} icon={<ListTodo className="h-5 w-5" />} />
         <NavItem href="/habits" label="习惯" active={createWindowPhase === "closed" && active === "habits"} reducedMotion={reducedMotion} icon={<CalendarCheck2 className="h-5 w-5" />} />
       </div>
     </nav>

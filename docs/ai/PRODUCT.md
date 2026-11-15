@@ -6,11 +6,11 @@ product
 
 ## Users
 
-Love Book is used by a fixed pair of partners who enter through private token links or their own short login name and security password, then return from phones and desktops to record daily memories, arrange todo plans, track personal habits together, check cycle notes, and manage their shared account setup. Before login, visitors can play a public code-drawn meadow-gathering runner and compare scores on a global Top 3. Admin users configure pairs, entry links, contact details, AI model settings, and operational records.
+Love Book is used by a fixed pair of partners who enter through private token links or their own short login name and security password, then return from phones and desktops to record daily memories, prepare together for their next meeting, track personal habits together, check cycle notes, and manage their shared account setup. Before login, visitors can play a public code-drawn meadow-gathering runner and compare scores on a global Top 3. Admin users configure pairs, entry links, contact details, and operational records.
 
 ## Product Purpose
 
-The product gives two people a private shared place to write events, exchange comments, wrap gifts for each other and respond once they are opened, upload image memories, collect multiple offline-meeting notes into named meetings, arrange food/play plans, track personal daily habits, track cycle records, revisit milestones, and export their shared journal. Success means the interface feels trustworthy enough for long-term personal use while keeping common tasks quick and clear.
+The product gives two people a private shared place to write events, exchange comments, wrap gifts for each other and respond once they are opened, upload image memories, collect multiple offline-meeting notes into named meetings, prepare for the next meeting with a shared checklist whose finished items flow into the journal, track personal daily habits, track cycle records (with an optional gentle email heads-up before a predicted period), revisit milestones, and export their shared journal. Success means the interface feels trustworthy enough for long-term personal use while keeping common tasks quick and clear.
 
 Meeting sessions remain an internal counting and grouping model rather than a visible form concept. Each meeting owns an inclusive Beijing-time date range; all pair events inside it are classified automatically, while marking an unmatched event creates a same-title single-day range. Either partner can click the meeting title to edit its title, start date, and end date in one responsive dialog. Overlapping ranges merge into the earliest-created meeting and keep that meeting's title, cancellation removes the whole range and reclassifies affected events, and event content permissions and independent event titles remain unchanged.
 
@@ -40,7 +40,7 @@ Avoid cold neutral dashboards, lifeless gray panels, harsh saturated colors, and
 
 - Let color carry warmth through a soft rose, peach, and sage palette.
 - Treat Liquid Glass as a functional control layer for navigation, toolbars, segmented controls, and transient sheets; keep memories, calendars, tasks, and settings rows on solid readable content surfaces.
-- Make primary tasks obvious: log in, write a memory, read a detail, add content, schedule a plan, check off a habit, record a cycle day, copy an entry link.
+- Make primary tasks obvious: log in, write a memory, read a detail, add content, prepare for a meeting, check off a habit, record a cycle day, copy an entry link.
 - Preserve trust through readable contrast, predictable controls, stable layout, and clear states.
 - Use the same cute, rounded, comfortable component vocabulary across the pair app and admin surfaces.
 - Use smooth motion for feedback and celebratory moments only; do not delay core tasks or create visual noise.

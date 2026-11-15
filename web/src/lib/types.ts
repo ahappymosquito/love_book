@@ -1,4 +1,4 @@
-// Shared TypeScript contracts for authentication, runner rankings, timelines (including wrapped gifts the sender seals and the receiver unwraps; legacy gift_received rows read as already-opened gifts), profiles, meetings, quotes, habits, todo boards, AMap, admin AI, cycles (prediction dates may be null before the first period record), and reminders.
+// Shared TypeScript contracts for authentication, runner rankings, timelines (including wrapped gifts the sender seals and the receiver unwraps; legacy gift_received rows read as already-opened gifts), profiles, meetings, quotes, habits, the meeting todo plan (one-tap completion, write into the journal), cycles (prediction dates may be null before the first period record), the cycle mail reminder, and reminders.
 
 export type VisibilityMode = "public" | "mutual_submit";
 export type EventKind = "memory" | "offline_meeting" | "gift" | "gift_received";
@@ -17,10 +17,7 @@ export type GiftFeeling =
   | "not_my_style"
   | "upset"
   | "complicated";
-export type TodoCategory = "food" | "play" | "stay" | "wish";
-export type TodoCandidateStatus = "parsing" | "needs_choice" | "ready" | "failed";
-export type TodoParseStatus = "pending" | "resolved" | "failed";
-export type AIProtocol = "openai" | "anthropic";
+export type TodoCategory = "food" | "play" | "stay" | "prep" | "wish";
 
 export interface UserOut {
   id: number;
@@ -29,11 +26,6 @@ export interface UserOut {
   avatar_has_image: boolean;
   avatar_updated_at: string | null;
   email: string | null;
-  location_label: string | null;
-  location_address: string | null;
-  location_city: string | null;
-  location_coords: string | null;
-  location_updated_at: string | null;
   created_at: string;
 }
 
@@ -430,43 +422,11 @@ export interface HabitToggleOut {
   dashboard: HabitDashboardOut;
 }
 
-export interface TodoRestaurantOut {
+export interface TodoMeetingOut {
   id: number;
-  item_id: number;
-  amap_poi_id: string | null;
-  name: string;
-  address: string | null;
-  location: string | null;
-  distance_m?: number | null;
-  city: string | null;
-  adname: string | null;
-  pname: string | null;
-  poi_type: string | null;
-  poi_typecode: string | null;
-  tel: string | null;
-  business_area: string | null;
-  signature_dishes: string | null;
-  per_capita: number | null;
-  rating: number | null;
-  opening_hours: string | null;
-  meal_ordering: string | null;
-  photos_count: number;
-  first_photo_url: string | null;
-  amap_navigation_url: string | null;
-  display_facts: Array<{ label: string; value: string | null; href?: string | null }>;
-  parse_status: TodoParseStatus;
-  parse_error: string | null;
-  raw: Record<string, unknown> | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface TodoScheduleOut {
-  id: number;
-  item_id: number;
-  scheduled_on: string;
-  created_by_id: number;
-  created_at: string;
+  title: string;
+  started_on: string;
+  ended_on: string;
 }
 
 export interface TodoItemOut {
@@ -477,62 +437,26 @@ export interface TodoItemOut {
   title: string;
   note: string | null;
   is_archived: boolean;
-  restaurant: TodoRestaurantOut | null;
-  schedules: TodoScheduleOut[];
+  meeting_session_id: number | null;
+  completed_at: string | null;
+  completed_by_id: number | null;
+  journal_event_id: number | null;
   comments_count: number;
   images_count: number;
-  checked_in: boolean;
   created_at: string;
   updated_at: string;
 }
 
-export interface TodoDashboardOut {
-  month: string;
-  items: TodoItemOut[];
-  schedules: TodoScheduleOut[];
-  llm_enabled: boolean;
-}
-
-export interface TodoClassifyOpenOut {
-  count: number;
+export interface TodoPlanOut {
+  today: string;
+  focus_meeting_id: number | null;
+  meetings: TodoMeetingOut[];
   items: TodoItemOut[];
 }
 
-export interface TodoCandidateOut {
-  id: number;
-  raw_title: string;
-  category: TodoCategory;
-  status: TodoCandidateStatus;
-  amap_candidates: TodoRestaurantCandidate[];
-  selected_candidate: TodoRestaurantCandidate | null;
-  parse_error: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface TodoRestaurantCandidate {
-  amap_poi_id: string | null;
-  name: string;
-  address: string | null;
-  location: string | null;
-  distance_m?: number | null;
-  city: string | null;
-  adname: string | null;
-  pname: string | null;
-  poi_type: string | null;
-  poi_typecode: string | null;
-  tel: string | null;
-  business_area: string | null;
-  rating: number | null;
-  per_capita: number | null;
-  opening_hours: string | null;
-  meal_ordering: string | null;
-  tags: string[];
-  signature_dishes: string | null;
-  photos_count: number;
-  first_photo_url: string | null;
-  amap_navigation_url: string | null;
-  raw: Record<string, unknown> | null;
+export interface TodoJournalOut {
+  event_id: number;
+  created: boolean;
 }
 
 export interface TodoCommentOut {
@@ -560,68 +484,15 @@ export interface TodoItemDetail extends TodoItemOut {
   images: TodoImageOut[];
 }
 
-export interface TodoLotteryOut {
-  item: TodoItemOut | null;
-  candidate: TodoRestaurantCandidate | null;
-}
-
-export interface TodoWeatherOut {
-  city: string;
-  report_date: string | null;
-  day_weather: string | null;
-  night_weather: string | null;
-  day_temp: string | null;
-  night_temp: string | null;
-  day_wind: string | null;
-  night_wind: string | null;
-}
-
-export interface AdminAIConfigOut {
-  llm_enabled: boolean;
-  protocol: AIProtocol;
-  selected_model: string;
-  env_model: string;
-  openai_base_url: string;
-  anthropic_base_url: string;
-  api_key: string;
-  api_key_preview: string;
-  has_api_key: boolean;
-  amap_api_key: string;
-  amap_key_preview: string;
-  has_amap_key: boolean;
-  saved_models: string[];
+export interface CycleReminderSettingOut {
+  enabled: boolean;
+  days_before: number;
+  recipient_user_id: number | null;
+  recipient_has_email: boolean;
+  updated_by_id: number | null;
   updated_at: string | null;
-}
-
-export interface AdminAIConnectionTestOut {
-  ok: boolean;
-  message: string;
-  sample_category: TodoCategory | null;
-  sample_keyword: string | null;
-  sample_city: string | null;
-  expected_category: TodoCategory | null;
-  category_matched: boolean | null;
-  amap_name: string | null;
-  amap_address: string | null;
-  amap_poi_type: string | null;
-  amap_poi_typecode: string | null;
-  amap_poi_id: string | null;
-  amap_city: string | null;
-  amap_adname: string | null;
-  amap_tel: string | null;
-  amap_business_area: string | null;
-  rating: number | null;
-  per_capita: number | null;
-  tags: string[];
-  signature_dishes: string | null;
-  photos_count: number;
-  first_photo_url: string | null;
-  amap_category: TodoCategory | null;
-  amap_category_reason: string | null;
-  llm_category: TodoCategory | null;
-  llm_status: string | null;
-  llm_message: string | null;
-  evidence_note: string | null;
+  next_period_start: string | null;
+  next_send_on: string | null;
 }
 
 export const AVATAR_PRESETS = [

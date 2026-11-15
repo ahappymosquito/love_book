@@ -1,4 +1,4 @@
-"""Pydantic 契约：pair 功能、包装礼物（拆礼物状态/遮罩/收礼回应）、手账导出、合上手账、安全密码会话、跑酷成绩、媒体和管理端接口；周期统计在没有经期锚点时预测字段为 null。"""
+"""Pydantic 契约：pair 功能、包装礼物（拆礼物状态/遮罩/收礼回应）、手账导出、合上手账、见面清单 Todo（挂见面/单方完成/写进手账）、周期邮件提醒设置、安全密码会话、跑酷成绩、媒体和管理端接口；周期统计在没有经期锚点时预测字段为 null。"""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -6,7 +6,6 @@ from typing import Literal
 from pydantic import AliasChoices, BaseModel, Field, field_serializer, field_validator
 
 from app.models import (
-    AIProtocol,
     CervicalMucus,
     CycleFlow,
     CycleMood,
@@ -17,14 +16,20 @@ from app.models import (
     LoveReceiptMood,
     LoveReceiptStatus,
     LoveReceiptType,
-    TodoCandidateStatus,
     TodoCategory,
-    TodoParseStatus,
     VisibilityMode,
 )
 
 
 class APIModel(BaseModel):
+    # DATETIME 列不保存时区偏移，带偏移的输入必须先换算成 UTC，否则 +08:00 的钟面时间会被当成 UTC 存下。
+    @field_validator("*", mode="after", check_fields=False)
+    @classmethod
+    def normalize_datetime(cls, value: object) -> object:
+        if isinstance(value, datetime) and value.tzinfo is not None:
+            return value.astimezone(timezone.utc)
+        return value
+
     @field_serializer("*", when_used="json", check_fields=False)
     def serialize_datetime(self, value: object) -> object:
         if not isinstance(value, datetime):
@@ -41,11 +46,6 @@ class UserOut(APIModel):
     avatar_has_image: bool = False
     avatar_updated_at: datetime | None = None
     email: str | None = None
-    location_label: str | None = None
-    location_address: str | None = None
-    location_city: str | None = None
-    location_coords: str | None = None
-    location_updated_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -55,21 +55,6 @@ class MeUpdate(APIModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=100)
     avatar: str | None = Field(default=None, max_length=64)
     email: str | None = Field(default=None, max_length=255)
-
-
-class MeLocationUpdate(APIModel):
-    label: str | None = Field(default=None, max_length=200)
-    address: str | None = Field(default=None, max_length=500)
-    city: str | None = Field(default=None, max_length=100)
-    coords: str | None = Field(default=None, max_length=100)
-
-    @field_validator("label", "address", "city", "coords")
-    @classmethod
-    def strip_optional_text(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        value = value.strip()
-        return value or None
 
 
 class AdminAuthRequest(APIModel):
@@ -755,44 +740,20 @@ class HabitToggleOut(APIModel):
     dashboard: HabitDashboardOut
 
 
-class TodoRestaurantOut(APIModel):
+def _strip_required_title(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        raise ValueError("Title cannot be empty")
+    return value
+
+
+class TodoMeetingOut(APIModel):
     id: int
-    item_id: int
-    amap_poi_id: str | None = None
-    name: str
-    address: str | None = None
-    location: str | None = None
-    city: str | None = None
-    adname: str | None = None
-    pname: str | None = None
-    poi_type: str | None = None
-    poi_typecode: str | None = None
-    tel: str | None = None
-    business_area: str | None = None
-    signature_dishes: str | None = None
-    per_capita: int | None = None
-    rating: float | None = None
-    opening_hours: str | None = None
-    meal_ordering: str | None = None
-    photos_count: int = 0
-    first_photo_url: str | None = None
-    amap_navigation_url: str | None = None
-    display_facts: list[dict[str, str | None]] = Field(default_factory=list)
-    parse_status: TodoParseStatus
-    parse_error: str | None = None
-    raw: dict | None = None
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class TodoScheduleOut(APIModel):
-    id: int
-    item_id: int
-    scheduled_on: date
-    created_by_id: int
-    created_at: datetime
+    title: str
+    started_on: date
+    ended_on: date
 
     model_config = {"from_attributes": True}
 
@@ -805,26 +766,22 @@ class TodoItemOut(APIModel):
     title: str
     note: str | None = None
     is_archived: bool
-    restaurant: TodoRestaurantOut | None = None
-    schedules: list[TodoScheduleOut] = Field(default_factory=list)
+    meeting_session_id: int | None = None
+    completed_at: datetime | None = None
+    completed_by_id: int | None = None
+    journal_event_id: int | None = None
     comments_count: int = 0
     images_count: int = 0
-    checked_in: bool = False
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
 
 
-class TodoDashboardOut(APIModel):
-    month: str
-    items: list[TodoItemOut]
-    schedules: list[TodoScheduleOut]
-    llm_enabled: bool = False
-
-
-class TodoClassifyOpenOut(APIModel):
-    count: int
+class TodoPlanOut(APIModel):
+    today: date
+    focus_meeting_id: int | None = None
+    meetings: list[TodoMeetingOut]
     items: list[TodoItemOut]
 
 
@@ -832,130 +789,33 @@ class TodoItemCreate(APIModel):
     category: TodoCategory
     title: str = Field(min_length=1, max_length=200)
     note: str | None = Field(default=None, max_length=2000)
+    meeting_session_id: int | None = None
 
     @field_validator("title")
     @classmethod
-    def strip_title(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("Title cannot be empty")
-        return value
+    def strip_title(cls, value: str) -> str | None:
+        return _strip_required_title(value)
 
 
 class TodoItemUpdate(APIModel):
+    """Partial update; send `meeting_session_id: null` explicitly to move an item back to the wish pool."""
+
     title: str | None = Field(default=None, min_length=1, max_length=200)
     note: str | None = Field(default=None, max_length=2000)
+    category: TodoCategory | None = None
+    meeting_session_id: int | None = None
+    completed: bool | None = None
     is_archived: bool | None = None
-    signature_dishes: str | None = Field(default=None, max_length=1000)
-    per_capita: int | None = Field(default=None, ge=0, le=100000)
 
-
-class TodoScheduleCreate(APIModel):
-    scheduled_on: date
-
-
-class TodoRestaurantSearch(APIModel):
-    keyword: str = Field(min_length=1, max_length=100)
-    city: str | None = Field(default=None, max_length=100)
-
-    @field_validator("keyword", "city")
+    @field_validator("title")
     @classmethod
-    def strip_optional_text(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        value = value.strip()
-        return value or None
+    def strip_title(cls, value: str | None) -> str | None:
+        return _strip_required_title(value)
 
 
-class TodoRestaurantCandidate(APIModel):
-    amap_poi_id: str | None = None
-    name: str
-    address: str | None = None
-    location: str | None = None
-    distance_m: int | None = None
-    city: str | None = None
-    adname: str | None = None
-    pname: str | None = None
-    poi_type: str | None = None
-    poi_typecode: str | None = None
-    tel: str | None = None
-    business_area: str | None = None
-    rating: float | None = None
-    per_capita: int | None = None
-    opening_hours: str | None = None
-    meal_ordering: str | None = None
-    tags: list[str] = Field(default_factory=list)
-    signature_dishes: str | None = None
-    photos_count: int = 0
-    first_photo_url: str | None = None
-    amap_navigation_url: str | None = None
-    raw: dict | None = None
-
-
-class TodoRestaurantSearchOut(APIModel):
-    candidates: list[TodoRestaurantCandidate]
-
-
-class TodoRestaurantCreate(APIModel):
-    candidate: TodoRestaurantCandidate
-    signature_dishes: str | None = Field(default=None, max_length=1000)
-    per_capita: int | None = Field(default=None, ge=0, le=100000)
-
-
-class TodoCandidateCreate(APIModel):
-    raw_title: str = Field(min_length=1, max_length=200)
-    category: TodoCategory | None = None
-
-    @field_validator("raw_title")
-    @classmethod
-    def strip_raw_title(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("Title cannot be empty")
-        return value
-
-
-class TodoCandidateConfirm(APIModel):
-    category: TodoCategory | None = None
-    selected_candidate: TodoRestaurantCandidate | None = None
-
-
-class TodoCandidateOut(APIModel):
-    id: int
-    raw_title: str
-    category: TodoCategory
-    status: TodoCandidateStatus
-    amap_candidates: list[TodoRestaurantCandidate] = Field(default_factory=list)
-    selected_candidate: TodoRestaurantCandidate | None = None
-    parse_error: str | None = None
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class TodoLotteryRequest(APIModel):
-    per_capita_min: int | None = Field(default=None, ge=0)
-    per_capita_max: int | None = Field(default=None, ge=0)
-    location: str | None = Field(default=None, max_length=100)
-    radius_km: int | None = Field(default=None, ge=1, le=10)
-    city: str | None = Field(default=None, max_length=100)
-
-
-class TodoLotteryOut(APIModel):
-    item: TodoItemOut | None = None
-    candidate: TodoRestaurantCandidate | None = None
-
-
-class TodoWeatherOut(APIModel):
-    city: str
-    report_date: str | None = None
-    day_weather: str | None = None
-    night_weather: str | None = None
-    day_temp: str | None = None
-    night_temp: str | None = None
-    day_wind: str | None = None
-    night_wind: str | None = None
+class TodoJournalOut(APIModel):
+    event_id: int
+    created: bool
 
 
 class TodoCommentCreate(APIModel):
@@ -989,77 +849,18 @@ class TodoItemDetail(TodoItemOut):
     images: list[TodoImageOut]
 
 
-class AdminAIConfigOut(APIModel):
-    llm_enabled: bool
-    protocol: AIProtocol
-    selected_model: str
-    env_model: str
-    openai_base_url: str
-    anthropic_base_url: str
-    api_key: str
-    api_key_preview: str
-    has_api_key: bool
-    amap_api_key: str
-    amap_key_preview: str
-    has_amap_key: bool
-    saved_models: list[str] = Field(default_factory=list)
+class CycleReminderSettingOut(APIModel):
+    enabled: bool
+    days_before: int
+    recipient_user_id: int | None = None
+    recipient_has_email: bool = False
+    updated_by_id: int | None = None
     updated_at: datetime | None = None
+    next_period_start: date | None = None
+    next_send_on: date | None = None
 
 
-class AdminAIConfigUpdate(APIModel):
-    llm_enabled: bool = False
-    protocol: AIProtocol
-    selected_model: str = Field(default="", max_length=200)
-    openai_base_url: str = Field(min_length=1, max_length=500)
-    anthropic_base_url: str = Field(min_length=1, max_length=500)
-    api_key: str = Field(default="", max_length=4000)
-    amap_api_key: str = Field(default="", max_length=200)
-
-
-class AdminAIModelListOut(APIModel):
-    models: list[str]
-
-
-class AdminAIConnectionTestIn(APIModel):
-    keyword: str | None = Field(default=None, max_length=100)
-    city: str | None = Field(default=None, max_length=100)
-    expected_category: TodoCategory | None = None
-
-    @field_validator("keyword", "city")
-    @classmethod
-    def strip_optional_text(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        value = value.strip()
-        return value or None
-
-
-class AdminAIConnectionTestOut(APIModel):
-    ok: bool
-    message: str
-    sample_category: TodoCategory | None = None
-    sample_keyword: str | None = None
-    sample_city: str | None = None
-    expected_category: TodoCategory | None = None
-    category_matched: bool | None = None
-    amap_name: str | None = None
-    amap_address: str | None = None
-    amap_poi_type: str | None = None
-    amap_poi_typecode: str | None = None
-    amap_poi_id: str | None = None
-    amap_city: str | None = None
-    amap_adname: str | None = None
-    amap_tel: str | None = None
-    amap_business_area: str | None = None
-    rating: float | None = None
-    per_capita: int | None = None
-    tags: list[str] = Field(default_factory=list)
-    signature_dishes: str | None = None
-    photos_count: int = 0
-    first_photo_url: str | None = None
-    amap_category: TodoCategory | None = None
-    amap_category_reason: str | None = None
-    llm_category: TodoCategory | None = None
-    llm_status: str | None = None
-    llm_message: str | None = None
-    evidence_note: str | None = None
+class CycleReminderSettingUpdate(APIModel):
+    enabled: bool
+    days_before: int = Field(default=3, ge=1, le=7)
+    recipient_user_id: int | None = None

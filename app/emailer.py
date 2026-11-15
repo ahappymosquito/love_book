@@ -1,4 +1,4 @@
-"""SMTP helpers for privacy-aware timeline event/comment notifications, content-free gift wrap/open notices, and daily habit reminders (todo never emails)."""
+"""SMTP helpers for privacy-aware timeline event/comment notifications, content-free gift wrap/open notices, daily habit reminders, and gentle pre-period cycle reminders (todo never emails)."""
 from __future__ import annotations
 
 from html import escape
@@ -130,6 +130,49 @@ def notify_habit_reminder(
       </div>
       <p><a href="{safe_link}" style="display:inline-block;background:#d76679;color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;">补记习惯</a></p>
       <p style="color:#a09489;font-size:12px;margin-top:24px;">-- 我们之间的小事</p>
+    </div>
+    """
+    return send_email(recipient_email, subject, text_body, html_body)
+
+
+def _cycle_link(recipient_token: str | None = None) -> str:
+    base = (get_settings().app_web_url or "").rstrip("/")
+    target = "/cycle"
+    if not base:
+        return target
+    if recipient_token:
+        from urllib.parse import quote
+
+        return f"{base}/?token={quote(recipient_token, safe='')}&next={quote(target, safe='/')}"
+    return f"{base}{target}"
+
+
+def notify_cycle_reminder(
+    *,
+    recipient_email: str | None,
+    recipient_name: str,
+    recipient_token: str | None,
+    period_start: date,
+    days_left: int,
+) -> bool:
+    """Gentle heads-up before a predicted period; reference only, no medical wording."""
+    if not recipient_email:
+        return False
+    link = _cycle_link(recipient_token)
+    day_text = f"{period_start.month}月{period_start.day}日"
+    subject = f"【我们之间的小事】生理期大概还有 {days_left} 天"
+    line = f"按你们一起记下的日子，下一次生理期预计在 {day_text} 左右开始，还有 {days_left} 天。"
+    care = "这几天可以多一点照顾：备好热水和暖宝宝，早点休息，说话再温柔一点。预测只是参考，以身体的感受为准。"
+    text_body = f"{recipient_name}，你好：\n\n{line}\n{care}\n\n去看看周期日历：{link}\n\n—— 我们之间的小事"
+    html_body = f"""
+    <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;line-height:1.6;color:#2b2522;max-width:560px;margin:0 auto;padding:24px;">
+      <p>{escape(recipient_name)}，你好：</p>
+      <p>{escape(line)}</p>
+      <div style="background:#fdf6f1;border:1px solid #e9ddd3;border-radius:12px;padding:16px 18px;margin:12px 0;color:#6b605a;">
+        {escape(care)}
+      </div>
+      <p><a href="{escape(link, quote=True)}" style="display:inline-block;background:#d76679;color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;">看看周期日历</a></p>
+      <p style="color:#a09489;font-size:12px;margin-top:24px;">—— 我们之间的小事</p>
     </div>
     """
     return send_email(recipient_email, subject, text_body, html_body)

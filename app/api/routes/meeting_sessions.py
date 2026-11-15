@@ -1,4 +1,7 @@
-"""Meeting route handlers for shared editable date ranges, overlap merging, automatic event classification, and cancellation."""
+"""Meeting route handlers for shared editable date ranges, overlap merging, automatic event classification, and cancellation.
+
+Cancelling a meeting moves its plan todos back to the wish pool; merging moves them onto the surviving meeting.
+"""
 
 from datetime import datetime
 
@@ -8,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.database import get_db
-from app.models import Event, MeetingSession, User
+from app.models import Event, MeetingSession, TodoItem, User
 from app.schemas import MeetingSessionCreate, MeetingSessionOut, MeetingSessionUpdate
 from app.services import ensure_pair_meeting_session, meeting_creation_key, meeting_ranges_overlap, meeting_session_time_range, reconcile_pair_meeting_ranges
 
@@ -107,6 +110,11 @@ def delete_meeting_session(
 ) -> Response:
     pair = get_pair_for_user(db, current_user.id)
     meeting_session = ensure_pair_meeting_session(db, session_id, pair)
+    db.execute(
+        TodoItem.__table__.update()
+        .where(TodoItem.meeting_session_id == meeting_session.id)
+        .values(meeting_session_id=None)
+    )
     db.delete(meeting_session)
     db.flush()
     reconcile_pair_meeting_ranges(db, pair.id)

@@ -2,6 +2,7 @@
 
 A wrapped gift is masked for its receiver in every event serialization (empty title, no description, images or
 comments); image/comment access goes through `visible_contents`, so masked media stays unreachable too.
+With the development media fallback on, stored keys count as readable even when the local file is missing.
 """
 
 import random
@@ -13,7 +14,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, exists, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import GIFT_EVENT_KINDS, Comment, CommentReaction, DefaultQuote, DeviceToken, Event, EventKind, Image, MeetingSession, Pair, Quote, User, VisibilityMode, utc_now
+from app.models import GIFT_EVENT_KINDS, Comment, CommentReaction, DefaultQuote, DeviceToken, Event, EventKind, Image, MeetingSession, Pair, Quote, TodoItem, User, VisibilityMode, utc_now
 from app.schemas import (
     AnniversaryOut,
     CommentOut,
@@ -27,6 +28,7 @@ from app.schemas import (
     ReminderItem,
     SubmissionState,
 )
+from app.media_remote import remote_media_enabled
 from app.storage import media_file_exists
 
 COMMENT_REACTION_TYPES = ("like", "dislike")
@@ -358,6 +360,11 @@ def reconcile_pair_meeting_ranges(db: Session, pair_id: int) -> list[MeetingSess
                 .where(Event.meeting_session_id == merged.id)
                 .values(meeting_session_id=canonical.id)
             )
+            db.execute(
+                TodoItem.__table__.update()
+                .where(TodoItem.meeting_session_id == merged.id)
+                .values(meeting_session_id=canonical.id)
+            )
             db.delete(merged)
         canonical_meetings.append(canonical)
 
@@ -681,8 +688,9 @@ def ensure_image_file_visible(db: Session, image_id: int, user: User, pair: Pair
     if all(item.id != image.id for item in contents.images):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Image is not visible yet")
     # Local storage keys are preferred, with old BLOB and file_path records kept readable.
-    has_storage = bool(image.storage_key) and media_file_exists(image.storage_key or "")
-    has_thumb_storage = bool(image.thumb_storage_key) and media_file_exists(image.thumb_storage_key or "")
+    remote = remote_media_enabled()
+    has_storage = bool(image.storage_key) and (remote or media_file_exists(image.storage_key or ""))
+    has_thumb_storage = bool(image.thumb_storage_key) and (remote or media_file_exists(image.thumb_storage_key or ""))
     has_blob = bool(image.data) or bool(image.thumb_data)
     has_file = bool(image.file_path) and Path(image.file_path).exists()
     if not has_storage and not has_thumb_storage and not has_blob and not has_file:

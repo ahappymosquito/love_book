@@ -4,6 +4,10 @@ Wrapped-gift columns on `events` are added as nullable columns, and the MySQL/Ma
 ENUM is repaired to include `gift` next to the legacy `gift_received`.
 
 Legacy voice rows are only removed together with their hard-deleted event (FK requirement), never at startup.
+
+Todo meeting-plan columns (meeting, completion, journal event) are added to `todo_items` and backfilled once from
+the old two-comment completion rule and old schedule dates. Retired todo/AI tables are never dropped; only a
+deleted todo's own legacy rows are removed so its FK-guarded delete succeeds.
 """
 
 from collections.abc import Generator
@@ -56,7 +60,7 @@ def delete_legacy_voice_rows(db: Session, event_id: int) -> None:
         db.execute(text("DELETE FROM voices WHERE event_id = :event_id"), {"event_id": event_id})
 
 
-# Lightweight column-existence migration for environments without Alembic, including received-gift metadata and rich AMap evidence.
+# Lightweight column-existence migration for environments without Alembic, including received-gift metadata and todo plan state.
 # Each entry: (table, column_name, {dialect_name: "<DDL fragment>"}).
 # "default" is used as a fallback when the dialect-specific fragment is missing.
 _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
@@ -75,35 +79,6 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
     (
         "users",
         "password_updated_at",
-        {
-            "default": "TIMESTAMP WITH TIME ZONE NULL",
-            "mysql": "DATETIME NULL",
-            "mariadb": "DATETIME NULL",
-        },
-    ),
-    (
-        "users",
-        "location_label",
-        {"default": "VARCHAR(200) NULL"},
-    ),
-    (
-        "users",
-        "location_address",
-        {"default": "VARCHAR(500) NULL"},
-    ),
-    (
-        "users",
-        "location_city",
-        {"default": "VARCHAR(100) NULL"},
-    ),
-    (
-        "users",
-        "location_coords",
-        {"default": "VARCHAR(100) NULL"},
-    ),
-    (
-        "users",
-        "location_updated_at",
         {
             "default": "TIMESTAMP WITH TIME ZONE NULL",
             "mysql": "DATETIME NULL",
@@ -279,64 +254,36 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
         "sort_order",
         {"default": "INTEGER NOT NULL DEFAULT 0", "mysql": "INT NOT NULL DEFAULT 0", "mariadb": "INT NOT NULL DEFAULT 0"},
     ),
+    ("todo_items", "meeting_session_id", {"default": "INTEGER NULL", "mysql": "INT NULL", "mariadb": "INT NULL"}),
     (
-        "ai_settings",
-        "llm_enabled",
-        {"default": "BOOLEAN NOT NULL DEFAULT 0", "mysql": "BOOLEAN NOT NULL DEFAULT FALSE", "mariadb": "BOOLEAN NOT NULL DEFAULT FALSE"},
+        "todo_items",
+        "completed_at",
+        {
+            "default": "TIMESTAMP WITH TIME ZONE NULL",
+            "mysql": "DATETIME NULL",
+            "mariadb": "DATETIME NULL",
+        },
     ),
-    (
-        "ai_settings",
-        "openai_base_url",
-        {"default": "VARCHAR(500) NOT NULL DEFAULT ''"},
-    ),
-    (
-        "ai_settings",
-        "anthropic_base_url",
-        {"default": "VARCHAR(500) NOT NULL DEFAULT ''"},
-    ),
-    (
-        "ai_settings",
-        "api_key",
-        {"default": "VARCHAR(4000) NOT NULL DEFAULT ''"},
-    ),
-    (
-        "ai_settings",
-        "amap_api_key",
-        {"default": "VARCHAR(200) NOT NULL DEFAULT ''"},
-    ),
-    (
-        "ai_settings",
-        "openai_models",
-        {"sqlite": "JSON NOT NULL DEFAULT '[]'", "mysql": "JSON NULL", "default": "JSON NULL"},
-    ),
-    (
-        "ai_settings",
-        "anthropic_models",
-        {"sqlite": "JSON NOT NULL DEFAULT '[]'", "mysql": "JSON NULL", "default": "JSON NULL"},
-    ),
-    ("todo_restaurants", "adname", {"default": "VARCHAR(100) NULL"}),
-    ("todo_restaurants", "pname", {"default": "VARCHAR(100) NULL"}),
-    ("todo_restaurants", "poi_typecode", {"default": "VARCHAR(50) NULL"}),
-    ("todo_restaurants", "rating", {"default": "FLOAT NULL"}),
-    ("todo_restaurants", "opening_hours", {"default": "VARCHAR(300) NULL"}),
-    ("todo_restaurants", "meal_ordering", {"default": "VARCHAR(50) NULL"}),
-    (
-        "todo_restaurants",
-        "photos_count",
-        {"default": "INTEGER NOT NULL DEFAULT 0", "mysql": "INT NOT NULL DEFAULT 0", "mariadb": "INT NOT NULL DEFAULT 0"},
-    ),
-    ("todo_restaurants", "first_photo_url", {"default": "VARCHAR(1000) NULL"}),
+    ("todo_items", "completed_by_id", {"default": "INTEGER NULL", "mysql": "INT NULL", "mariadb": "INT NULL"}),
+    ("todo_items", "journal_event_id", {"default": "INTEGER NULL", "mysql": "INT NULL", "mariadb": "INT NULL"}),
 ]
+
+# Rows in retired todo tables reference todo_items through FKs without ON DELETE.
+_LEGACY_TODO_CHILD_TABLES = ("todo_restaurants", "todo_schedules")
+
+
+def delete_legacy_todo_rows(db: Session, item_id: int) -> None:
+    """Remove a deleted todo's rows from retired tables (AMap restaurant, date schedules) when they still exist."""
+    inspector = inspect(db.get_bind())
+    for table_name in _LEGACY_TODO_CHILD_TABLES:
+        if inspector.has_table(table_name):
+            db.execute(text(f"DELETE FROM {table_name} WHERE item_id = :item_id"), {"item_id": item_id})
 
 
 def _todo_category_enum_migration_sql(dialect_name: str) -> list[str]:
     if dialect_name not in {"mysql", "mariadb"}:
         return []
-    enum_values = "ENUM('food','play','stay','wish') NOT NULL"
-    return [
-        f"ALTER TABLE todo_items MODIFY category {enum_values}",
-        f"ALTER TABLE todo_candidates MODIFY category {enum_values}",
-    ]
+    return ["ALTER TABLE todo_items MODIFY category ENUM('food','play','stay','prep','wish') NOT NULL"]
 
 
 def _love_receipt_mood_enum_migration_sql(dialect_name: str) -> list[str]:
@@ -358,10 +305,11 @@ def _event_kind_enum_migration_sql(dialect_name: str) -> list[str]:
     ]
 
 
-def _ensure_columns(target_engine: Engine) -> None:
+def _ensure_columns(target_engine: Engine) -> set[tuple[str, str]]:
     inspector = inspect(target_engine)
     existing_tables = set(inspector.get_table_names())
     dialect_name = target_engine.dialect.name
+    added: set[tuple[str, str]] = set()
     for table_name, column_name, ddl_by_dialect in _LIGHTWEIGHT_COLUMNS:
         if table_name not in existing_tables:
             continue
@@ -371,11 +319,38 @@ def _ensure_columns(target_engine: Engine) -> None:
         ddl_fragment = ddl_by_dialect.get(dialect_name, ddl_by_dialect["default"])
         with target_engine.begin() as connection:
             connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {ddl_fragment}"))
-            if column_name in {"openai_models", "anthropic_models"}:
-                if dialect_name == "mysql":
-                    connection.execute(text(f"UPDATE {table_name} SET {column_name} = JSON_ARRAY() WHERE {column_name} IS NULL"))
-                else:
-                    connection.execute(text(f"UPDATE {table_name} SET {column_name} = '[]' WHERE {column_name} IS NULL"))
+        added.add((table_name, column_name))
+    return added
+
+
+def _backfill_todo_plan(target_engine: Engine, added_columns: set[tuple[str, str]]) -> None:
+    """Carry old todo state into the meeting plan once, right after its columns appear.
+
+    Items both partners already commented on count as done (old completion rule), and items whose old
+    schedule date falls inside a meeting range join that meeting.
+    """
+    tables = set(inspect(target_engine).get_table_names())
+    with target_engine.begin() as connection:
+        if ("todo_items", "completed_at") in added_columns and "todo_comments" in tables:
+            connection.execute(
+                text(
+                    "UPDATE todo_items SET completed_at = ("
+                    " SELECT MAX(c.created_at) FROM todo_comments c WHERE c.item_id = todo_items.id"
+                    ") WHERE ("
+                    " SELECT COUNT(DISTINCT c.author_id) FROM todo_comments c WHERE c.item_id = todo_items.id"
+                    ") >= 2"
+                )
+            )
+        if ("todo_items", "meeting_session_id") in added_columns and {"todo_schedules", "meeting_sessions"} <= tables:
+            connection.execute(
+                text(
+                    "UPDATE todo_items SET meeting_session_id = ("
+                    " SELECT MIN(m.id) FROM todo_schedules s JOIN meeting_sessions m"
+                    " ON m.pair_id = s.pair_id AND s.scheduled_on >= m.started_on AND s.scheduled_on <= m.ended_on"
+                    " WHERE s.item_id = todo_items.id"
+                    ")"
+                )
+            )
 
 
 def _ensure_security_indexes(target_engine: Engine) -> None:
@@ -398,9 +373,7 @@ def _ensure_todo_category_enum(target_engine: Engine) -> None:
     ddl_statements = _todo_category_enum_migration_sql(target_engine.dialect.name)
     if not ddl_statements:
         return
-    inspector = inspect(target_engine)
-    existing_tables = set(inspector.get_table_names())
-    if not {"todo_items", "todo_candidates"}.issubset(existing_tables):
+    if "todo_items" not in set(inspect(target_engine).get_table_names()):
         return
     with target_engine.begin() as connection:
         for ddl_statement in ddl_statements:
@@ -644,7 +617,8 @@ def init_db() -> None:
     from app.services import ensure_default_quotes, normalize_meeting_ranges
 
     Base.metadata.create_all(bind=engine)
-    _ensure_columns(engine)
+    added_columns = _ensure_columns(engine)
+    _backfill_todo_plan(engine, added_columns)
     _ensure_security_indexes(engine)
     _ensure_todo_category_enum(engine)
     _ensure_love_receipt_mood_enum(engine)

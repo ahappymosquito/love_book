@@ -2,7 +2,8 @@
 
 Only period segments of 2-10 days anchor a cycle start (a segment still touching yesterday is only held to
 the 10-day cap). Without any anchor the dashboard returns no prediction: stats date fields are null and
-unrecorded days stay empty instead of being fabricated.
+unrecorded days stay empty instead of being fabricated. `predicted_stats` exposes the same live prediction to the
+mail reminder scan.
 """
 
 from datetime import date, timedelta
@@ -316,6 +317,11 @@ def _dashboard_log(
     if day >= today:
         return _predicted_log(day, stats)
     return _past_non_period_log(day, starts, stats)
+
+
+def predicted_stats(db: Session, pair: Pair, today: date) -> CycleStats:
+    all_logs = db.execute(select(CycleDailyLog).where(CycleDailyLog.pair_id == pair.id)).scalars().all()
+    return _stats(list(all_logs), _period_starts(list(all_logs), today), today)
 
 
 def dashboard(db: Session, pair: Pair, start: date, end: date, today: date | None = None) -> CycleDashboardOut:

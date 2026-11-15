@@ -14,8 +14,6 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import amap_mcp
-from app.ai_config import effective_amap_key
 from app.api.dependencies import find_pair_for_user, get_current_user, get_pair_for_user, raise_if_pair_dissolved
 from app.api.image_uploads import IMAGE_SAVE_FAILED_DETAIL, discard_media_on_error
 from app.core.config import get_settings
@@ -27,7 +25,6 @@ from app.schemas import (
     AnniversaryOut,
     LoginLogOut,
     LoginRecordCreate,
-    MeLocationUpdate,
     MeOut,
     MeUpdate,
     PairDissolveIn,
@@ -155,20 +152,6 @@ def update_security_password(
     )
 
 
-def _clean_coords(value: str) -> str:
-    parts = [part.strip() for part in value.split(",")]
-    if len(parts) != 2:
-        raise HTTPException(status_code=422, detail="Location coords must be lng,lat")
-    try:
-        lng = float(parts[0])
-        lat = float(parts[1])
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail="Location coords must be numeric lng,lat") from exc
-    if not (-180 <= lng <= 180 and -90 <= lat <= 90):
-        raise HTTPException(status_code=422, detail="Location coords are out of range")
-    return f"{lng:.6f},{lat:.6f}"
-
-
 @router.post("/me/dissolve", status_code=status.HTTP_204_NO_CONTENT)
 def dissolve_pair(
     payload: PairDissolveIn,
@@ -217,60 +200,6 @@ def update_me(
         current_user.avatar = data["avatar"]
     if "email" in data:
         current_user.email = clean_email(data["email"])
-    db.flush()
-    db.commit()
-    db.refresh(current_user)
-    return UserOut.model_validate(current_user)
-
-
-@router.patch("/me/location", response_model=UserOut)
-def update_my_location(
-    payload: MeLocationUpdate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> UserOut:
-    if not payload.coords and not payload.address:
-        raise HTTPException(status_code=422, detail="Location address or coords is required")
-    try:
-        if payload.coords:
-            coords = _clean_coords(payload.coords)
-            resolved = amap_mcp.regeocode_location(coords, effective_amap_key(db))
-            city = str(resolved.get("city") or "").strip() or payload.city
-            district = str(resolved.get("district") or "").strip()
-            address = payload.address or " ".join(part for part in (city, district) if part)
-            label = payload.label or district or city or coords
-        else:
-            address = payload.address or ""
-            resolved = amap_mcp.geocode_address(address, payload.city, effective_amap_key(db))
-            coords = _clean_coords(str(resolved["location"]))
-            city = str(resolved.get("city") or payload.city or resolved.get("province") or "").strip() or None
-            district = str(resolved.get("district") or "").strip()
-            label = payload.label or district or address
-    except amap_mcp.AmapMCPError as exc:
-        logger.warning("Location lookup failed for user %s", current_user.id, exc_info=exc)
-        raise HTTPException(status_code=502, detail="没能确认这个位置，换个地址或城市再试试") from exc
-
-    current_user.location_label = label
-    current_user.location_address = address or label
-    current_user.location_city = city
-    current_user.location_coords = coords
-    current_user.location_updated_at = utc_now()
-    db.flush()
-    db.commit()
-    db.refresh(current_user)
-    return UserOut.model_validate(current_user)
-
-
-@router.delete("/me/location", response_model=UserOut)
-def delete_my_location(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> UserOut:
-    current_user.location_label = None
-    current_user.location_address = None
-    current_user.location_city = None
-    current_user.location_coords = None
-    current_user.location_updated_at = None
     db.flush()
     db.commit()
     db.refresh(current_user)

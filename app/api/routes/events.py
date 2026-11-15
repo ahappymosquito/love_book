@@ -205,7 +205,7 @@ def wrap_gift(
         meeting_session_id=meeting.id if meeting else None,
         title=clean_title,
         description=clean_message or None,
-        occurred_at=occurred_at or created_at,
+        occurred_at=_utc(occurred_at) or created_at,
         event_kind=EventKind.gift,
         gift_receiver_id=receiver.id,
         gift_wrap_style=clean_style,

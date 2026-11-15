@@ -1,6 +1,6 @@
 "use client";
 
-// Browser API client for authentication, closed-pair farewells, runner rankings, profiles, timelines, wrapped gifts (wrap, open, receiver response), private media, plans, habits, cycles, quotes, and admin workflows.
+// Browser API client for authentication, closed-pair farewells, runner rankings, profiles, timelines, wrapped gifts (wrap, open, receiver response), private media, the meeting todo plan (write into the journal), habits, cycles and their mail reminder, quotes, and admin workflows.
 // Failure toasts use friendly, status-based Chinese copy instead of raw server detail; background polls can opt into silent mode.
 // In production it uses the host Nginx same-origin /api reverse proxy; in development it can fall back locally.
 
@@ -8,13 +8,11 @@ import { toast } from "sonner";
 import { useAppStore } from "./store";
 import type {
   AnniversaryOut,
-  AdminAIConfigOut,
-  AdminAIConnectionTestOut,
-  AIProtocol,
   CommentOut,
   CommentReactionType,
   ContentsOut,
   CycleDashboardOut,
+  CycleReminderSettingOut,
   DailyLog,
   DailyLogInput,
   DefaultQuoteOut,
@@ -43,16 +41,12 @@ import type {
   SecurityPasswordOut,
   SecurityPasswordUpdateOut,
   TodoCategory,
-  TodoCandidateOut,
-  TodoClassifyOpenOut,
   TodoCommentOut,
-  TodoDashboardOut,
   TodoImageOut,
   TodoItemDetail,
   TodoItemOut,
-  TodoLotteryOut,
-  TodoRestaurantCandidate,
-  TodoWeatherOut,
+  TodoJournalOut,
+  TodoPlanOut,
   UserOut,
   VisibilityMode,
 } from "./types";
@@ -255,35 +249,6 @@ export const api = {
       withAuth: false,
     });
   },
-  getAdminAIConfig: () =>
-    apiRequest<AdminAIConfigOut>("/admin/ai-config", { withAdmin: true, withAuth: false }),
-  updateAdminAIConfig: (payload: {
-    llm_enabled: boolean;
-    protocol: AIProtocol;
-    selected_model: string;
-    openai_base_url: string;
-    anthropic_base_url: string;
-    api_key: string;
-    amap_api_key: string;
-  }) =>
-    apiRequest<AdminAIConfigOut>("/admin/ai-config", {
-      method: "PATCH",
-      json: payload,
-      withAdmin: true,
-      withAuth: false,
-    }),
-  listAdminAIModels: (protocol?: AIProtocol) =>
-    apiRequest<{ models: string[] }>(`/admin/ai-config/models${protocol ? `?protocol=${protocol}` : ""}`, {
-      withAdmin: true,
-      withAuth: false,
-    }),
-  testAdminAIConfig: (payload?: { keyword?: string | null; city?: string | null; expected_category?: TodoCategory | null }) =>
-    apiRequest<AdminAIConnectionTestOut>("/admin/ai-config/test", {
-      method: "POST",
-      json: payload,
-      withAdmin: true,
-      withAuth: false,
-    }),
 
   // Auth
   me: (options?: { silent?: boolean }) => apiRequest<MeOut>("/auth/me", { silent: options?.silent }),
@@ -296,9 +261,6 @@ export const api = {
   getAnniversary: () => apiRequest<AnniversaryOut>("/auth/anniversary", { silent: true }),
   patchMe: (payload: { display_name?: string; avatar?: string; email?: string | null }) =>
     apiRequest<UserOut>("/auth/me", { method: "PATCH", json: payload }),
-  patchMyLocation: (payload: { label?: string | null; address?: string | null; city?: string | null; coords?: string | null }) =>
-    apiRequest<UserOut>("/auth/me/location", { method: "PATCH", json: payload }),
-  deleteMyLocation: () => apiRequest<UserOut>("/auth/me/location", { method: "DELETE" }),
   uploadMyAvatar: (file: File) => {
     const fd = new FormData();
     fd.append("file", file, file.name);
@@ -368,6 +330,9 @@ export const api = {
     });
   },
   deleteCycleLog: (date: string) => apiRequest<void>(`/cycles/logs/${date}`, { method: "DELETE" }),
+  getCycleReminder: () => apiRequest<CycleReminderSettingOut>("/cycles/reminder", { silent: true }),
+  updateCycleReminder: (payload: { enabled: boolean; days_before: number; recipient_user_id?: number | null }) =>
+    apiRequest<CycleReminderSettingOut>("/cycles/reminder", { method: "PUT", json: payload }),
 
   // Habits
   getHabitDashboard: (params: { start: string; end: string }) => {
@@ -390,53 +355,25 @@ export const api = {
     return apiRequest<HabitToggleOut>(`/habits/tasks/${id}/toggle?${search.toString()}`, { method: "POST" });
   },
 
-  // Todo
-  getTodoDashboard: (month: string, options?: { silent?: boolean }) =>
-    apiRequest<TodoDashboardOut>(`/todos/dashboard?month=${month}`, { silent: options?.silent }),
-  createTodoItem: (payload: { category: TodoCategory; title: string; note?: string | null }) =>
+  // Todo plan
+  getTodoPlan: (options?: { silent?: boolean }) => apiRequest<TodoPlanOut>("/todos/plan", { silent: options?.silent }),
+  createTodoItem: (payload: { category: TodoCategory; title: string; note?: string | null; meeting_session_id?: number | null }) =>
     apiRequest<TodoItemOut>("/todos/items", { method: "POST", json: payload }),
   updateTodoItem: (
     id: number,
     payload: {
       title?: string;
       note?: string | null;
+      category?: TodoCategory;
+      meeting_session_id?: number | null;
+      completed?: boolean;
       is_archived?: boolean;
-      signature_dishes?: string | null;
-      per_capita?: number | null;
     },
   ) => apiRequest<TodoItemOut>(`/todos/items/${id}`, { method: "PATCH", json: payload }),
   deleteTodoItem: (id: number) => apiRequest<void>(`/todos/items/${id}`, { method: "DELETE" }),
-  scheduleTodoItem: (id: number, scheduled_on: string) =>
-    apiRequest(`/todos/items/${id}/schedules`, { method: "POST", json: { scheduled_on } }),
-  deleteTodoSchedule: (id: number) => apiRequest<void>(`/todos/schedules/${id}`, { method: "DELETE" }),
-  classifyTodoItem: (id: number) => apiRequest<TodoItemOut>(`/todos/items/${id}/classify`, { method: "POST" }),
-  classifyOpenTodoItems: () => apiRequest<TodoClassifyOpenOut>("/todos/items/classify-open", { method: "POST" }),
-  listTodoCandidates: (options?: { silent?: boolean }) =>
-    apiRequest<TodoCandidateOut[]>("/todos/candidates", { silent: options?.silent }),
-  createTodoCandidate: (payload: { raw_title: string; category?: TodoCategory | null }) =>
-    apiRequest<TodoCandidateOut>("/todos/candidates", { method: "POST", json: payload }),
-  confirmTodoCandidate: (
-    candidateId: number,
-    payload: { category?: TodoCategory | null; selected_candidate?: TodoRestaurantCandidate | null },
-  ) => apiRequest<TodoItemOut>(`/todos/candidates/${candidateId}/confirm`, { method: "POST", json: payload }),
-  deleteTodoCandidate: (candidateId: number) => apiRequest<void>(`/todos/candidates/${candidateId}`, { method: "DELETE" }),
-  searchTodoRestaurants: (payload: { keyword: string; city?: string | null }) =>
-    apiRequest<{ candidates: TodoRestaurantCandidate[] }>("/todos/restaurants/search", { method: "POST", json: payload }),
-  createTodoRestaurant: (payload: {
-    candidate: TodoRestaurantCandidate;
-    signature_dishes?: string | null;
-    per_capita?: number | null;
-  }) => apiRequest<TodoItemOut>("/todos/restaurants", { method: "POST", json: payload }),
-  lotteryTodoRestaurant: (payload: {
-    per_capita_min?: number | null;
-    per_capita_max?: number | null;
-    location?: string | null;
-    radius_km?: number | null;
-    city?: string | null;
-  }) => apiRequest<TodoLotteryOut>("/todos/restaurants/lottery", { method: "POST", json: payload }),
+  writeTodoIntoJournal: (id: number) => apiRequest<TodoJournalOut>(`/todos/items/${id}/journal`, { method: "POST" }),
   getTodoItem: (id: number, options?: { silent?: boolean }) =>
     apiRequest<TodoItemDetail>(`/todos/items/${id}`, { silent: options?.silent }),
-  getTodoWeather: (id: number) => apiRequest<TodoWeatherOut | null>(`/todos/items/${id}/weather`, { silent: true }),
   postTodoComment: (id: number, text: string) =>
     apiRequest<TodoCommentOut>(`/todos/items/${id}/comments`, { method: "POST", json: { text } }),
   postTodoImage: (id: number, file: File, dims?: { width?: number; height?: number }) => {

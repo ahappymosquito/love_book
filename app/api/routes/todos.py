@@ -1,262 +1,72 @@
-"""Todo routes for pair tasks, safe AMap evidence, retryable candidates, schedules, comments, and private images.
+"""Todo routes for the pair's date plan: items attached to a meeting or left in the wish pool, one-tap completion,
+"write into the journal" (todo -> timeline event with note, comments and copied photos), comments, and private images.
 
-LLM classification (candidate creation and the classify endpoints) only runs while AI classification is on
-(classify endpoints answer 409 otherwise); any LLM failure persists llm_enabled=False before responding 502.
-Client errors carry short Chinese messages; upstream exception details are only logged.
+Todo operations never send email. Every write commits before responding. Image reads fall back to the configured
+remote API only outside production (see app.media_remote).
 """
 
 from __future__ import annotations
 
 import logging
-import random
-from calendar import monthrange
-from datetime import date
+from datetime import datetime, time, timezone
 
-import httpx
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response
-from sqlalchemy import and_, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import amap_mcp
-from app.ai_config import complete_todo_category, effective_amap_key, is_llm_enabled, set_llm_enabled
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.api.image_uploads import discard_media_on_error, save_uploaded_image
 from app.core.config import get_settings
-from app.core.database import get_db
-from app.models import Pair, TodoCandidate, TodoCandidateStatus, TodoCategory, TodoComment, TodoImage, TodoItem, TodoParseStatus, TodoRestaurant, TodoSchedule, User, safe_external_url
+from app.core.database import delete_legacy_todo_rows, get_db
+from app.media_remote import remote_media_response
+from app.models import Event, EventKind, Image, MeetingSession, Pair, TodoComment, TodoImage, TodoItem, User, VisibilityMode, utc_now
 from app.schemas import (
-    TodoCandidateConfirm,
-    TodoCandidateCreate,
-    TodoCandidateOut,
     TodoCommentCreate,
     TodoCommentOut,
-    TodoClassifyOpenOut,
-    TodoDashboardOut,
     TodoImageOut,
     TodoItemCreate,
     TodoItemDetail,
     TodoItemOut,
     TodoItemUpdate,
-    TodoLotteryOut,
-    TodoLotteryRequest,
-    TodoRestaurantCandidate,
-    TodoRestaurantCreate,
-    TodoRestaurantSearch,
-    TodoRestaurantSearchOut,
-    TodoScheduleCreate,
-    TodoScheduleOut,
-    TodoWeatherOut,
+    TodoJournalOut,
+    TodoMeetingOut,
+    TodoPlanOut,
 )
+from app.services import MEETING_TZ, ensure_pair_meeting_session, find_meeting_for_date, meeting_date_for_values
 from app.storage import (
     PRIVATE_MEDIA_CACHE_HEADERS,
     MediaStorageError,
+    build_image_storage_keys,
     build_todo_image_storage_keys,
     delete_media_file,
     read_media_file,
+    write_media_file,
 )
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/todos", tags=["todos"])
 image_router = APIRouter(prefix="/todo-images", tags=["todos"])
 
-DEFAULT_PLAY_TITLES = ["唱歌", "台球", "看电影", "拼乐高"]
-NEARBY_SEARCH_RADIUS_M = 5000
-TODO_CANDIDATE_LIMIT = 6
-LLM_DISABLED_DETAIL = "AI 分类已关闭，请手动选择分类"
-LLM_FAILED_DETAIL = "AI 分类暂时不可用，已自动关闭，请手动选择分类"
-AMAP_FAILED_DETAIL = "高德地图暂时没有响应，请稍后再试"
+# Journal entries for items finished after their meeting ended are dated to the meeting's last evening.
+LATE_JOURNAL_TIME = time(20, 0)
 
 
-def _merge_restaurant_candidate(candidate: TodoRestaurantCandidate, detail: dict | None) -> dict:
-    data = candidate.model_dump()
-    if detail:
-        raw = detail.get("raw") if isinstance(detail.get("raw"), dict) else detail
-        data.update({key: value for key, value in detail.items() if key != "raw" and value not in (None, "", [])})
-        data["raw"] = raw
-    else:
-        data["raw"] = data.get("raw") or {}
-    return data
-
-
-def _candidate_out(candidate: TodoCandidate) -> TodoCandidateOut:
-    return TodoCandidateOut(
-        id=candidate.id,
-        raw_title=candidate.raw_title,
-        category=candidate.category,
-        status=candidate.status,
-        amap_candidates=[TodoRestaurantCandidate(**item) for item in candidate.amap_candidates or []],
-        selected_candidate=TodoRestaurantCandidate(**candidate.selected_candidate) if candidate.selected_candidate else None,
-        parse_error=candidate.parse_error,
-        created_at=candidate.created_at,
-        updated_at=candidate.updated_at,
-    )
-
-
-def _poi_sort_key(candidate: dict) -> tuple[int, int, int, int]:
-    distance = candidate.get("distance_m")
-    distance_rank = distance if isinstance(distance, int) else 10_000_000
-    rating = candidate.get("rating")
-    rating_rank = -int(float(rating) * 10) if rating is not None else 0
-    photos_rank = -int(candidate.get("photos_count") or 0)
-    detail_rank = -sum(1 for key in ("address", "business_area", "opening_hours", "per_capita") if candidate.get(key))
-    return distance_rank, rating_rank, photos_rank, detail_rank
-
-
-def _dedupe_pois(candidates: list[dict]) -> list[dict]:
-    seen: set[str] = set()
-    deduped: list[dict] = []
-    for candidate in candidates:
-        key = str(candidate.get("amap_poi_id") or f"{candidate.get('name')}|{candidate.get('address')}|{candidate.get('location')}")
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(candidate)
-    return deduped
-
-
-def _search_location_aware_pois(
-    db: Session,
-    user: User,
-    keyword: str,
-    city: str | None = None,
-    *,
-    limit: int = TODO_CANDIDATE_LIMIT,
-) -> list[dict]:
-    amap_key = effective_amap_key(db)
-    candidates: list[dict] = []
-    if user.location_coords:
-        nearby = amap_mcp.search_pois_nearby(
-            user.location_coords,
-            radius_m=NEARBY_SEARCH_RADIUS_M,
-            keyword=keyword,
-            amap_key=amap_key,
-        )
-        candidates.extend(sorted(nearby, key=_poi_sort_key))
-    fallback_city = city or user.location_city
-    if len(candidates) < limit:
-        candidates.extend(amap_mcp.search_pois(keyword, fallback_city, amap_key))
-    return sorted(_dedupe_pois(candidates), key=_poi_sort_key)[:limit]
-
-
-def _infer_candidate_category(db: Session, title: str, manual_category: TodoCategory | None) -> TodoCategory:
-    if not is_llm_enabled(db):
-        if manual_category is None:
-            raise HTTPException(status_code=422, detail="Todo category is required when AI classification is off")
-        return manual_category
-    try:
-        return TodoCategory(complete_todo_category(db, title))
-    except Exception:
-        set_llm_enabled(db, False)
-        if manual_category is None:
-            raise
-        return manual_category
-
-
-def _create_item_from_candidate(
-    db: Session,
-    pair: Pair,
-    user: User,
-    *,
-    category: TodoCategory,
-    title: str,
-    selected_candidate: TodoRestaurantCandidate | None = None,
-) -> TodoItem:
-    if selected_candidate is None:
-        item = TodoItem(pair_id=pair.id, creator_id=user.id, category=category, title=title)
-        db.add(item)
-        db.flush()
-        return item
-
-    detail: dict | None = None
-    parse_status = TodoParseStatus.resolved
-    parse_error = None
-    if selected_candidate.amap_poi_id:
-        try:
-            detail = amap_mcp.restaurant_detail(selected_candidate.amap_poi_id, effective_amap_key(db))
-        except amap_mcp.AmapMCPError as exc:
-            parse_status = TodoParseStatus.failed
-            parse_error = str(exc)
-    restaurant_data = _merge_restaurant_candidate(selected_candidate, detail)
-    item = TodoItem(
-        pair_id=pair.id,
-        creator_id=user.id,
-        category=category,
-        title=restaurant_data.get("name") or title,
-    )
-    db.add(item)
-    db.flush()
-    restaurant = TodoRestaurant(
-        item_id=item.id,
-        amap_poi_id=restaurant_data.get("amap_poi_id"),
-        name=restaurant_data.get("name") or title,
-        address=restaurant_data.get("address"),
-        location=restaurant_data.get("location"),
-        city=restaurant_data.get("city"),
-        adname=restaurant_data.get("adname"),
-        pname=restaurant_data.get("pname"),
-        poi_type=restaurant_data.get("poi_type"),
-        poi_typecode=restaurant_data.get("poi_typecode"),
-        tel=restaurant_data.get("tel"),
-        business_area=restaurant_data.get("business_area"),
-        signature_dishes=restaurant_data.get("signature_dishes"),
-        per_capita=restaurant_data.get("per_capita"),
-        rating=restaurant_data.get("rating"),
-        opening_hours=restaurant_data.get("opening_hours"),
-        meal_ordering=restaurant_data.get("meal_ordering"),
-        photos_count=restaurant_data.get("photos_count") or 0,
-        first_photo_url=safe_external_url(restaurant_data.get("first_photo_url")),
-        parse_status=parse_status,
-        parse_error=parse_error,
-        raw=restaurant_data.get("raw"),
-    )
-    db.add(restaurant)
-    item.restaurant = restaurant
-    return item
-
-
-def _month_range(month: str) -> tuple[date, date]:
-    try:
-        year_text, month_text = month.split("-", 1)
-        year = int(year_text)
-        month_number = int(month_text)
-        last_day = monthrange(year, month_number)[1]
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail="month must be YYYY-MM") from exc
-    return date(year, month_number, 1), date(year, month_number, last_day)
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
 
 
 def _ensure_pair_item(db: Session, item_id: int, pair: Pair) -> TodoItem:
-    item = (
-        db.execute(
-            select(TodoItem)
-            .options(selectinload(TodoItem.restaurant), selectinload(TodoItem.schedules))
-            .where(TodoItem.id == item_id)
-        )
-        .scalars()
-        .first()
-    )
+    item = db.get(TodoItem, item_id)
     if item is None or item.pair_id != pair.id:
         raise HTTPException(status_code=404, detail="Todo item not found")
     return item
 
 
-def _seed_default_play_items(db: Session, pair: Pair, user: User) -> None:
-    existing = db.execute(
-        select(func.count(TodoItem.id)).where(TodoItem.pair_id == pair.id, TodoItem.category == TodoCategory.play)
-    ).scalar_one()
-    if existing:
-        return
-    db.add_all(
-        TodoItem(pair_id=pair.id, creator_id=user.id, category=TodoCategory.play, title=title)
-        for title in DEFAULT_PLAY_TITLES
-    )
-    db.flush()
-
-
-def _counts(db: Session, item_ids: list[int]) -> tuple[dict[int, int], dict[int, int], dict[int, set[int]]]:
+def _items_out(db: Session, items: list[TodoItem]) -> list[TodoItemOut]:
+    item_ids = [item.id for item in items]
     if not item_ids:
-        return {}, {}, {}
+        return []
     comments = dict(
         db.execute(
             select(TodoComment.item_id, func.count(TodoComment.id)).where(TodoComment.item_id.in_(item_ids)).group_by(TodoComment.item_id)
@@ -267,21 +77,26 @@ def _counts(db: Session, item_ids: list[int]) -> tuple[dict[int, int], dict[int,
             select(TodoImage.item_id, func.count(TodoImage.id)).where(TodoImage.item_id.in_(item_ids)).group_by(TodoImage.item_id)
         ).all()
     )
-    author_rows = db.execute(
-        select(TodoComment.item_id, TodoComment.author_id).where(TodoComment.item_id.in_(item_ids)).distinct()
-    ).all()
-    authors: dict[int, set[int]] = {}
-    for item_id, author_id in author_rows:
-        authors.setdefault(item_id, set()).add(author_id)
-    return comments, images, authors
+    journal_ids = {item.journal_event_id for item in items if item.journal_event_id is not None}
+    live_journal_ids = (
+        set(db.execute(select(Event.id).where(Event.id.in_(journal_ids), Event.pair_id == items[0].pair_id)).scalars().all())
+        if journal_ids
+        else set()
+    )
+    return [
+        TodoItemOut.model_validate(item).model_copy(
+            update={
+                "comments_count": comments.get(item.id, 0),
+                "images_count": images.get(item.id, 0),
+                "journal_event_id": item.journal_event_id if item.journal_event_id in live_journal_ids else None,
+            }
+        )
+        for item in items
+    ]
 
 
-def _pair_user_ids(pair: Pair) -> set[int]:
-    return {pair.user_a_id, pair.user_b_id}
-
-
-def _is_checked_in(pair: Pair, author_ids: set[int]) -> bool:
-    return _pair_user_ids(pair).issubset(author_ids)
+def _item_out(db: Session, item: TodoItem) -> TodoItemOut:
+    return _items_out(db, [item])[0]
 
 
 def _comment_out(comment: TodoComment) -> TodoCommentOut:
@@ -295,101 +110,69 @@ def _comment_out(comment: TodoComment) -> TodoCommentOut:
     )
 
 
-def _item_out(db: Session, item: TodoItem) -> TodoItemOut:
-    pair = db.get(Pair, item.pair_id)
-    comments, images, authors = _counts(db, [item.id])
-    return TodoItemOut(
-        id=item.id,
-        pair_id=item.pair_id,
-        creator_id=item.creator_id,
-        category=item.category,
-        title=item.title,
-        note=item.note,
-        is_archived=item.is_archived,
-        restaurant=item.restaurant,
-        schedules=[TodoScheduleOut.model_validate(schedule) for schedule in sorted(item.schedules, key=lambda s: s.scheduled_on)],
-        comments_count=comments.get(item.id, 0),
-        images_count=images.get(item.id, 0),
-        checked_in=_is_checked_in(pair, authors.get(item.id, set())) if pair else False,
-        created_at=item.created_at,
-        updated_at=item.updated_at,
+def _ordered_comments(db: Session, item_id: int) -> list[TodoComment]:
+    return list(
+        db.execute(
+            select(TodoComment)
+            .options(selectinload(TodoComment.author))
+            .where(TodoComment.item_id == item_id)
+            .order_by(TodoComment.created_at, TodoComment.id)
+        )
+        .scalars()
+        .all()
     )
 
 
-def _items_out(db: Session, items: list[TodoItem]) -> list[TodoItemOut]:
-    comments, images, authors = _counts(db, [item.id for item in items])
-    pair_ids = {item.pair_id for item in items}
-    pairs = {pair.id: pair for pair in db.execute(select(Pair).where(Pair.id.in_(pair_ids))).scalars().all()} if pair_ids else {}
-    return [
-        TodoItemOut(
-            id=item.id,
-            pair_id=item.pair_id,
-            creator_id=item.creator_id,
-            category=item.category,
-            title=item.title,
-            note=item.note,
-            is_archived=item.is_archived,
-            restaurant=item.restaurant,
-            schedules=[TodoScheduleOut.model_validate(schedule) for schedule in sorted(item.schedules, key=lambda s: s.scheduled_on)],
-            comments_count=comments.get(item.id, 0),
-            images_count=images.get(item.id, 0),
-            checked_in=_is_checked_in(pairs[item.pair_id], authors.get(item.id, set())) if item.pair_id in pairs else False,
-            created_at=item.created_at,
-            updated_at=item.updated_at,
-        )
-        for item in items
-    ]
-
-
-def classify_todo_category(db: Session, item: TodoItem) -> TodoCategory:
-    return TodoCategory(complete_todo_category(db, item.title, item.note))
-
-
-@router.get("/dashboard", response_model=TodoDashboardOut)
-def dashboard(
-    month: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> TodoDashboardOut:
+@router.get("/plan", response_model=TodoPlanOut)
+def plan(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> TodoPlanOut:
     pair = get_pair_for_user(db, current_user.id)
-    start, end = _month_range(month)
-    _seed_default_play_items(db, pair, current_user)
+    today = datetime.now(MEETING_TZ).date()
     items = (
         db.execute(
             select(TodoItem)
-            .options(selectinload(TodoItem.restaurant), selectinload(TodoItem.schedules))
             .where(TodoItem.pair_id == pair.id, TodoItem.is_archived.is_(False))
-            .order_by(TodoItem.category, TodoItem.created_at.desc(), TodoItem.id.desc())
+            .order_by(TodoItem.created_at, TodoItem.id)
         )
         .scalars()
         .all()
     )
-    schedules = (
+    referenced_meeting_ids = {item.meeting_session_id for item in items if item.meeting_session_id is not None}
+    meetings = (
         db.execute(
-            select(TodoSchedule)
-            .where(TodoSchedule.pair_id == pair.id, TodoSchedule.scheduled_on >= start, TodoSchedule.scheduled_on <= end)
-            .order_by(TodoSchedule.scheduled_on, TodoSchedule.id)
+            select(MeetingSession).where(
+                MeetingSession.pair_id == pair.id,
+                MeetingSession.started_on.is_not(None),
+                MeetingSession.ended_on.is_not(None),
+            )
         )
         .scalars()
         .all()
     )
-    return TodoDashboardOut(
-        month=month,
-        items=_items_out(db, items),
-        schedules=[TodoScheduleOut.model_validate(schedule) for schedule in schedules],
-        llm_enabled=is_llm_enabled(db),
+    visible = sorted(
+        (meeting for meeting in meetings if meeting.ended_on >= today or meeting.id in referenced_meeting_ids),
+        key=lambda meeting: (meeting.started_on, meeting.id),
+    )
+    focus = next((meeting for meeting in visible if meeting.ended_on >= today), None)
+    return TodoPlanOut(
+        today=today,
+        focus_meeting_id=focus.id if focus else None,
+        meetings=[TodoMeetingOut.model_validate(meeting) for meeting in visible],
+        items=_items_out(db, list(items)),
     )
 
 
 @router.post("/items", response_model=TodoItemOut, status_code=status.HTTP_201_CREATED)
 def create_item(payload: TodoItemCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> TodoItemOut:
     pair = get_pair_for_user(db, current_user.id)
+    if payload.meeting_session_id is not None:
+        ensure_pair_meeting_session(db, payload.meeting_session_id, pair)
     item = TodoItem(
         pair_id=pair.id,
         creator_id=current_user.id,
         category=payload.category,
         title=payload.title,
         note=payload.note,
+        meeting_session_id=payload.meeting_session_id,
     )
     db.add(item)
     db.commit()
@@ -407,14 +190,20 @@ def update_item(
     pair = get_pair_for_user(db, current_user.id)
     item = _ensure_pair_item(db, item_id, pair)
     data = payload.model_dump(exclude_unset=True)
-    for field in ("title", "note", "is_archived"):
-        if field in data:
+    for field in ("title", "note", "category", "is_archived"):
+        if field in data and (data[field] is not None or field == "note"):
             setattr(item, field, data[field])
-    if item.restaurant:
-        if "signature_dishes" in data:
-            item.restaurant.signature_dishes = data["signature_dishes"]
-        if "per_capita" in data:
-            item.restaurant.per_capita = data["per_capita"]
+    if "meeting_session_id" in data:
+        meeting_id = data["meeting_session_id"]
+        if meeting_id is not None:
+            ensure_pair_meeting_session(db, meeting_id, pair)
+        item.meeting_session_id = meeting_id
+    if data.get("completed") is True and item.completed_at is None:
+        item.completed_at = utc_now()
+        item.completed_by_id = current_user.id
+    elif data.get("completed") is False:
+        item.completed_at = None
+        item.completed_by_id = None
     db.commit()
     db.refresh(item)
     return _item_out(db, item)
@@ -424,283 +213,104 @@ def update_item(
 def delete_item(item_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
     pair = get_pair_for_user(db, current_user.id)
     item = _ensure_pair_item(db, item_id, pair)
+    storage_keys = [key for image in item.images for key in (image.storage_key, image.thumb_storage_key) if key]
+    delete_legacy_todo_rows(db, item.id)
     db.delete(item)
     db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.post("/items/{item_id}/schedules", response_model=TodoScheduleOut, status_code=status.HTTP_201_CREATED)
-def create_schedule(
-    item_id: int,
-    payload: TodoScheduleCreate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> TodoScheduleOut:
-    pair = get_pair_for_user(db, current_user.id)
-    item = _ensure_pair_item(db, item_id, pair)
-    existing_schedules = db.execute(
-        select(TodoSchedule).where(TodoSchedule.pair_id == pair.id, TodoSchedule.item_id == item.id)
-    ).scalars().all()
-    for existing in existing_schedules:
-        db.delete(existing)
-    db.flush()
-    schedule = TodoSchedule(pair_id=pair.id, item_id=item.id, scheduled_on=payload.scheduled_on, created_by_id=current_user.id)
-    db.add(schedule)
-    db.flush()
-    db.refresh(schedule)
-    db.commit()
-    db.refresh(schedule)
-    return TodoScheduleOut.model_validate(schedule)
-
-
-def _require_llm_enabled(db: Session) -> None:
-    if not is_llm_enabled(db):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=LLM_DISABLED_DETAIL)
-
-
-def _turn_off_llm_after_failure(db: Session, exc: Exception) -> HTTPException:
-    logger.warning("LLM classification failed; AI classification turned off", exc_info=exc)
-    db.rollback()
-    set_llm_enabled(db, False)
-    db.commit()
-    return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=LLM_FAILED_DETAIL)
-
-
-def _amap_failure(exc: Exception) -> HTTPException:
-    logger.warning("AMap MCP request failed", exc_info=exc)
-    return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=AMAP_FAILED_DETAIL)
-
-
-@router.post("/items/{item_id}/classify", response_model=TodoItemOut)
-def classify_item(item_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> TodoItemOut:
-    pair = get_pair_for_user(db, current_user.id)
-    item = _ensure_pair_item(db, item_id, pair)
-    _require_llm_enabled(db)
-    try:
-        item.category = TodoCategory(classify_todo_category(db, item))
-    except (RuntimeError, ValueError, httpx.HTTPError) as exc:
-        raise _turn_off_llm_after_failure(db, exc) from exc
-    db.commit()
-    db.refresh(item)
-    return _item_out(db, item)
-
-
-@router.post("/items/classify-open", response_model=TodoClassifyOpenOut)
-def classify_open_items(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> TodoClassifyOpenOut:
-    pair = get_pair_for_user(db, current_user.id)
-    _require_llm_enabled(db)
-    items = (
-        db.execute(
-            select(TodoItem)
-            .options(selectinload(TodoItem.restaurant), selectinload(TodoItem.schedules))
-            .where(TodoItem.pair_id == pair.id, TodoItem.is_archived.is_(False))
-            .order_by(TodoItem.created_at.desc())
-        )
-        .scalars()
-        .all()
-    )
-    _, _, authors = _counts(db, [item.id for item in items])
-    open_items = [item for item in items if not _is_checked_in(pair, authors.get(item.id, set()))]
-    try:
-        for item in open_items:
-            item.category = TodoCategory(classify_todo_category(db, item))
-    except (RuntimeError, ValueError, httpx.HTTPError) as exc:
-        raise _turn_off_llm_after_failure(db, exc) from exc
-    db.commit()
-    for item in open_items:
-        db.refresh(item)
-    return TodoClassifyOpenOut(count=len(open_items), items=_items_out(db, open_items))
-
-
-@router.delete("/schedules/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_schedule(schedule_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
-    pair = get_pair_for_user(db, current_user.id)
-    schedule = db.get(TodoSchedule, schedule_id)
-    if schedule is None or schedule.pair_id != pair.id:
-        raise HTTPException(status_code=404, detail="Todo schedule not found")
-    db.delete(schedule)
-    db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.post("/restaurants/search", response_model=TodoRestaurantSearchOut)
-def search_restaurants(
-    payload: TodoRestaurantSearch,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> TodoRestaurantSearchOut:
-    get_pair_for_user(db, current_user.id)
-    try:
-        candidates = [
-            TodoRestaurantCandidate(**candidate)
-            for candidate in _search_location_aware_pois(db, current_user, payload.keyword, payload.city)
-        ]
-    except amap_mcp.AmapMCPError as exc:
-        raise _amap_failure(exc) from exc
-    return TodoRestaurantSearchOut(candidates=candidates)
-
-
-@router.get("/candidates", response_model=list[TodoCandidateOut])
-def list_candidates(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[TodoCandidateOut]:
-    pair = get_pair_for_user(db, current_user.id)
-    rows = (
-        db.execute(
-            select(TodoCandidate)
-            .where(TodoCandidate.pair_id == pair.id)
-            .order_by(TodoCandidate.created_at.desc(), TodoCandidate.id.desc())
-        )
-        .scalars()
-        .all()
-    )
-    return [_candidate_out(row) for row in rows]
-
-
-@router.post("/candidates", response_model=TodoCandidateOut, status_code=status.HTTP_201_CREATED)
-def create_candidate(
-    payload: TodoCandidateCreate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> TodoCandidateOut:
-    pair = get_pair_for_user(db, current_user.id)
-    try:
-        category = _infer_candidate_category(db, payload.raw_title, payload.category)
-    except (RuntimeError, ValueError, httpx.HTTPError) as exc:
-        raise _turn_off_llm_after_failure(db, exc) from exc
-    status_value = TodoCandidateStatus.ready
-    amap_candidates: list[dict] = []
-    selected_candidate: dict | None = None
-    parse_error = None
-    if category != TodoCategory.wish:
+    for storage_key in storage_keys:
         try:
-            amap_candidates = _search_location_aware_pois(db, current_user, payload.raw_title)
-            if len(amap_candidates) == 1:
-                selected_candidate = amap_candidates[0]
-                status_value = TodoCandidateStatus.ready
-            elif len(amap_candidates) > 1:
-                status_value = TodoCandidateStatus.needs_choice
-            else:
-                status_value = TodoCandidateStatus.failed
-                parse_error = "高德没有返回可确认的地点"
-        except amap_mcp.AmapMCPError as exc:
-            status_value = TodoCandidateStatus.failed
-            parse_error = str(exc)
-    row = TodoCandidate(
+            delete_media_file(storage_key)
+        except MediaStorageError:
+            logger.exception("Todo image file deletion failed", extra={"item_id": item_id, "storage_key": storage_key})
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _journal_occurred_at(db: Session, item: TodoItem, pair: Pair) -> datetime:
+    completed_at = _aware(item.completed_at or utc_now())
+    meeting = db.get(MeetingSession, item.meeting_session_id) if item.meeting_session_id is not None else None
+    if meeting is None or meeting.pair_id != pair.id or meeting.ended_on is None:
+        return completed_at
+    if completed_at.astimezone(MEETING_TZ).date() > meeting.ended_on:
+        return datetime.combine(meeting.ended_on, LATE_JOURNAL_TIME, MEETING_TZ).astimezone(timezone.utc)
+    return completed_at
+
+
+def _journal_description(item: TodoItem, comments: list[TodoComment]) -> str | None:
+    lines: list[str] = []
+    if item.note and item.note.strip():
+        lines.append(item.note.strip())
+    if comments:
+        if lines:
+            lines.append("")
+        lines.extend(f"{comment.author.display_name if comment.author else ''}：{comment.text}" for comment in comments)
+    return "\n".join(lines) or None
+
+
+@router.post("/items/{item_id}/journal", response_model=TodoJournalOut)
+def write_into_journal(item_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> TodoJournalOut:
+    """Turn a finished todo into a public timeline event once; repeated calls return the existing entry."""
+    pair = get_pair_for_user(db, current_user.id)
+    item = _ensure_pair_item(db, item_id, pair)
+    if item.completed_at is None:
+        raise HTTPException(status_code=409, detail="先把这件事标成完成，再写进手账")
+    if item.journal_event_id is not None:
+        existing = db.get(Event, item.journal_event_id)
+        if existing is not None and existing.pair_id == pair.id:
+            return TodoJournalOut(event_id=existing.id, created=False)
+
+    created_at = utc_now()
+    occurred_at = _journal_occurred_at(db, item, pair)
+    meeting = find_meeting_for_date(db, pair.id, meeting_date_for_values(occurred_at, created_at))
+    event = Event(
         pair_id=pair.id,
         creator_id=current_user.id,
-        raw_title=payload.raw_title,
-        category=category,
-        status=status_value,
-        amap_candidates=amap_candidates,
-        selected_candidate=selected_candidate,
-        parse_error=parse_error,
+        meeting_session_id=meeting.id if meeting else None,
+        title=item.title,
+        description=_journal_description(item, _ordered_comments(db, item.id)),
+        occurred_at=occurred_at,
+        event_kind=EventKind.offline_meeting if meeting else EventKind.memory,
+        gift_feelings=[],
+        visibility_mode=VisibilityMode.public,
+        created_at=created_at,
     )
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    return _candidate_out(row)
-
-
-@router.post("/candidates/{candidate_id}/confirm", response_model=TodoItemOut, status_code=status.HTTP_201_CREATED)
-def confirm_candidate(
-    candidate_id: int,
-    payload: TodoCandidateConfirm,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> TodoItemOut:
-    pair = get_pair_for_user(db, current_user.id)
-    row = db.get(TodoCandidate, candidate_id)
-    if row is None or row.pair_id != pair.id:
-        raise HTTPException(status_code=404, detail="Todo candidate not found")
-    category = payload.category or row.category
-    selected = payload.selected_candidate
-    if selected is None and row.selected_candidate:
-        selected = TodoRestaurantCandidate(**row.selected_candidate)
-    if category == TodoCategory.wish:
-        selected = None
-    try:
-        item = _create_item_from_candidate(
-            db,
-            pair,
-            current_user,
-            category=category,
-            title=row.raw_title,
-            selected_candidate=selected,
-        )
-        item_id = item.id
-        db.delete(row)
+    todo_images = db.execute(select(TodoImage).where(TodoImage.item_id == item.id).order_by(TodoImage.created_at, TodoImage.id)).scalars().all()
+    written_keys: list[str] = []
+    with discard_media_on_error(db, written_keys):
+        db.add(event)
+        db.flush()
+        sort_order = 0
+        for todo_image in todo_images:
+            original = read_media_file(todo_image.storage_key) if todo_image.storage_key else None
+            if original is None:
+                continue
+            thumb = read_media_file(todo_image.thumb_storage_key) if todo_image.thumb_storage_key else None
+            storage_key, thumb_key = build_image_storage_keys(pair.id, event.id, todo_image.mime_type)
+            write_media_file(storage_key, original)
+            written_keys.append(storage_key)
+            if thumb is not None:
+                write_media_file(thumb_key, thumb)
+                written_keys.append(thumb_key)
+            db.add(
+                Image(
+                    event_id=event.id,
+                    author_id=todo_image.author_id,
+                    sort_order=sort_order,
+                    file_path="",
+                    storage_key=storage_key,
+                    thumb_storage_key=thumb_key if thumb is not None else None,
+                    storage_backend=get_settings().media_storage,
+                    data=None,
+                    thumb_data=None,
+                    thumb_mime_type="image/jpeg",
+                    thumb_size_bytes=len(thumb) if thumb is not None else 0,
+                    mime_type=todo_image.mime_type,
+                    size_bytes=len(original),
+                )
+            )
+            sort_order += 1
+        item.journal_event_id = event.id
         db.commit()
-    except Exception as exc:
-        db.rollback()
-        logger.exception("Todo candidate confirmation failed", extra={"candidate_id": candidate_id})
-        raise HTTPException(status_code=502, detail="这条暂时没能加入清单，卡片还在，可以稍后再试") from exc
-    persisted_item = _ensure_pair_item(db, item_id, pair)
-    return _item_out(db, persisted_item)
-
-
-@router.delete("/candidates/{candidate_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_candidate(candidate_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
-    pair = get_pair_for_user(db, current_user.id)
-    row = db.get(TodoCandidate, candidate_id)
-    if row is None or row.pair_id != pair.id:
-        raise HTTPException(status_code=404, detail="Todo candidate not found")
-    db.delete(row)
-    db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.post("/restaurants", response_model=TodoItemOut, status_code=status.HTTP_201_CREATED)
-def create_restaurant_item(
-    payload: TodoRestaurantCreate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> TodoItemOut:
-    pair = get_pair_for_user(db, current_user.id)
-    candidate = payload.candidate
-    item = _create_item_from_candidate(db, pair, current_user, category=TodoCategory.food, title=candidate.name, selected_candidate=candidate)
-    if item.restaurant:
-        if payload.signature_dishes:
-            item.restaurant.signature_dishes = payload.signature_dishes
-        if payload.per_capita is not None:
-            item.restaurant.per_capita = payload.per_capita
-    db.commit()
-    db.refresh(item)
-    return _item_out(db, item)
-
-
-@router.post("/restaurants/lottery", response_model=TodoLotteryOut)
-def restaurant_lottery(
-    payload: TodoLotteryRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> TodoLotteryOut:
-    pair = get_pair_for_user(db, current_user.id)
-    filters = [TodoItem.pair_id == pair.id, TodoItem.category == TodoCategory.food, TodoItem.is_archived.is_(False)]
-    if payload.per_capita_min is not None:
-        filters.append(TodoRestaurant.per_capita >= payload.per_capita_min)
-    if payload.per_capita_max is not None:
-        filters.append(TodoRestaurant.per_capita <= payload.per_capita_max)
-    if payload.city:
-        filters.append(TodoRestaurant.city.like(f"%{payload.city}%"))
-    items = (
-        db.execute(
-            select(TodoItem)
-            .join(TodoRestaurant, TodoRestaurant.item_id == TodoItem.id)
-            .options(selectinload(TodoItem.restaurant), selectinload(TodoItem.schedules))
-            .where(and_(*filters))
-        )
-        .scalars()
-        .all()
-    )
-    if items:
-        return TodoLotteryOut(item=_item_out(db, random.choice(items)))
-    if payload.location and payload.radius_km:
-        try:
-            candidates = amap_mcp.around_restaurants(payload.location, payload.radius_km * 1000, amap_key=effective_amap_key(db))
-        except amap_mcp.AmapMCPError as exc:
-            raise _amap_failure(exc) from exc
-        if candidates:
-            return TodoLotteryOut(candidate=TodoRestaurantCandidate(**random.choice(candidates)))
-    return TodoLotteryOut()
+    return TodoJournalOut(event_id=event.id, created=True)
 
 
 @router.get("/items/{item_id}", response_model=TodoItemDetail)
@@ -708,51 +318,11 @@ def get_item_detail(item_id: int, current_user: User = Depends(get_current_user)
     pair = get_pair_for_user(db, current_user.id)
     item = _ensure_pair_item(db, item_id, pair)
     out = _item_out(db, item)
-    comments = (
-        db.execute(
-            select(TodoComment)
-            .options(selectinload(TodoComment.author))
-            .where(TodoComment.item_id == item.id)
-            .order_by(TodoComment.created_at)
-        )
-        .scalars()
-        .all()
-    )
     images = db.execute(select(TodoImage).where(TodoImage.item_id == item.id).order_by(TodoImage.created_at)).scalars().all()
-    return TodoItemDetail(**out.model_dump(), comments=[_comment_out(comment) for comment in comments], images=images)
-
-
-@router.get("/items/{item_id}/weather", response_model=TodoWeatherOut | None)
-def get_item_weather(item_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> TodoWeatherOut | None:
-    pair = get_pair_for_user(db, current_user.id)
-    item = _ensure_pair_item(db, item_id, pair)
-    if not item.restaurant or not item.restaurant.city:
-        return None
-    schedules = sorted(item.schedules, key=lambda schedule: schedule.scheduled_on)
-    if not schedules:
-        return None
-    try:
-        payload = amap_mcp.weather_for_city(item.restaurant.city, effective_amap_key(db))
-    except amap_mcp.AmapMCPError:
-        return None
-    forecasts = payload.get("forecasts") if isinstance(payload, dict) else None
-    if not isinstance(forecasts, list) or not forecasts:
-        return None
-    target = schedules[0].scheduled_on.isoformat()
-    forecast = next((row for row in forecasts if isinstance(row, dict) and row.get("date") == target), None)
-    if forecast is None:
-        forecast = next((row for row in forecasts if isinstance(row, dict)), None)
-    if not isinstance(forecast, dict):
-        return None
-    return TodoWeatherOut(
-        city=str(payload.get("city") or item.restaurant.city),
-        report_date=forecast.get("date"),
-        day_weather=forecast.get("dayweather"),
-        night_weather=forecast.get("nightweather"),
-        day_temp=forecast.get("daytemp"),
-        night_temp=forecast.get("nighttemp"),
-        day_wind=forecast.get("daywind"),
-        night_wind=forecast.get("nightwind"),
+    return TodoItemDetail(
+        **out.model_dump(),
+        comments=[_comment_out(comment) for comment in _ordered_comments(db, item.id)],
+        images=images,
     )
 
 
@@ -805,20 +375,18 @@ def upload_image(
     return TodoImageOut.model_validate(image)
 
 
-def _ensure_todo_image_visible(db: Session, image_id: int, user: User, pair: Pair) -> TodoImage:
+def _ensure_todo_image_visible(db: Session, image_id: int, pair: Pair) -> TodoImage:
     image = db.get(TodoImage, image_id)
     if image is None:
         raise HTTPException(status_code=404, detail="Todo image not found")
-    item = _ensure_pair_item(db, image.item_id, pair)
-    if item.pair_id != pair.id:
-        raise HTTPException(status_code=404, detail="Todo image not found")
+    _ensure_pair_item(db, image.item_id, pair)
     return image
 
 
 @image_router.delete("/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_todo_image(image_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
     pair = get_pair_for_user(db, current_user.id)
-    image = _ensure_todo_image_visible(db, image_id, current_user, pair)
+    image = _ensure_todo_image_visible(db, image_id, pair)
     storage_keys = [key for key in (image.storage_key, image.thumb_storage_key) if key]
     db.delete(image)
     db.commit()
@@ -831,22 +399,36 @@ def delete_todo_image(image_id: int, current_user: User = Depends(get_current_us
 
 
 @image_router.get("/{image_id}/file")
-def get_todo_image_file(image_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_todo_image_file(
+    image_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     pair = get_pair_for_user(db, current_user.id)
-    image = _ensure_todo_image_visible(db, image_id, current_user, pair)
+    image = _ensure_todo_image_visible(db, image_id, pair)
     if image.storage_key:
         stored = read_media_file(image.storage_key)
         if stored is not None:
             return Response(content=stored, media_type=image.mime_type, headers=dict(PRIVATE_MEDIA_CACHE_HEADERS))
+        if (remote := remote_media_response(request)) is not None:
+            return remote
     raise HTTPException(status_code=404, detail="Todo image file not found")
 
 
 @image_router.get("/{image_id}/thumb")
-def get_todo_image_thumb(image_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_todo_image_thumb(
+    image_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     pair = get_pair_for_user(db, current_user.id)
-    image = _ensure_todo_image_visible(db, image_id, current_user, pair)
+    image = _ensure_todo_image_visible(db, image_id, pair)
     if image.thumb_storage_key:
         stored = read_media_file(image.thumb_storage_key)
         if stored is not None:
             return Response(content=stored, media_type=image.thumb_mime_type or "image/jpeg", headers=dict(PRIVATE_MEDIA_CACHE_HEADERS))
+        if (remote := remote_media_response(request)) is not None:
+            return remote
     raise HTTPException(status_code=404, detail="Todo image thumbnail not found")

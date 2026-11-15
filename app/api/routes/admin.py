@@ -1,24 +1,16 @@
-"""管理端配对、入口 token、联系方式、登录日志和 AI 配置；列表会标出已合上的 pair，所有写操作在响应前提交。"""
+"""管理端配对、入口 token、联系方式和登录日志；列表会标出已合上的 pair，所有写操作在响应前提交。"""
 
 import secrets
 from datetime import timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai_config import ensure_llm_ready, get_ai_setting, list_models, preview_secret, saved_models_for_protocol, set_llm_enabled, test_category_completion, update_ai_setting, update_saved_models
 from app.api.dependencies import require_admin_key
-from app.core.config import get_settings
 from app.core.database import get_db
-from app.models import AIProtocol, DeviceToken, LoginLog, Pair, User, utc_now
+from app.models import DeviceToken, LoginLog, Pair, User, utc_now
 from app.schemas import (
-    AdminAIConfigOut,
-    AdminAIConfigUpdate,
-    AdminAIConnectionTestIn,
-    AdminAIConnectionTestOut,
-    AdminAIModelListOut,
     LoginLogOut,
     PairCreate,
     PairCreated,
@@ -175,114 +167,3 @@ def list_login_logs(
             )
         )
     return out
-
-
-@router.get("/ai-config", response_model=AdminAIConfigOut, dependencies=[Depends(require_admin_key)])
-def get_admin_ai_config(db: Session = Depends(get_db)) -> AdminAIConfigOut:
-    settings = get_settings()
-    row = get_ai_setting(db)
-    api_key = row.api_key or settings.llm_api_key
-    amap_api_key = row.amap_api_key or settings.amap_maps_api_key
-    return AdminAIConfigOut(
-        llm_enabled=bool(row.llm_enabled),
-        protocol=row.protocol,
-        selected_model=row.selected_model or settings.llm_model,
-        env_model=settings.llm_model,
-        openai_base_url=row.openai_base_url or settings.llm_openai_base_url,
-        anthropic_base_url=row.anthropic_base_url or settings.llm_anthropic_base_url,
-        api_key=api_key,
-        api_key_preview=preview_secret(api_key),
-        has_api_key=bool(api_key),
-        amap_api_key=amap_api_key,
-        amap_key_preview=preview_secret(amap_api_key),
-        has_amap_key=bool(amap_api_key),
-        saved_models=saved_models_for_protocol(row, row.protocol),
-        updated_at=row.updated_at,
-    )
-
-
-@router.patch("/ai-config", response_model=AdminAIConfigOut, dependencies=[Depends(require_admin_key)])
-def patch_admin_ai_config(payload: AdminAIConfigUpdate, db: Session = Depends(get_db)) -> AdminAIConfigOut:
-    update_ai_setting(
-        db,
-        llm_enabled=False,
-        protocol=payload.protocol,
-        selected_model=payload.selected_model,
-        openai_base_url=payload.openai_base_url,
-        anthropic_base_url=payload.anthropic_base_url,
-        api_key=payload.api_key,
-        amap_api_key=payload.amap_api_key,
-    )
-    if payload.llm_enabled:
-        try:
-            ensure_llm_ready(db)
-        except (RuntimeError, httpx.HTTPError) as exc:
-            set_llm_enabled(db, False)
-            db.commit()
-            raise HTTPException(status_code=502, detail=f"LLM validation failed, AI classification has been turned off: {exc}") from exc
-        set_llm_enabled(db, True)
-    db.commit()
-    return get_admin_ai_config(db)
-
-
-@router.get("/ai-config/models", response_model=AdminAIModelListOut, dependencies=[Depends(require_admin_key)])
-def get_admin_ai_models(protocol: AIProtocol | None = None, db: Session = Depends(get_db)) -> AdminAIModelListOut:
-    row = get_ai_setting(db)
-    target_protocol = protocol or row.protocol
-    try:
-        models = list_models(db, target_protocol)
-    except (RuntimeError, httpx.HTTPError) as exc:
-        raise HTTPException(status_code=502, detail=f"Model list request failed: {exc}") from exc
-    update_saved_models(db, target_protocol, models)
-    db.commit()
-    return AdminAIModelListOut(models=models)
-
-
-@router.post("/ai-config/test", response_model=AdminAIConnectionTestOut, dependencies=[Depends(require_admin_key)])
-def test_admin_ai_config(
-    payload: AdminAIConnectionTestIn | None = None,
-    db: Session = Depends(get_db),
-) -> AdminAIConnectionTestOut:
-    keyword = payload.keyword if payload and payload.keyword else None
-    city = payload.city if payload else None
-    expected_category = payload.expected_category.value if payload and payload.expected_category else ("food" if keyword is None else None)
-    try:
-        result = test_category_completion(
-            db,
-            keyword=keyword or "江西小炒(西溪北苑东区店)",
-            city=city,
-            expected_category=expected_category,
-        )
-    except (RuntimeError, httpx.HTTPError) as exc:
-        raise HTTPException(status_code=502, detail=f"AI connection test failed: {exc}") from exc
-    category = result["category"]
-    return AdminAIConnectionTestOut(
-        ok=True,
-        message=f"AMap evidence ok, sample category: {category}",
-        sample_category=category,
-        sample_keyword=result["sample_keyword"],
-        sample_city=result["sample_city"],
-        expected_category=result["expected_category"],
-        category_matched=result["category_matched"],
-        amap_name=result["amap_name"],
-        amap_address=result["amap_address"],
-        amap_poi_type=result["amap_poi_type"],
-        amap_poi_typecode=result["amap_poi_typecode"],
-        amap_poi_id=result["amap_poi_id"],
-        amap_city=result["amap_city"],
-        amap_adname=result["amap_adname"],
-        amap_tel=result["amap_tel"],
-        amap_business_area=result["amap_business_area"],
-        rating=result["rating"],
-        per_capita=result["per_capita"],
-        tags=result["tags"],
-        signature_dishes=result["signature_dishes"],
-        photos_count=result["photos_count"],
-        first_photo_url=result["first_photo_url"],
-        amap_category=result["amap_category"],
-        amap_category_reason=result["amap_category_reason"],
-        llm_category=result["llm_category"],
-        llm_status=result["llm_status"],
-        llm_message=result["llm_message"],
-        evidence_note=result["evidence_note"],
-    )

@@ -17,6 +17,8 @@
 - 两位用户都可以创建事件、提交评论、上传图片，并对可见留言添加点赞 / 倒赞 reaction。
 - 线下见面使用内部 `meeting_sessions` 作为真实见面次数统计单位，并以 `started_on / ended_on` 保存包含首尾整天的北京时间范围；范围内双方事件自动归类，标记范围外事件时自动建立同名单日见面。双方点击见面标题可同时编辑标题与日期范围，重叠范围自动合并并保留较早标题，也可取消整个见面；不再提供加号或手动归入流程，事件内容权限保持不变。
 - 任意一方可给对方包一份礼物：选包装纸、写小提示和藏在里面的话、放最多 6 张照片，可设拆开时间。拆开前收礼人只看到礼盒、小提示和送礼人；拆开后收礼人可留下感受、印章评分和反馈。
+- 见面清单按 pair 共享：事项分为准备 / 吃 / 玩 / 住 / 心愿，可挂到某次（包括未来的）见面或留在心愿池；任意一方点一下即完成，完成后一键写进手账生成时间线事件。
+- 周期页可开启邮件提醒：由开启的人选择发给对方或自己、提前几天，每个预测周期只在早上发一封。
 - 双方可通过 `GET /journal` 取得全部、日期范围或某次见面的手账数据，前端据此在线翻看或导出 HTML / PDF / 长图。
 - 事件、内容和留言 reaction 写接口会在响应返回前完成数据库提交，前端创建、评论或点 reaction 后可以立即刷新详情。
 - 只有 pair 内的两位用户能访问该 pair 的事件和内容。
@@ -34,6 +36,8 @@ app/
   services.py             可见性、权限、礼物遮罩和内容过滤逻辑
   journal.py              手账导出：范围选择、按北京时间分月、未解锁内容遮罩
   storage.py              本地图片媒体存储 key、路径校验和读写
+  media_remote.py         本地开发缺图时回源 MEDIA_REMOTE_API_BASE（生产不启用）
+  cycle_reminders.py      周期邮件提醒设置、每日扫描和按预测周期去重
   core/
     config.py             环境配置
     database.py           数据库连接和建表
@@ -41,7 +45,7 @@ app/
     dependencies.py       管理密钥和 Bearer token 鉴权
     routes/
       admin_auth.py       管理密钥校验接口
-      admin.py            管理接口入口（pair、登录记录、AI / 高德配置）
+      admin.py            管理接口入口（pair、登录记录）
       auth.py             当前用户、密码登录与安全凭据接口
       game.py             匿名跑酷排行榜接口
       quotes.py           情侣共享本地语录库接口
@@ -50,8 +54,8 @@ app/
       journal.py          手账导出数据接口（GET /journal）
       contents.py         评论、留言 reaction、图片和内容接口
       habits.py           每日习惯接口
-      cycles.py           周期日历接口
-      todos.py            Todo 看板、候选、高德地点与图片接口
+      cycles.py           周期日历与邮件提醒设置接口
+      todos.py            见面清单、写进手账与图片接口
       love_receipts.py    旧回执只读接口
       users.py            私有头像下载
     image_uploads.py      图片上传落盘与提交失败时的文件清理
@@ -90,6 +94,7 @@ poetry sync --no-root
 | `MAX_IMAGE_BYTES` | `10485760` | 单张图片文件最大字节数，默认 10MB。 |
 | `MEDIA_ROOT` | `/app/media` | 图片原图和缩略图的本地媒体根目录；Docker 中由 `love_book_media` volume 持久化。 |
 | `MEDIA_STORAGE` | `local` | 当前图片存储后端，现阶段固定使用本地文件。 |
+| `MEDIA_REMOTE_API_BASE` | 空 | 仅非生产环境生效：本地 `MEDIA_ROOT` 找不到图片文件时，带着当前请求的 Bearer token 回源这个线上 API 地址（如 `https://tingle272.xyz/api`）读取同一张图。`APP_ENV=production` 时忽略。 |
 
 图片缩略图由 Pillow 生成。
 
@@ -144,16 +149,16 @@ npm run dev
 - `/admin` 管理控制台（先用 `ADMIN_KEY` 验证身份，然后创建配对 / 复制 token / 复制入口链接；入口链接按当前浏览器 origin 动态生成，复制失败会自动降级到隐藏文本框复制）
 - `/timeline` 事件列表首页（单列精选语录、全部 / 见面分段、见面标题与日期范围弹窗编辑、月份分组、静态空状态和底边栏导航）
 - `/timeline/[id]` 事件详情（创建者可原地编辑标题、描述、发生时间和可见方式；日历爱心可创建见面或打开所属见面编辑窗口；评论 / 图片混排，底部输入栏支持文字和相册）
-- `/me` 我的页面（当前用户头像、用户名、邮箱、常用位置、共享语录和安全密码管理）
+- `/me` 我的页面（当前用户头像、用户名、邮箱、共享语录和安全密码管理）
 - `/create` 新建事件
-- `/todo` 共享 todo 工作区（`xl` 及以上为左侧列表导航 / 中央任务 / 右侧详情布局，更窄时改为横向板块 chip 与“抽一家”按钮；默认展示全部未完成事项，按最早要完成时间排序、未安排排后，含详情内日期安排、描述编辑、双方打卡评论完成、照片折叠大图预览、餐厅搜索、随机抽奖和打卡详情）
-- `/cycle` 周期日历 Dashboard（月 / 周 / 列表视图、筛选、提醒设置和移动端详情面板）
+- `/todo` 见面清单（下一次见面倒计时与准备进度、按准备 / 吃 / 玩 / 住 / 心愿分组的事项、心愿池与“抽一个”、一起做过的折叠列表；点一下完成，完成后“写进手账”直接跳到新事件；详情可改标题、分类、所属见面、描述、留言和照片）
+- `/cycle` 周期日历 Dashboard（月 / 周 / 列表视图、筛选、首页提醒天数、邮件提醒设置和移动端详情面板）
 
 ## 前端设计上下文
 
 - 产品默认按 [`PRODUCT.md`](ai/PRODUCT.md) 和 [`DESIGN.md`](ai/DESIGN.md) 的 product register 执行，目标气质为“温暖、可爱、舒服、可信”。
 - 当前视觉基线是柔和恋爱手账型产品 UI：低饱和玫瑰主操作、暖桃重点、鼠尾草薄荷正向状态、奶油色可读面板。
-- 前端避免晃眼高饱和色、清冷灰后台、装饰玻璃拟态、渐变文字和低对比彩色文本。登录页用 1-bit 像素 Canvas 2D「花田拾光」承担陪伴感，Timeline 首页不展示动态小狗，以实体语录内容层和静态空状态保持阅读安静；Three.js 仅继续服务 Todo 抽奖。
+- 前端避免晃眼高饱和色、清冷灰后台、装饰玻璃拟态、渐变文字和低对比彩色文本。登录页用 1-bit 像素 Canvas 2D「花田拾光」承担陪伴感，Timeline 首页不展示动态小狗，以实体语录内容层和静态空状态保持阅读安静；前端不再依赖 Three.js。
 
 token 分发链接形如 `http://localhost:3000/?token=xxx` 或 `https://tingle272.xyz/?token=xxx`；管理端会按当前访问域名和协议动态生成，链接本身携带身份凭据，请只通过可信渠道发送。
 
@@ -230,10 +235,6 @@ Authorization: Bearer <token>
 | admin | GET | `/admin/pairs` | `X-Admin-Key` | 列出全部配对及其 token |
 | admin | PATCH | `/admin/pairs/{pair_id}` | `X-Admin-Key` | 修改双方邮箱和情侣日期 `love_started_on` |
 | admin | GET | `/admin/login-logs` | `X-Admin-Key` | 登录记录，`limit` 默认 200、上限 500，可按 `user_id` 过滤 |
-| admin | GET | `/admin/ai-config` | `X-Admin-Key` | 读取全站 AI / 高德配置 |
-| admin | PATCH | `/admin/ai-config` | `X-Admin-Key` | 保存协议、地址、token、模型、高德 key 和 AI 分类开关 |
-| admin | GET | `/admin/ai-config/models` | `X-Admin-Key` | 获取当前协议的模型列表 |
-| admin | POST | `/admin/ai-config/test` | `X-Admin-Key` | 高德取证 + LLM 补全诊断测试 |
 | auth | POST | `/auth/login/password` | 无 | 使用登录名和安全密码换取 90 天 Bearer 会话 |
 | auth | GET | `/auth/me` | `Bearer` | 获取当前用户、对方、pair_id |
 | auth | PATCH | `/auth/me` | `Bearer` | 修改自己的昵称、邮箱或 emoji 头像 |
@@ -241,8 +242,6 @@ Authorization: Bearer <token>
 | auth | GET | `/auth/me/security-password` | `Bearer` | 获取当前用户安全密码配置状态 |
 | auth | PUT | `/auth/me/security-password` | `Bearer` | 设置或重置登录名和安全密码，返回新会话 |
 | auth | POST | `/auth/me/dissolve` | `Bearer` | 合上当前 pair，可选留一句话；内容保留，双方无法再进手账 |
-| auth | PATCH | `/auth/me/location` | `Bearer` | 保存当前用户常用位置，支持坐标逆地理编码或地址地理编码 |
-| auth | DELETE | `/auth/me/location` | `Bearer` | 清除当前用户常用位置 |
 | auth | POST | `/auth/me/avatar` | `Bearer` | 上传自己的图片头像（multipart） |
 | auth | DELETE | `/auth/me/avatar` | `Bearer` | 清除自己的图片头像，回退 emoji/首字 |
 | auth | POST | `/auth/login-record` | `Bearer` | 记录一次登录（IP、UA、语言），返回 201 |
@@ -283,25 +282,16 @@ Authorization: Bearer <token>
 | cycles | PUT | `/cycles/logs/{day}` | `Bearer` | 保存单日记录 |
 | cycles | PUT | `/cycles/logs/{day}/dashboard` | `Bearer` | 保存单日记录并返回重算后的 dashboard |
 | cycles | DELETE | `/cycles/logs/{day}` | `Bearer` | 删除单日记录 |
-| todos | GET | `/todos/dashboard` | `Bearer` | Todo 看板（任务、候选、AI 开关等） |
-| todos | POST | `/todos/items` | `Bearer` | 新建 todo（含直接许愿） |
-| todos | GET | `/todos/items/{item_id}` | `Bearer` | Todo 详情（评论、图片、日期、地点） |
-| todos | PATCH | `/todos/items/{item_id}` | `Bearer` | 修改标题、分类、描述等 |
-| todos | DELETE | `/todos/items/{item_id}` | `Bearer` | 删除 todo |
-| todos | POST | `/todos/items/{item_id}/schedules` | `Bearer` | 设置安排日期，替换旧日期 |
-| todos | DELETE | `/todos/schedules/{schedule_id}` | `Bearer` | 取消安排日期 |
-| todos | POST | `/todos/items/{item_id}/classify` | `Bearer` | 用 LLM 重新分类单条；AI 关闭时 409 |
-| todos | POST | `/todos/items/classify-open` | `Bearer` | 用 LLM 重新分类全部未完成；AI 关闭时 409 |
-| todos | GET | `/todos/items/{item_id}/weather` | `Bearer` | 安排日期的高德天气提醒，失败返回 `null` |
-| todos | POST | `/todos/items/{item_id}/comments` | `Bearer` | 打卡评论 |
-| todos | POST | `/todos/items/{item_id}/images` | `Bearer` | 上传 todo 照片（multipart） |
-| todos | GET | `/todos/candidates` | `Bearer` | 待确认候选列表 |
-| todos | POST | `/todos/candidates` | `Bearer` | 新增并解析候选（LLM / 高德） |
-| todos | POST | `/todos/candidates/{candidate_id}/confirm` | `Bearer` | 确认候选加入；失败 502 且保留候选 |
-| todos | DELETE | `/todos/candidates/{candidate_id}` | `Bearer` | 丢弃候选 |
-| todos | POST | `/todos/restaurants/search` | `Bearer` | 高德地点搜索 |
-| todos | POST | `/todos/restaurants` | `Bearer` | 直接按高德地点新建 todo |
-| todos | POST | `/todos/restaurants/lottery` | `Bearer` | 随机抽奖（人均、城市/区域、附近距离） |
+| cycles | GET | `/cycles/reminder` | `Bearer` | 读取 pair 共享的周期邮件提醒设置和下一封预计日期 |
+| cycles | PUT | `/cycles/reminder` | `Bearer` | 开关提醒、选择收件人（pair 双方之一）和提前天数（1-7） |
+| todos | GET | `/todos/plan` | `Bearer` | 见面清单：今天、焦点见面、相关见面和全部未归档事项 |
+| todos | POST | `/todos/items` | `Bearer` | 新建事项，可直接挂到某次见面（不传则进心愿池） |
+| todos | GET | `/todos/items/{item_id}` | `Bearer` | 事项详情（留言、照片） |
+| todos | PATCH | `/todos/items/{item_id}` | `Bearer` | 修改标题、描述、分类、所属见面（显式 `null` 放回心愿池）、完成状态 |
+| todos | DELETE | `/todos/items/{item_id}` | `Bearer` | 删除事项并清理照片文件 |
+| todos | POST | `/todos/items/{item_id}/journal` | `Bearer` | 把已完成事项写进手账，幂等；未完成返回 409 |
+| todos | POST | `/todos/items/{item_id}/comments` | `Bearer` | 留言（不影响完成状态） |
+| todos | POST | `/todos/items/{item_id}/images` | `Bearer` | 上传照片（multipart） |
 | todos | GET | `/todo-images/{image_id}/file` | `Bearer` | 下载 todo 原图 |
 | todos | GET | `/todo-images/{image_id}/thumb` | `Bearer` | 下载 todo 缩略图 |
 | todos | DELETE | `/todo-images/{image_id}` | `Bearer` | 删除 todo 图片并尽力清理文件 |
@@ -496,31 +486,6 @@ Authorization: Bearer token-for-alice
 | `avatar` | 否 | 新头像（emoji 或短字符串），最长 64。 |
 
 成功响应是更新后的用户对象，与 `GET /auth/me` 中 `user` 字段结构相同。当前用户可更新 `display_name`、`avatar` 和 `email`；`email` 空字符串会按 `null` 保存。
-
-### 5.1 常用位置
-
-`PATCH /auth/me/location`
-
-请求头：
-
-```http
-Authorization: Bearer <token>
-Content-Type: application/json
-```
-
-浏览器定位保存：
-
-```json
-{ "coords": "120.027121,30.288808" }
-```
-
-手动地址保存：
-
-```json
-{ "address": "西溪北苑东区", "city": "杭州" }
-```
-
-位置按当前用户保存，不共享给另一半。后端会先调用高德 `maps_regeocode` 或 `maps_geo` 解析成功，再写入 `location_label`、`location_address`、`location_city`、`location_coords` 和 `location_updated_at`。高德解析失败返回 502，不写入半成品位置。`DELETE /auth/me/location` 会清空这些字段。
 
 ### 5.2 上传、清除和读取图片头像
 
@@ -920,7 +885,7 @@ python -m pytest tests -q
 - 创建 pair 时可设置 `love_started_on` 情侣日期；旧数据未设置时回退到 pair 创建日期。
 - 登录后的 `/timeline` 会调用 `GET /auth/anniversary`，展示“双方昵称在一起第 N 天”、520/1314/整月纪念、固定恋爱节日、中国大陆节假日/调休信息和普通日本地语录。
 - `/timeline` 把事件按发生时间 `occurred_at` 所在月份（北京时间）排成一本手账，没有发生时间时回退创建时间 `created_at`；默认翻开当前月份，左右划或月份选择器切换到其他月份。前端一次性读取 `GET /events`，不按月分页请求。
-- 登录后的用户页面显示固定底边栏：首页 `/timeline`、周期 `/cycle`、中间加号“记一笔”、Todo `/todo`、习惯 `/habits`；详情页归属 Timeline，`/me` 通过顶部头像进入。
+- 登录后的用户页面显示固定底边栏：首页 `/timeline`、周期 `/cycle`、中间加号“记一笔”、清单 `/todo`、习惯 `/habits`；详情页归属 Timeline，`/me` 通过顶部头像进入。
 - 首页标题区不放 `/cycle`、`/todo` 快捷图标，入口统一走底边栏。
 - 首页不再常驻展示周期入口；仅在预计月经开始前本机配置的 N 天到预计当天、且今日尚未记录时弹出周期记录提醒，可进入 `/cycle?quickLog=today` 填写或选择当天暂时不写。
 - 一言模块已弃用；非特殊日后端从当前 pair 的 `quotes` 数据库语录库和 `default_quotes` 全站共享兜底语录表合并后的随机池中取一句。
@@ -939,21 +904,19 @@ python -m pytest tests -q
 - 周期术语不再使用独立知识卡；基础体温 BBT、宫颈黏液、易孕期、排卵日、卵泡期、黄体期等关键词在不干扰按钮和日期格点击的位置提供百科外链，默认使用大陆网络更稳定的百度百科搜索；可信度属于系统算法说明，只在页面内用短文案解释。
 - 周期提醒提前天数保存在当前浏览器 localStorage：`love-book:cycle-reminder-days:{pairId}`，默认 3 天、页面限制 1-7 天；当天“暂时不写”状态保存为 `love-book:cycle-reminder-dismissed:{pairId}:{yyyy-MM-dd}`。
 - 页面文案保持“记录和预测仅供参考”，不提供医疗诊断或避孕建议。
+- 周期邮件提醒保存在 `cycle_reminder_settings`（每个 pair 一行）：`enabled`、`days_before`（默认 3，1-7）、`recipient_user_id`（默认对方，必须是 pair 双方之一，否则 422）。`GET /cycles/reminder` 额外返回 `recipient_has_email`、`next_period_start` 和 `next_send_on`。后端 lifespan 里的后台任务每天服务器本地时间 9:00 扫描：预测下次经期开始日减去提前天数 ≤ 今天 < 开始日时，给收件人发一封带入口 token 的 `/cycle` 邮件；已合上的 pair、收件人没有邮箱、没有预测时跳过。`cycle_reminder_runs` 按 `pair_id + period_start` 去重，同一个预测周期只发一次，每发成功一封立即提交。
 
-## Todo 看板、餐厅和模型配置
+## 见面清单（/todo）
 
-- 登录后可从底边栏进入 `/todo` todo 看板和 `/cycle` 周期入口；`/todo` 复用当前 Bearer token 鉴权，数据按 pair 双方共享。
-- `/todo` 前端采用 Microsoft To Do 式工作区：`xl` 及以上左侧列表导航（四个板块、“等你确认”和“抽一家”），中间任务列表，右侧详情栏；更窄屏幕把导航收成横向板块 chip 加“抽一家”按钮，详情以覆盖底边栏的底部弹窗展示。抽奖在弹层中打开，Three.js 场景按需懒加载。快速新增失败时本地卡片保留并可重试；页面隐藏时暂停后台轮询。默认展示所有未完成 todo，不按当天过滤；已设置要完成时间的 todo 按日期升序排在前面，未设置时间的 todo 排在后面，已完成/打卡 todo 在下方折叠板块展示。`?date=YYYY-MM-DD` 会预选详情内日期输入，但不会隐藏其它 todo；日期只能在详情内设置或取消，选中日期后立即保存，每个 todo 同时只保留一个日期，任务行右侧用日期 badge 展示并按时间状态着色。Todo 操作不发送邮件通知，Timeline 事件和留言邮件继续保留。
-- Todo 项目独立于 `/timeline` 事件，不会自动写入时间线。默认玩乐项目为“唱歌、台球、看电影、拼乐高”，用户也可以自定义新增。
-- Todo 任务标签语义为“吃喝 / 玩乐 / 住宿 / 许愿”，`/todo` 主界面使用“今天想吃点 / 出去玩一玩 / 住一晚也好 / 悄悄许个愿”四个板块，其中许愿板块默认展开；四个板块用更明确但低饱和的背景 tint、边框、header 色带、图标底色、标题色和计数 badge 做区分。任务行不重复展示所属分类 badge，餐厅/地点正常解析完成时也不展示“已解析”，只在解析中或解析失败时显示状态提示。新增输入位于板块顶部，输入框右侧提供手动分类选择、“新增”和“许愿”操作；手动分类选择只显示吃喝 / 玩乐 / 住宿，不再显示许愿。“新增”会进入待确认队列并显示“正在解析”；AI 开启时后端优先用 LLM 分类到 `food/play/stay/wish` 并调用高德 MCP 搜索，LLM 失败会持久化关闭 AI 并回退到请求里的手动分类；AI 关闭时后端不调用 LLM，直接使用用户当前选择的 `food/play/stay` 手动分类。“许愿”会直接创建 todo、展开许愿板块并打开详情描述编辑，不进入待确认队列。待确认卡片在 AI 开启时展示 AI 分类，AI 关闭时展示手动分类和高德候选信息，用户可在卡片里改到任意板块后确认加入或丢弃，确认失败时保留卡片和错误提示；后端确认异常返回 502 并保留候选可重试。页面不再展示手动刷新分类按钮。
-- `POST /todos/items/{id}/classify` 与 `POST /todos/items/classify-open` 只在 AI 分类开启时可用，关闭时返回 `409`；LLM 调用失败返回 `502`，并在响应前把 `ai_settings.llm_enabled` 持久化为关闭。
-- MySQL / MariaDB 部署在后端启动时会自动修复 `todo_items.category` 和 `todo_candidates.category` 的旧 ENUM，确保 `food/play/stay/wish` 都能写入；因此住宿“确定加入”不应再因为 `Data truncated for column 'category'` 失败。
-- Todo 完成状态要求 pair 双方都至少写过一次打卡评论；评论详情展示作者名，图片上传和详情描述只作为记录内容，不参与完成判定。描述保存到 `todo_items.note`，可在详情页添加、编辑或清空。照片在详情内折叠展示，不按上传人分组。
-- 吃饭、玩乐和住宿候选通过后端 `npx -y @amap/amap-maps-mcp-server` 调用高德 MCP 搜索和详情解析；Windows 本地会经 `cmd.exe` 调用 `npx` 以兼容 Node.js 批处理入口，并按该包当前 SDK 的 newline JSON stdio 协议通信，MCP 冷启动默认保留 45 秒超时。当前用户保存常用位置后，餐馆和住宿搜索会先用 5km 周边搜按距离优先返回候选，不足 6 条再用关键字/城市文本搜索补齐并去重；候选卡显示距离、地址、商圈、评分和人均。用户只需要在底部填写想一起做的事，确认高德候选后前端自动刷新并打开详情面板，展示店名、城市、地址、商圈、类型、评分、人均、营业时间、坐标、POI ID、点餐字段、门店照片和高德导航链接。有地点城市和安排日期时，详情页会通过高德天气接口展示轻量天气提醒；天气失败静默降级。高德 key 可在管理端单独配置，`.env` / 服务器环境变量 `AMAP_MAPS_API_KEY` 作为初始默认和兜底。
-- Todo 图片写入 `MEDIA_ROOT/todo/images/...`，数据库只保存 `todo_images.storage_key` / `todo_images.thumb_storage_key`，下载接口为 `/todo-images/{image_id}/file` 和 `/todo-images/{image_id}/thumb`；详情页缩略图可打开私有大图，同 pair 双方可通过 `DELETE /todo-images/{image_id}` 删除图片，后端会删除数据库记录并尽力清理原图和缩略图文件。
-- `/todo` 随机抽奖支持人均、城市/区域和附近 1/3/5/10km 点选筛选；附近筛选由浏览器定位提供经纬度，失败时静默保留其它筛选。
-- 管理端 `/admin` 的 AI / 模型配置区先选择 OpenAI 或 Anthropic 协议，再编辑对应地址和 token，并提供“启用 AI 分类”开关；开关默认关闭，开启时会先保存配置并校验 LLM 模型列表和一次分类调用，任一步失败都会持久化关闭并把界面同步回关闭。获取模型列表后按协议保存最近一次模型列表，刷新页面后继续展示上次列表和选中模型；没有选中模型时获取列表会自动保存第一个模型。测试样例内置“江西小炒(西溪北苑东区店)”`food`、“浩波台球俱乐部(汇银中心店)”`play`、“海友酒店(杭州阿里巴巴全球总部店)”`stay`，也允许输入自定义 POI 名称和城市。测试先通过高德 MCP 获取真实 POI 证据，并以高德 POI 类型作为主判断依据；取证展示名称、地址、城市、区域、类型、typecode、电话、商圈、评分、人均、标签/特色和照片摘要；LLM 只作为补全诊断展示，空回复、协议错配或模型不支持 chat/messages 不会让高德取证测试失败。界面展示“高德取证 -> 高德类型判断 -> LLM 补全诊断”过程；分类补全默认给 64 tokens 输出预算，遇到长度耗尽且正文为空时用 256 tokens 重试一次；高德 `AMAP_MAPS_API_KEY` 单独罗列并可自定义保存。
-- 相关环境变量：`AMAP_MAPS_API_KEY`、`LLM_OPENAI_BASE_URL`、`LLM_ANTHROPIC_BASE_URL`、`LLM_API_KEY`、`LLM_PROTOCOL`、`LLM_MODEL`。真实密钥只放 `.env`、服务器 env 文件或管理端数据库配置，不提交仓库。
+- `/todo` 是“见面前的准备”：登录后从底边栏“清单”进入，复用 Bearer token 鉴权，数据按 pair 双方共享。礼物已由“包礼物 + 拆礼物”承担，不在清单里重复。
+- 页面顶部是“下一次见面”：标题（点击打开共享见面编辑窗口）、日期范围、倒计时（N 天后 / 明天 / 今天正在见面第几天）和准备进度条；有多次未来见面时可切换，也可“再定一次”。还没有未来见面时显示“定下一次见面”，默认填下一个周六到周日，重叠时提示会合并进较早的见面。
+- 事项分类为 `prep` 准备、`food` 吃、`play` 玩、`stay` 住、`wish` 心愿。挂在当前见面的事项按“出发前要准备 / 想一起吃 / 想一起玩 / 住在哪里 / 小心愿”分组，已完成的收在“已经做到啦”；没挂见面（或所属见面已经过去但还没做）的事项在“心愿池”，每条都可一键“放进这次见面”，事项多于一条时可“抽一个”。心愿池为空时给出“唱歌、台球、看电影、拼乐高”等一键添加的建议，后端不再自动种子数据。
+- 任意一方点一下圆圈即完成，再点取消；留言和照片都是可选记录，不参与完成判定。完成后行内出现“写进手账”：`POST /todos/items/{id}/journal` 用事项标题、描述和留言（`作者：内容`）生成一条公开时间线事件，复制本地可读的照片，时间取完成时间（所属见面已结束时取见面最后一天 20:00，北京时间），并按日期自动归入见面；接口幂等，已写过时返回原事件，前端随即跳到 `/timeline/{id}`，之后显示“去手账看看”。手账事件被删除后可重新写入。
+- 详情面板（手机为覆盖底边栏的底部弹窗，`lg` 以上为右侧粘性栏）可改标题、分类、所属见面（含“心愿池”）、描述，写留言、传照片、删除事项；页面每 8 秒后台刷新，页面隐藏时暂停，失败保留上次数据只提示一次。
+- 取消见面时其事项回到心愿池；见面合并时事项跟随保留下来的见面。Todo 操作不发邮件。
+- Todo 图片写入 `MEDIA_ROOT/todo/images/...`，数据库只保存 `todo_images.storage_key` / `todo_images.thumb_storage_key`，下载接口为 `/todo-images/{image_id}/file` 和 `/todo-images/{image_id}/thumb`；同 pair 双方可通过 `DELETE /todo-images/{image_id}` 删除图片，后端删除记录并尽力清理文件。
+- 升级时 `init_db()` 为 `todo_items` 补 `meeting_session_id`、`completed_at`、`completed_by_id`、`journal_event_id` 四列，并一次性回填：旧数据里双方都评论过的事项记为已完成，旧安排日期落在某次见面内的事项挂到该见面。MySQL / MariaDB 会把 `todo_items.category` 修复为 `food/play/stay/prep/wish`。旧的 `todo_candidates`、`todo_schedules`、`todo_restaurants`、`ai_settings` 表和 `users.location_*` 列只作为不可达备份保留，不再读写，也不会自动删除；删除事项时会顺带删掉它在旧表里的行。
+- 高德 MCP、LLM 分类、管理端 AI 配置、常用位置、天气和抽奖已全部移除，后端镜像不再安装 Node.js；`AMAP_MAPS_API_KEY`、`LLM_*` 环境变量不再读取，可以从服务器 `.env` 删掉。
 
 ## 习惯页与每日提醒
 
