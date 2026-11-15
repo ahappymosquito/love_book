@@ -36,6 +36,7 @@ import { MotionCollapse } from "@/components/ui/motion-collapse";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { APIError, api, friendlyErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { PAGE_MAIN_WIDTH_CLASS } from "@/lib/page-width";
 import { shanghaiDateKey } from "@/lib/dates";
 import { formatRelative } from "@/lib/format";
 import { MOTION_TRANSITIONS } from "@/lib/motion";
@@ -446,7 +447,7 @@ function TodoInner() {
     <div className="viewport-guard min-h-dvh pb-[calc(env(safe-area-inset-bottom,0px)+9rem)] text-ink">
       <AppHeader title="Todo" subtitle="想吃、想玩和想许的愿望都收进来" />
 
-      <div className="mx-auto flex w-full max-w-7xl min-w-0 items-start gap-4 px-4 pt-4 sm:px-6 sm:pt-5">
+      <div className={cn("mx-auto flex w-full min-w-0 items-start gap-4 px-4 pt-4 sm:px-6 sm:pt-5", PAGE_MAIN_WIDTH_CLASS["7xl"])}>
         <TodoNav
           className="hidden xl:flex"
           counts={openCounts}

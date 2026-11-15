@@ -33,7 +33,7 @@
 
 ## 前端约定速查
 
-- 已登录页面的顶部栏、主内容和桌面底边栏共用 `web/src/lib/page-width.ts` 的宽度表，三者左右边缘对齐；新页面直接复用，不要另写 `max-w-*`。
+- 已登录页面的顶部栏、主内容和桌面底边栏共用 `web/src/lib/page-width.ts` 的宽度表，三者左右边缘对齐；新页面主内容直接用 `PAGE_MAIN_WIDTH_CLASS[...]`，并在 `pageWidthForPath` 登记同一档宽度，不要另写 `max-w-*`。宽内容页（Timeline、Todo、习惯、周期、手账导出）用 7xl，设置和事件详情用 6xl；大屏优先改成多栏或双页布局，而不是把单列拉宽。
 - 顶部栏和底边栏的避让高度用 `globals.css` 中的 `--lb-header-clearance` / `--lb-nav-clearance`（已含 safe-area），浮层和吸底控件按这两个变量留空。
 - “今天”、月份分组和日期判断统一走 `web/src/lib/dates.ts`，固定按 `Asia/Shanghai` 计算，不要用浏览器本地时区直接切日期。
 

@@ -845,7 +845,7 @@ curl -X POST "http://127.0.0.1:8000/events/1/images" \
 
 响应 `JournalOut`：
 
-- `scope`、`title`（全部为「我们的手账」，日期范围为 `YYYY.MM.DD - YYYY.MM.DD`，见面为见面标题）、`start`、`end`、`generated_at`。
+- `scope`、`title`（全部为「我们的手账」，恰好是一整个自然月的范围为 `YYYY年M月`，其他日期范围为 `YYYY.MM.DD - YYYY.MM.DD`，见面为见面标题）、`start`、`end`、`generated_at`。
 - `pair`：`users` 两人（当前用户在前，含 `id`、`display_name`、`avatar`、`avatar_has_image`、`avatar_updated_at`）、`together_since`、`together_days`。
 - `meetings[]`：范围内的见面 `{id, title, started_on, ended_on}`。
 - `months[]`：按北京时间分月 `{month: "YYYY-MM", label: "YYYY年M月", entries[]}`，条目按发生时间升序。
@@ -919,7 +919,7 @@ python -m pytest tests -q
 
 - 创建 pair 时可设置 `love_started_on` 情侣日期；旧数据未设置时回退到 pair 创建日期。
 - 登录后的 `/timeline` 会调用 `GET /auth/anniversary`，展示“双方昵称在一起第 N 天”、520/1314/整月纪念、固定恋爱节日、中国大陆节假日/调休信息和普通日本地语录。
-- `/timeline` 事件列表按发生时间 `occurred_at` 所在月份收纳，没有发生时间时回退创建时间 `created_at`；默认只展开当前月份，其他月份可手动展开。
+- `/timeline` 把事件按发生时间 `occurred_at` 所在月份（北京时间）排成一本手账，没有发生时间时回退创建时间 `created_at`；默认翻开当前月份，左右划或月份选择器切换到其他月份。前端一次性读取 `GET /events`，不按月分页请求。
 - 登录后的用户页面显示固定底边栏：首页 `/timeline`、周期 `/cycle`、中间加号“记一笔”、Todo `/todo`、习惯 `/habits`；详情页归属 Timeline，`/me` 通过顶部头像进入。
 - 首页标题区不放 `/cycle`、`/todo` 快捷图标，入口统一走底边栏。
 - 首页不再常驻展示周期入口；仅在预计月经开始前本机配置的 N 天到预计当天、且今日尚未记录时弹出周期记录提醒，可进入 `/cycle?quickLog=today` 填写或选择当天暂时不写。

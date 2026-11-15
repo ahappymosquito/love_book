@@ -25,6 +25,7 @@ import { MotionCollapse } from "@/components/ui/motion-collapse";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { PAGE_MAIN_WIDTH_CLASS } from "@/lib/page-width";
 import { shanghaiDateKey } from "@/lib/dates";
 import { MOTION_TRANSITIONS } from "@/lib/motion";
 import { useAppStore } from "@/lib/store";
@@ -272,7 +273,7 @@ function HabitsInner() {
     <div className="viewport-guard min-h-dvh w-full">
       <AppHeader title="习惯" />
 
-      <main className="mx-auto w-full max-w-7xl min-w-0 px-4 pt-5 sm:px-6 scroll-pad-bottom">
+      <main className={cn("mx-auto w-full min-w-0 px-4 pt-5 sm:px-6 scroll-pad-bottom", PAGE_MAIN_WIDTH_CLASS["7xl"])}>
         <section className="min-w-0 space-y-5">
           <Card className="liquid-habit-panel overflow-hidden">
             <CardHeader className="gap-4 sm:flex sm:flex-row sm:items-center sm:justify-between">

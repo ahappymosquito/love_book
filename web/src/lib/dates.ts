@@ -1,4 +1,4 @@
-// 日期口径工具：时间线分组、"今天"判断统一按北京时间（Asia/Shanghai）计算，避免浏览器本地时区把同一天拆到不同日期或月份。
+// 日期口径工具：时间线分组、"今天"判断和手账卡片上的时分统一按北京时间（Asia/Shanghai）计算，避免浏览器本地时区把同一天拆到不同日期或月份。
 
 export const APP_TIME_ZONE = "Asia/Shanghai";
 
@@ -14,6 +14,17 @@ export function shanghaiDateKey(input: Date | string = new Date()): string {
   const parts = dateKeyFormatter.formatToParts(date);
   const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
   return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
+const timeFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: APP_TIME_ZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+export function shanghaiTimeLabel(input: Date | string): string {
+  return timeFormatter.format(typeof input === "string" ? new Date(input) : input);
 }
 
 export function shanghaiMonthKey(input: Date | string = new Date()): string {

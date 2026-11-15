@@ -1,11 +1,12 @@
 "use client";
 
-// Timeline detail composer for text and compressed image picking in a mobile-safe bar above the global nav.
+// Timeline detail composer for text and compressed image picking in a mobile-safe bar above the global nav; on lg+ it docks under the detail page's conversation column.
 
 import { Image as ImageIcon, Send } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/cn";
+import { PAGE_MAIN_WIDTH_CLASS } from "@/lib/page-width";
 
 interface ComposerProps {
   onSendText: (text: string) => Promise<void> | void;
@@ -57,8 +58,8 @@ export function Composer({
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[70] max-w-full">
       <div className="pointer-events-auto max-w-full bg-gradient-to-t from-cream/98 via-cream/85 to-cream/0 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-3 dark:from-cream-deep/98 dark:via-cream-deep/85">
-        <div className="mx-auto w-full max-w-3xl min-w-0 px-3">
-          <div className="glass-card flex min-w-0 items-end gap-2 rounded-3xl px-3 py-2.5 sm:py-3">
+        <div className={cn("mx-auto w-full min-w-0 px-3 sm:px-6", PAGE_MAIN_WIDTH_CLASS["6xl"])}>
+          <div className="glass-card flex min-w-0 items-end gap-2 rounded-3xl px-3 py-2.5 sm:py-3 lg:ml-auto lg:w-[calc((100%_-_2rem)/2.1)]">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}

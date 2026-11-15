@@ -48,6 +48,7 @@ import { GlassSurface } from "@/components/ui/glass-surface";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { PAGE_MAIN_WIDTH_CLASS } from "@/lib/page-width";
 import { readCycleReminderDays, saveCycleReminderDays } from "@/lib/cycle-reminder";
 import { dateFromKey, shanghaiDateKey } from "@/lib/dates";
 import { useAppStore } from "@/lib/store";
@@ -378,7 +379,7 @@ export function CycleCalendarDashboard() {
         }
       />
 
-      <main className="mx-auto grid w-full max-w-7xl min-w-0 gap-5 px-4 pt-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <main className={cn("mx-auto grid w-full min-w-0 gap-5 px-4 pt-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_400px] 2xl:gap-6", PAGE_MAIN_WIDTH_CLASS["7xl"])}>
         <section className="min-w-0 space-y-5">
           {dashboard?.is_empty || (dashboard && !hasPrediction(dashboard.stats)) ? (
             <EmptyState onStart={quickLogToday} />

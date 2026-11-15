@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home styled as a scrapbook (手账): a queued relationship quote, then each month as a paper page with a hand-lettered tab that opens with a page-turn, journal cards with tiny deterministic tilt, washi tape, stickers and polaroid photos, ticket-styled meeting spreads with an export link, and wrapped/opened gift cards with the unwrap overlay; a header 手账 button links to /journal. Months and "today" follow the Asia/Shanghai calendar, and only events inside a meeting range count as 见面.
+// Timeline home: a queued relationship quote, then a sticky toolbar (手账 / 见面 segmented control plus month navigation with a one-tap month grid) above a single scrapbook book (JournalBook) that opens on the current month and turns pages left/right while each page scrolls vertically as that month's day-grouped list; the 见面 view keeps ticket-styled meeting groups (two columns on xl) with an export link, and gift cards keep the unwrap overlay. A header 手账 button links to /journal. Months and "today" follow the Asia/Shanghai calendar, and only events inside a meeting range count as 见面.
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -9,20 +9,19 @@ import {
   BookHeart,
   BookOpen,
   CalendarHeart,
-  ChevronRight,
   Droplet,
   Plus,
 } from "lucide-react";
 import { AuthGate } from "@/components/auth-gate";
 import { Avatar } from "@/components/avatar";
-import { EventImagePreview } from "@/components/event-image-preview";
 import { GiftTimelineCard } from "@/components/gift-timeline-card";
-import { PolaroidFrame, ScrapbookCard, StickerGlyph } from "@/components/scrapbook-decor";
+import { ScrapbookCard } from "@/components/scrapbook-decor";
+import { BookMonthNav, JournalBook, useJournalBook } from "@/components/journal-book";
 import { LoadingScreen } from "@/components/loading-screen";
 import { MeetingEditorDialog } from "@/components/meeting-editor-dialog";
 import { AppHeader } from "@/components/app-header";
+import { EventPolaroid, MeetingBadge } from "@/components/timeline-entry";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { MotionCollapse } from "@/components/ui/motion-collapse";
 import { SubmissionBadge, VisibilityBadge } from "@/components/visibility-badge";
 import { api } from "@/lib/api";
 import {
@@ -30,11 +29,11 @@ import {
   isCycleReminderDismissed,
   readCycleReminderDays,
 } from "@/lib/cycle-reminder";
-import { shanghaiDateKey, shanghaiMonthKey } from "@/lib/dates";
-import { formatAbsolute, formatRelative } from "@/lib/format";
-import { cardTilt, monthTabLabel, paperPatternFor } from "@/lib/gift-scrapbook";
+import { shanghaiDateKey } from "@/lib/dates";
+import { formatAbsolute } from "@/lib/format";
 import { isGiftEvent } from "@/lib/gift-state";
 import { MOTION_DURATION, MOTION_EASE, MOTION_TRANSITIONS } from "@/lib/motion";
+import { PAGE_MAIN_WIDTH_CLASS } from "@/lib/page-width";
 import { useAppStore } from "@/lib/store";
 import type { AnniversaryOut, CycleDashboardOut, EventSummary, MeetingSessionOut } from "@/lib/types";
 import { cn } from "@/lib/cn";
@@ -45,7 +44,7 @@ const LOCAL_REMINDER_QUOTES = [
 const QUOTE_BATCH_SIZE = 5;
 const QUOTE_REFILL_THRESHOLD = 2;
 
-type TimelineView = "all" | "meetings";
+type TimelineView = "book" | "meetings";
 
 function todayDateOnly(): string {
   return shanghaiDateKey();
@@ -77,22 +76,8 @@ function immediateAnniversary(startedOn: string): AnniversaryOut {
   };
 }
 
-function monthKeyForEvent(event: EventSummary): string {
-  return shanghaiMonthKey(event.occurred_at ?? event.created_at);
-}
-
 function isMeetingEvent(event: EventSummary): boolean {
   return event.meeting_session_id !== null;
-}
-
-function monthLabel(key: string): string {
-  const [year, month] = key.split("-");
-  return `${year} 年 ${Number(month)} 月`;
-}
-
-function monthSortValue(key: string): number {
-  const [year, month] = key.split("-").map(Number);
-  return year * 12 + month;
 }
 
 function meetingSessionDateLabel(session: MeetingSessionOut): string {
@@ -143,9 +128,9 @@ function TimelineInner() {
   const currentQuoteRef = useRef(LOCAL_REMINDER_QUOTES[0]);
   const [cycleDashboard, setCycleDashboard] = useState<CycleDashboardOut | null>(null);
   const [cyclePromptDismissed, setCyclePromptDismissed] = useState(false);
-  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => new Set([todayDateOnly().slice(0, 7)]));
-  const [timelineView, setTimelineView] = useState<TimelineView>("all");
+  const [timelineView, setTimelineView] = useState<TimelineView>("book");
   const reducedMotion = useReducedMotion();
+  const book = useJournalBook(events);
 
   const loadQuoteBatch = useCallback((): Promise<string[]> => {
     const pairId = me?.pair_id;
@@ -240,17 +225,6 @@ function TimelineInner() {
       .catch(() => setCycleDashboard(null));
   }, [loadQuoteBatch, me]);
 
-  const eventGroups = useMemo(() => {
-    const map = new Map<string, EventSummary[]>();
-    for (const event of events ?? []) {
-      const key = monthKeyForEvent(event);
-      map.set(key, [...(map.get(key) ?? []), event]);
-    }
-    return [...map.entries()]
-      .sort(([left], [right]) => monthSortValue(right) - monthSortValue(left))
-      .map(([key, monthEvents]) => ({ key, events: monthEvents }));
-  }, [events]);
-
   const meetingEvents = useMemo(() => (events ?? []).filter(isMeetingEvent), [events]);
 
   const meetingGroups = useMemo(() => {
@@ -324,18 +298,6 @@ function TimelineInner() {
     }
   }
 
-  function toggleMonth(month: string) {
-    setExpandedMonths((previous) => {
-      const next = new Set(previous);
-      if (next.has(month)) {
-        next.delete(month);
-      } else {
-        next.add(month);
-      }
-      return next;
-    });
-  }
-
   function dismissTodayCyclePrompt() {
     if (!me || !cyclePrompt) return;
     dismissCycleReminder(me.pair_id, cyclePrompt.today);
@@ -375,7 +337,7 @@ function TimelineInner() {
         }
       />
 
-      <main className="mx-auto w-full max-w-5xl min-w-0 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+7.6rem)] pt-5 sm:px-6 sm:pt-6">
+      <main className={cn("mx-auto w-full min-w-0 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+7.6rem)] pt-5 sm:px-6 sm:pt-6", PAGE_MAIN_WIDTH_CLASS["7xl"])}>
         <HomeHero
           userName={me.user.display_name}
           counterpartName={me.counterpart.display_name}
@@ -386,18 +348,16 @@ function TimelineInner() {
         />
 
         {events !== null && events.length > 0 && (
-          <TimelineViewSwitch
+          <TimelineToolbar
             view={timelineView}
-            totalCount={events.length}
             meetingCount={meetingGroups.length}
             onChange={setTimelineView}
+            monthNav={timelineView === "book" ? <BookMonthNav book={book} /> : null}
           />
         )}
 
         {events === null ? (
-          <ListSkeleton />
-        ) : events.length === 0 ? (
-          <EmptyState onCreate={openCreateWindow} />
+          <BookSkeleton />
         ) : (
           <AnimatePresence initial={false} mode="popLayout">
             <motion.div
@@ -419,18 +379,7 @@ function TimelineInner() {
                   />
                 )
               ) : (
-                <div className="scrapbook-stack space-y-5 sm:space-y-6">
-                  {eventGroups.map((group) => (
-                    <MonthEventGroup
-                      key={group.key}
-                      month={group.key}
-                      events={group.events}
-                      expanded={expandedMonths.has(group.key)}
-                      onToggle={() => toggleMonth(group.key)}
-                      onChanged={load}
-                    />
-                  ))}
-                </div>
+                <JournalBook book={book} meetingSessions={meetingSessions} onChanged={load} onCreate={openCreateWindow} />
               )}
             </motion.div>
           </AnimatePresence>
@@ -529,42 +478,39 @@ function HomeHero({
   );
 }
 
-function TimelineViewSwitch({
+function TimelineToolbar({
   view,
-  totalCount,
   meetingCount,
   onChange,
+  monthNav,
 }: {
   view: TimelineView;
-  totalCount: number;
   meetingCount: number;
   onChange: (view: TimelineView) => void;
+  monthNav: React.ReactNode;
 }) {
-  const options: Array<{ key: TimelineView; label: string; count: number }> = [
-    { key: "all", label: "全部", count: totalCount },
-    { key: "meetings", label: "见面", count: meetingCount },
-  ];
-
   return (
-    <div className="page-toolbar mb-4 flex justify-center sm:mb-5">
+    <div className="page-toolbar mb-4 flex items-center justify-between gap-2 sm:mb-5">
       <SegmentedControl
         value={view}
         onChange={onChange}
         ariaLabel="切换首页内容"
         layoutId="timeline-view-lens"
-        className="w-full max-w-sm"
-        options={options.map((option) => ({
-          value: option.key,
-          label: (
-            <span className="inline-flex items-center justify-center gap-1.5">
-              {option.label}
-              <span className="rounded-full bg-white/55 px-1.5 py-0.5 text-[11px] text-ink-soft">
-                {option.count}
+        className="flex-none sm:min-w-[15rem]"
+        options={[
+          { value: "book" as const, label: "手账" },
+          {
+            value: "meetings" as const,
+            label: (
+              <span className="inline-flex items-center justify-center gap-1.5">
+                见面
+                <span className="rounded-full bg-white/55 px-1.5 py-0.5 text-[11px] text-ink-soft">{meetingCount}</span>
               </span>
-            </span>
-          ),
-        }))}
+            ),
+          },
+        ]}
       />
+      {monthNav}
     </div>
   );
 }
@@ -589,7 +535,7 @@ function MeetingTimeRiver({
         </div>
       </div>
 
-      <div className="mt-5 space-y-7">
+      <div className="mt-5 grid items-start gap-x-10 gap-y-8 xl:grid-cols-2">
         {groups.map((group) => (
           <MeetingGroup
             key={group.session.id}
@@ -728,153 +674,6 @@ function MeetingEmptyState({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-function MeetingBadge() {
-  return (
-    <span className="pill inline-flex items-center gap-1 bg-rose/10 text-rose-deep">
-      <CalendarHeart className="h-3.5 w-3.5" />
-      见面
-    </span>
-  );
-}
-
-function EventPolaroid({ event }: { event: EventSummary }) {
-  if (!event.preview_image) return null;
-  return (
-    <PolaroidFrame tilt={-cardTilt(event.id + 7)} className="w-[4.5rem] flex-none sm:w-24">
-      <EventImagePreview imageId={event.preview_image.id} alt={`${event.title}的照片`} className="aspect-square w-full" />
-    </PolaroidFrame>
-  );
-}
-
-function MonthEventGroup({
-  month,
-  events,
-  expanded,
-  onToggle,
-  onChanged,
-}: {
-  month: string;
-  events: EventSummary[];
-  expanded: boolean;
-  onToggle: () => void;
-  onChanged: () => Promise<void>;
-}) {
-  const reducedMotion = useReducedMotion();
-  const tab = monthTabLabel(month);
-  const panelId = `month-page-${month}`;
-
-  return (
-    <section className={cn("scrapbook-page", `scrapbook-paper-${paperPatternFor(month)}`, expanded && "is-open")}>
-      <button
-        type="button"
-        onClick={onToggle}
-        className="scrapbook-month-header focus-ring"
-        aria-expanded={expanded}
-        aria-controls={panelId}
-      >
-        <span className="min-w-0">
-          <span className="block font-sc text-xs font-medium text-ink-muted">{tab.year}</span>
-          <span className="scrapbook-hand block text-2xl font-semibold leading-tight text-ink sm:text-[1.7rem]">{tab.month}</span>
-          <span className="mt-0.5 block font-sc text-xs text-ink-muted">{events.length} 段小事收在这一页</span>
-        </span>
-        <span className="scrapbook-bookmark" aria-hidden="true">
-          <StickerGlyph kind="heart" tone="rose" className="h-3.5 w-3.5" />
-          <motion.span
-            className="grid place-items-center"
-            animate={{ rotate: expanded ? 90 : 0 }}
-            transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.state}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </motion.span>
-        </span>
-      </button>
-
-      <MotionCollapse open={expanded}>
-        <motion.div
-          id={panelId}
-          className="scrapbook-page-body"
-          style={{ transformPerspective: 900, transformOrigin: "50% 0%" }}
-          initial={reducedMotion ? { opacity: 0 } : { opacity: 0, rotateX: -14, y: -6 }}
-          animate={{ opacity: 1, rotateX: 0, y: 0 }}
-          transition={reducedMotion ? MOTION_TRANSITIONS.reduced : { ...MOTION_TRANSITIONS.layout, duration: 0.42 }}
-        >
-          <ul className="space-y-4 px-3.5 pb-5 pt-3 sm:space-y-5 sm:px-6 sm:pb-6">
-            {events.map((event, index) => (
-              <motion.li
-                key={event.id}
-                initial={reducedMotion ? false : { opacity: 0, y: -12, scale: 1.02 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={
-                  reducedMotion
-                    ? MOTION_TRANSITIONS.reduced
-                    : { ...MOTION_TRANSITIONS.layout, delay: 0.08 + Math.min(index, 6) * 0.045 }
-                }
-              >
-                {isGiftEvent(event) ? (
-                  <GiftTimelineCard event={event} showMeetingTag={isMeetingEvent(event)} onChanged={onChanged} />
-                ) : (
-                  <EventRow event={event} />
-                )}
-              </motion.li>
-            ))}
-          </ul>
-        </motion.div>
-      </MotionCollapse>
-    </section>
-  );
-}
-
-function EventRow({ event }: { event: EventSummary }) {
-  const me = useAppStore((state) => state.me)!;
-  const author = event.creator_id === me.user.id ? me.user : me.counterpart;
-  const isMeeting = isMeetingEvent(event);
-
-  return (
-    <Link href={`/timeline/${event.id}`} className="scrapbook-entry block rounded-2xl focus-ring">
-      <ScrapbookCard id={event.id} tone={isMeeting ? "meeting" : "memory"}>
-        <div className="flex items-start gap-3">
-          <Avatar user={author} size="md" />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-sc text-xs text-ink-muted">
-              <span>{author.display_name}</span>
-              <span className="h-1 w-1 rounded-full bg-line" />
-              <span title={formatAbsolute(event.created_at)}>{formatRelative(event.created_at)}</span>
-            </div>
-
-            <h3 className="scrapbook-hand mt-1 line-clamp-2 break-words text-lg font-semibold leading-snug text-ink">
-              {event.title}
-            </h3>
-
-            {event.description && (
-              <p className="mt-2 line-clamp-2 max-w-3xl font-sc text-sm leading-relaxed text-ink-soft">
-                {event.description}
-              </p>
-            )}
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              {isMeeting && <MeetingBadge />}
-              {isMeeting && event.meeting_session && (
-                <span className="pill inline-flex max-w-full items-center gap-1 truncate bg-peach/22 text-ink-soft">
-                  {event.meeting_session.title}
-                </span>
-              )}
-              <VisibilityBadge mode={event.visibility_mode} />
-              <SubmissionBadge state={event.submission_state} mode={event.visibility_mode} />
-              {event.occurred_at && (
-                <span className="pill inline-flex items-center gap-1 bg-peach/22 text-ink-soft">
-                  <span className="h-1.5 w-1.5 rounded-full bg-rose" />
-                  {formatAbsolute(event.occurred_at, false)}
-                </span>
-              )}
-            </div>
-          </div>
-          <EventPolaroid event={event} />
-        </div>
-      </ScrapbookCard>
-    </Link>
-  );
-}
-
 function CycleCheckInPrompt({
   daysLeft,
   nextPeriodStart,
@@ -932,50 +731,33 @@ function CycleCheckInPrompt({
   );
 }
 
-function ListSkeleton() {
+function BookSkeleton() {
   return (
-    <div className="space-y-4">
-      {[0, 1].map((groupIndex) => (
-        <section key={groupIndex} className="scrapbook-page scrapbook-paper-dots">
-          <div className="flex min-h-[84px] items-center justify-between px-5 py-4 sm:px-6">
-            <div className="space-y-2">
-              <div className="h-3 w-12 rounded-full bg-line/40" />
-              <div className="h-6 w-20 rounded-full bg-line/45" />
-            </div>
-            <div className="h-10 w-12 rounded-l-full bg-line/35" />
+    <div className="journal-book-stage" aria-hidden="true">
+      <div className="grid gap-0 lg:grid-cols-2">
+        <div className="journal-leaf journal-leaf-single scrapbook-paper-dots">
+          <div className="journal-leaf-body space-y-4">
+            <div className="h-3 w-12 rounded-full bg-line/40" />
+            <div className="h-10 w-24 rounded-full bg-line/45" />
+            <div className="h-44 rounded-2xl bg-line/22" />
           </div>
-          <div className="space-y-4 px-3.5 pb-5 sm:px-6">
-            {[0, 1].map((rowIndex) => (
-              <div key={rowIndex} className="scrapbook-card scrapbook-card-memory">
+        </div>
+        <div className="journal-leaf journal-leaf-right scrapbook-paper-dots hidden lg:block">
+          <div className="journal-leaf-body space-y-4">
+            {[0, 1, 2].map((row) => (
+              <div key={row} className="scrapbook-card scrapbook-card-memory">
                 <div className="flex items-start gap-3">
                   <div className="h-10 w-10 rounded-full bg-line/35" />
                   <div className="flex-1 space-y-2">
                     <div className="h-3 w-28 rounded-full bg-line/35" />
                     <div className="h-5 w-2/3 rounded-full bg-line/40" />
-                    <div className="h-3 w-full rounded-full bg-line/28" />
                   </div>
                 </div>
               </div>
             ))}
           </div>
-        </section>
-      ))}
-    </div>
-  );
-}
-
-function EmptyState({ onCreate }: { onCreate: () => void }) {
-  return (
-    <section className="scrapbook-page scrapbook-paper-grid px-5 py-8 text-center sm:px-7 sm:py-10">
-      <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-peach/22 text-rose-deep">
-        <BookHeart className="h-7 w-7" />
+        </div>
       </div>
-      <h2 className="scrapbook-hand mt-4 text-xl font-semibold text-ink sm:text-2xl">从今天的小事开始</h2>
-      <p className="mx-auto mt-2 max-w-md font-sc text-sm leading-6 text-ink-soft">记下一顿饭、一句想说的话，或一次临时决定的小约会。</p>
-      <button type="button" onClick={onCreate} className="btn-primary mt-5 inline-flex min-h-12 items-center gap-2 rounded-full px-5 font-sc text-sm font-medium focus-ring">
-        <Plus className="h-4 w-4" />
-        记一笔
-      </button>
-    </section>
+    </div>
   );
 }

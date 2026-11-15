@@ -35,7 +35,7 @@ export function parseJournalQuery(params: Pick<URLSearchParams, "get">): Journal
 /** 返回该范围还缺什么；完整时返回 null。 */
 export function journalQueryProblem(query: JournalQuery): string | null {
   if (query.scope === "range") {
-    if (!query.start || !query.end) return "选好开始和结束日期，就能翻开这一段";
+    if (!query.start || !query.end) return "挑一个月份，就能翻开那一页";
     if (query.start > query.end) return "开始日期要早于结束日期哦";
   }
   if (query.scope === "meeting" && !query.meetingId) return "挑一次见面，把那几天装进手账";

@@ -1,6 +1,6 @@
 "use client";
 
-// Event detail screen styled as a scrapbook page for memories, meetings, and gifts: creator-only metadata editing (a wrapped gift's sender can re-wrap title, card message, teaser, paper, and open time), a shared meeting editor both partners can open from the calendar heart, polaroid-framed private images, and a mobile-safe composer. A wrapped gift shows the receiver only the box, teaser, sender, and countdown with the unwrap overlay, and hides comments until opened; opened gifts show the card, photos, and the receiver's response or response form.
+// Event detail screen styled as a scrapbook page for memories, meetings, and gifts: creator-only metadata editing (a wrapped gift's sender can re-wrap title, card message, teaser, paper, and open time), a shared meeting editor both partners can open from the calendar heart, polaroid-framed private images, and a mobile-safe composer. On lg+ the page splits into the story column (paper page, gift response, submission tiles) and the conversation column, with the composer docked under the conversation. A wrapped gift shows the receiver only the box, teaser, sender, and countdown with the unwrap overlay, and hides comments until opened; opened gifts show the card, photos, and the receiver's response or response form.
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -45,6 +45,7 @@ import { DEFAULT_GIFT_WRAP_STYLE, deriveGiftView, giftWrapStyleOf, isGiftEvent }
 import { useAppStore } from "@/lib/store";
 import { formatAbsolute, formatRelative, fromLocalInputValue, toLocalInputValue } from "@/lib/format";
 import { MOTION_EASE, MOTION_TRANSITIONS } from "@/lib/motion";
+import { PAGE_MAIN_WIDTH_CLASS } from "@/lib/page-width";
 import type {
   CommentOut,
   CommentReactionSummary,
@@ -426,7 +427,14 @@ function EventDetailInner() {
         }
       />
 
-      <div ref={containerRef} className="mx-auto w-full max-w-3xl min-w-0 px-4 pt-4 sm:px-6 pb-8">
+      <div
+        ref={containerRef}
+        className={cn(
+          "mx-auto w-full min-w-0 px-4 pb-8 pt-4 sm:px-6 lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:items-start lg:gap-8 lg:pt-6",
+          PAGE_MAIN_WIDTH_CLASS["6xl"],
+        )}
+      >
+        <div className="min-w-0">
         {gift && (gift.phase === "ready" || gift.phase === "sealed") ? (
           <GiftSealedPanel
             eventId={event.id}
@@ -754,10 +762,12 @@ function EventDetailInner() {
           </div>
         )}
 
+        </div>
+
         {giftWrapped ? (
-          <p className="mt-6 text-center font-sc text-sm text-ink-muted">礼物拆开之后，就可以在这里聊聊啦。</p>
+          <p className="mt-6 text-center font-sc text-sm text-ink-muted lg:mt-0 lg:py-10">礼物拆开之后，就可以在这里聊聊啦。</p>
         ) : (
-          <section className="mt-6 space-y-4">
+          <section className="mt-6 min-w-0 space-y-4 lg:mt-0 lg:rounded-[1.4rem] lg:border lg:border-line/55 lg:bg-surface/55 lg:p-5" aria-label="留言和照片">
             {stream.length === 0 && (
               <div className="text-center font-sc text-sm text-ink-muted py-10">
                 这里还没有内容。说点什么吧 ↓

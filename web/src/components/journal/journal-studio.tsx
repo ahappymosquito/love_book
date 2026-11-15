@@ -1,6 +1,6 @@
 "use client";
 
-// /journal 手账工作台：从地址读取初始范围并同步回地址，按范围与“带上照片”拉取 /journal 并用统一渲染器生成在线翻看文档（缩略图有界并发、可中断）；
+// /journal 手账工作台：从地址读取初始范围并同步回地址，“某个月”用事件列表算出的每月小事数驱动选月网格；按范围与“带上照片”拉取 /journal 并用统一渲染器生成在线翻看文档（缩略图有界并发、可中断）；
 // 导出 HTML / PDF / 长图时显示分步进度、可取消、错误友好提示，手机触屏且支持文件分享时交给系统分享面板，否则直接下载。
 // 桌面端左侧实体设置面板 + 右侧大预览；手机端预览铺满，设置收进底部弹层，操作放在贴着安全区的玻璃底条。
 
@@ -14,7 +14,11 @@ import { Sheet, SheetBody, SheetContent, SheetDescription, SheetTitle } from "@/
 import { api, APIError, friendlyErrorMessage } from "@/lib/api";
 import { collectJournalAssets } from "@/lib/journal-assets";
 import { fetchJournal } from "@/lib/journal-api";
+import { cn } from "@/lib/cn";
+import { shanghaiMonthKey } from "@/lib/dates";
+import { monthKeyForRange } from "@/lib/journal-book";
 import { canShareFiles, downloadFiles, exportJournalFiles, shareFiles } from "@/lib/journal-export";
+import { PAGE_MAIN_WIDTH_CLASS } from "@/lib/page-width";
 import { journalPageSearch, journalQueryProblem, parseJournalQuery } from "@/lib/journal-query";
 import { renderJournalDocument } from "@/lib/journal-render";
 import type { JournalFormat, JournalOut, JournalQuery } from "@/lib/journal-types";
@@ -62,6 +66,7 @@ export function JournalStudio() {
   const [format, setFormat] = useState<JournalFormat>("online");
   const [meetings, setMeetings] = useState<MeetingSessionOut[]>([]);
   const [meetingsLoading, setMeetingsLoading] = useState(true);
+  const [monthCounts, setMonthCounts] = useState<ReadonlyMap<string, number> | null>(null);
   const [journal, setJournal] = useState<{ key: string; data: JournalOut } | null>(null);
   const [doc, setDoc] = useState<string | null>(null);
   const [previewLabel, setPreviewLabel] = useState<string | null>(null);
@@ -93,6 +98,18 @@ export function JournalStudio() {
       .finally(() => {
         if (!cancelled) setMeetingsLoading(false);
       });
+    api
+      .listEvents()
+      .then((events) => {
+        if (cancelled) return;
+        const counts = new Map<string, number>();
+        for (const event of events) {
+          const key = shanghaiMonthKey(event.occurred_at ?? event.created_at);
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+        }
+        setMonthCounts(counts);
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -206,7 +223,14 @@ export function JournalStudio() {
 
   const summary = useMemo(() => {
     let scope = "全部回忆";
-    if (query.scope === "range") scope = query.start && query.end ? `${shortDate(query.start)}–${shortDate(query.end)}` : "按日期";
+    if (query.scope === "range") {
+      const month = monthKeyForRange(query.start, query.end);
+      scope = month
+        ? `${month.slice(0, 4)} 年 ${Number(month.slice(5, 7))} 月`
+        : query.start && query.end
+          ? `${shortDate(query.start)}–${shortDate(query.end)}`
+          : "某个月";
+    }
     if (query.scope === "meeting") {
       const meeting = meetings.find((m) => m.id === query.meetingId);
       scope = meeting ? meetingOptionLabel(meeting).split(" · ")[0] : "某次见面";
@@ -228,6 +252,7 @@ export function JournalStudio() {
     onFormatChange: setFormat,
     meetings,
     meetingsLoading,
+    monthCounts,
     disabled: exporting,
   };
   const actionProps = {
@@ -245,10 +270,10 @@ export function JournalStudio() {
     <div className="viewport-guard min-h-dvh w-full">
       <AppHeader title="我们的手账" subtitle="翻一翻，也可以带走一份" back={{ href: "/timeline", label: "返回首页" }} />
 
-      <main className="mx-auto w-full min-w-0 max-w-5xl px-3 pb-[calc(env(safe-area-inset-bottom,0px)+10rem)] pt-3 sm:px-6 sm:pt-4 lg:pb-8">
-        <div className="lg:grid lg:grid-cols-[19rem_minmax(0,1fr)] lg:gap-6">
+      <main className={cn("mx-auto w-full min-w-0 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+10rem)] pt-3 sm:px-6 sm:pt-4 lg:pb-8", PAGE_MAIN_WIDTH_CLASS["7xl"])}>
+        <div className="lg:grid lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-6 2xl:grid-cols-[22rem_minmax(0,1fr)] 2xl:gap-8">
           <aside className="hidden lg:block">
-            <div className="content-surface sticky top-20 flex flex-col gap-6 p-5">
+            <div className="content-surface sticky top-20 flex max-h-[calc(100dvh-6rem)] flex-col gap-6 overflow-y-auto overscroll-contain p-5">
               <JournalOptions {...optionsProps} idPrefix="desk" />
               <div className="border-t border-line/70 pt-5">
                 <JournalAction {...actionProps} />

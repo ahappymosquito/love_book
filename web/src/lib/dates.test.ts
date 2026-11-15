@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dateFromKey, shanghaiDateKey, shanghaiMonthKey } from "./dates";
+import { dateFromKey, shanghaiDateKey, shanghaiMonthKey, shanghaiTimeLabel } from "./dates";
 
 describe("shanghai date keys", () => {
   it("buckets UTC instants by the Beijing calendar day", () => {
@@ -10,6 +10,10 @@ describe("shanghai date keys", () => {
   it("derives the Beijing month across month boundaries", () => {
     expect(shanghaiMonthKey("2026-03-31T17:00:00Z")).toBe("2026-04");
     expect(shanghaiMonthKey(new Date("2026-12-31T15:00:00Z"))).toBe("2026-12");
+  });
+
+  it("formats the Beijing clock time", () => {
+    expect(shanghaiTimeLabel("2026-01-31T16:05:00Z")).toBe("00:05");
   });
 
   it("parses a date key into a local calendar date", () => {

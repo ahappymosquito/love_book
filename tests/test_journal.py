@@ -117,6 +117,12 @@ def test_journal_range_and_meeting_scopes(client: TestClient, pair_tokens: dict)
     assert [entry["id"] for entry in entries(june)] == [ids["early"]]
     assert june["meetings"] == []
 
+    whole_june = client.get("/journal", headers=headers, params={"scope": "range", "start": "2026-06-01", "end": "2026-06-30"}).json()
+    assert whole_june["title"] == "2026年6月"
+    assert [entry["id"] for entry in entries(whole_june)] == [ids["early"]]
+    february = client.get("/journal", headers=headers, params={"scope": "range", "start": "2028-02-01", "end": "2028-02-29"}).json()
+    assert february["title"] == "2028年2月"
+
     meeting = client.get("/journal", headers=headers, params={"scope": "meeting", "meeting_id": ids["meeting"]})
     assert meeting.status_code == 200
     meeting_body = meeting.json()

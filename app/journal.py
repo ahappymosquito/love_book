@@ -50,6 +50,13 @@ def _event_time(event: Event) -> datetime:
     return as_utc(event.occurred_at or event.created_at)  # type: ignore[return-value]
 
 
+def _range_title(start: date, end: date) -> str:
+    next_month = (end.replace(day=28) + timedelta(days=4)).replace(day=1)
+    if start.day == 1 and (start.year, start.month) == (end.year, end.month) and end + timedelta(days=1) == next_month:
+        return f"{start.year}年{start.month}月"
+    return f"{start:%Y.%m.%d} - {end:%Y.%m.%d}"
+
+
 def _unlocked(event: Event, pair: Pair) -> bool:
     if event.visibility_mode == VisibilityMode.public:
         return True
@@ -186,7 +193,7 @@ def build_journal(
     if scope == "meeting" and meeting is not None:
         title, out_start, out_end = meeting.title, meeting.started_on, meeting.ended_on
     elif scope == "range":
-        title, out_start, out_end = f"{start:%Y.%m.%d} - {end:%Y.%m.%d}", start, end
+        title, out_start, out_end = _range_title(start, end), start, end  # type: ignore[arg-type]
     else:
         event_dates = [meeting_date_for_event(event) for event in events]
         title = "我们的手账"

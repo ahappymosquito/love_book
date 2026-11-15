@@ -1,6 +1,6 @@
 "use client";
 
-// Grouped settings surface for identity, location, shared quotes, security-password access, logout (shared useLogout), and closing the pair; relationship days use the Asia/Shanghai calendar.
+// Grouped settings surface for identity, location, shared quotes, security-password access, logout (shared useLogout), and closing the pair; relationship days use the Asia/Shanghai calendar. On lg+ the profile card stays on top and the groups split into two columns (location and quotes / account and pair).
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -33,6 +33,8 @@ import { AppHeader } from "@/components/app-header";
 import { api, APIError, friendlyErrorMessage, pairDissolvedFromError } from "@/lib/api";
 import { shanghaiDateKey } from "@/lib/dates";
 import { useAppStore } from "@/lib/store";
+import { cn } from "@/lib/cn";
+import { PAGE_MAIN_WIDTH_CLASS } from "@/lib/page-width";
 import { useLogout } from "@/lib/use-logout";
 import type { DefaultQuoteOut, QuoteOut, SecurityPasswordOut } from "@/lib/types";
 
@@ -329,7 +331,7 @@ function MeInner() {
     <div className="viewport-guard min-h-dvh w-full">
       <AppHeader title="设置" showLogout={false} />
 
-      <main className="mx-auto w-full max-w-4xl min-w-0 px-4 pt-5 sm:px-6 scroll-pad-bottom">
+      <main className={cn("mx-auto w-full min-w-0 px-4 pt-5 sm:px-6 scroll-pad-bottom", PAGE_MAIN_WIDTH_CLASS["6xl"])}>
         <motion.section
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -415,6 +417,8 @@ function MeInner() {
           </div>
         </motion.section>
 
+        <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-5">
+        <div className="min-w-0">
         <section className="settings-group mt-5 p-5 sm:p-6">
           <div className="flex items-start gap-3">
             <span className="grid h-10 w-10 flex-none place-items-center rounded-2xl bg-peach/20 text-rose-deep">
@@ -548,7 +552,9 @@ function MeInner() {
             </div>
           )}
         </section>
+        </div>
 
+        <div className="min-w-0">
         <section className="settings-group mt-5 p-5 sm:p-6">
           <div className="flex items-start gap-3">
             <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-peach/22 text-rose-deep"><KeyRound className="h-5 w-5" /></span>
@@ -612,6 +618,8 @@ function MeInner() {
             </button>
           </div>
         </section>
+        </div>
+        </div>
       </main>
 
       <DissolvePairDialog

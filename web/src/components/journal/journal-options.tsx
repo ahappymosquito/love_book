@@ -1,18 +1,20 @@
 "use client";
 
-// 手账导出选项：范围分段（全部 / 按日期 / 某次见面）及日期快捷选择或见面列表、“带上照片”开关、在线翻看 / HTML / PDF / 长图格式卡片；桌面侧栏和手机底部弹层共用。
+// 手账导出选项：范围分段（全部 / 某个月 / 某次见面）——“某个月”是点一下就选中的月份网格（显示每月小事数，空月份置灰），见面用列表；另有“带上照片”开关和在线翻看 / HTML / PDF / 长图格式卡片；桌面侧栏和手机底部弹层共用。
 
 import { BookOpen, FileText, Image as ImageIcon, FileCode2 } from "lucide-react";
 import type { ReactNode } from "react";
+import { MonthPickerGrid } from "@/components/month-picker";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { cn } from "@/lib/cn";
-import { shanghaiDateKey } from "@/lib/dates";
+import { shanghaiMonthKey } from "@/lib/dates";
+import { monthDateRange, monthKeyForRange, shiftMonthKey } from "@/lib/journal-book";
 import type { JournalFormat, JournalQuery, JournalScope } from "@/lib/journal-types";
 import type { MeetingSessionOut } from "@/lib/types";
 
 const SCOPE_OPTIONS: Array<{ value: JournalScope; label: string }> = [
   { value: "all", label: "全部" },
-  { value: "range", label: "按日期" },
+  { value: "range", label: "某个月" },
   { value: "meeting", label: "某次见面" },
 ];
 
@@ -36,9 +38,7 @@ export function meetingOptionLabel(meeting: Pick<MeetingSessionOut, "title" | "s
   return `${meeting.title} · ${dates}`;
 }
 
-function daysAgoKey(days: number): string {
-  return shanghaiDateKey(new Date(Date.now() - days * 86_400_000));
-}
+const EMPTY_COUNTS: ReadonlyMap<string, number> = new Map();
 
 export function JournalOptions({
   query,
@@ -49,9 +49,11 @@ export function JournalOptions({
   onFormatChange,
   meetings,
   meetingsLoading,
+  monthCounts,
   disabled,
   idPrefix,
 }: {
+  monthCounts: ReadonlyMap<string, number> | null;
   query: JournalQuery;
   onQueryChange: (query: JournalQuery) => void;
   includeImages: boolean;
@@ -63,12 +65,10 @@ export function JournalOptions({
   disabled?: boolean;
   idPrefix: string;
 }) {
-  const today = shanghaiDateKey();
-  const quickRanges = [
-    { label: "最近 30 天", start: daysAgoKey(29), end: today },
-    { label: "最近半年", start: daysAgoKey(182), end: today },
-    { label: "今年", start: `${today.slice(0, 4)}-01-01`, end: today },
-  ];
+  const currentMonth = shanghaiMonthKey();
+  const selectedMonth = monthKeyForRange(query.start, query.end);
+  const earliest = monthCounts && monthCounts.size > 0 ? [...monthCounts.keys()].sort()[0] : shiftMonthKey(currentMonth, -11);
+  const minMonth = selectedMonth && selectedMonth < earliest ? selectedMonth : earliest;
 
   return (
     <div className="flex flex-col gap-5">
@@ -80,6 +80,7 @@ export function JournalOptions({
           onChange={(scope) => {
             const next: JournalQuery = { ...query, scope };
             if (scope === "meeting" && !next.meetingId && meetings[0]) next.meetingId = meetings[0].id;
+            if (scope === "range" && (!next.start || !next.end)) Object.assign(next, monthDateRange(currentMonth));
             onQueryChange(next);
           }}
           ariaLabel="选择手账范围"
@@ -88,53 +89,21 @@ export function JournalOptions({
         />
 
         {query.scope === "range" ? (
-          <div className="mt-3 flex flex-col gap-3">
-            <div className="grid grid-cols-2 gap-2">
-              <label className="flex min-w-0 flex-col gap-1 font-sc text-xs text-ink-soft" htmlFor={`${idPrefix}-start`}>
-                从
-                <input
-                  id={`${idPrefix}-start`}
-                  type="date"
-                  className="input-field min-h-11 min-w-0 px-3 py-2 text-[15px]"
-                  value={query.start}
-                  max={query.end || today}
-                  disabled={disabled}
-                  onChange={(event) => onQueryChange({ ...query, start: event.target.value })}
-                />
-              </label>
-              <label className="flex min-w-0 flex-col gap-1 font-sc text-xs text-ink-soft" htmlFor={`${idPrefix}-end`}>
-                到
-                <input
-                  id={`${idPrefix}-end`}
-                  type="date"
-                  className="input-field min-h-11 min-w-0 px-3 py-2 text-[15px]"
-                  value={query.end}
-                  min={query.start || undefined}
-                  disabled={disabled}
-                  onChange={(event) => onQueryChange({ ...query, end: event.target.value })}
-                />
-              </label>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {quickRanges.map((range) => {
-                const active = query.start === range.start && query.end === range.end;
-                return (
-                  <button
-                    key={range.label}
-                    type="button"
-                    disabled={disabled}
-                    aria-pressed={active}
-                    onClick={() => onQueryChange({ ...query, start: range.start, end: range.end })}
-                    className={cn(
-                      "min-h-9 rounded-full border px-3 font-sc text-xs transition focus-ring",
-                      active ? "border-rose/50 bg-rose/12 text-rose-deep" : "border-line bg-surface-raised text-ink-soft hover:text-rose-deep",
-                    )}
-                  >
-                    {range.label}
-                  </button>
-                );
-              })}
-            </div>
+          <div className="mt-3 rounded-2xl border border-line/70 bg-surface-raised/70 p-3">
+            {query.start && query.end && !selectedMonth ? (
+              <p className="mb-2 font-sc text-xs text-ink-muted">
+                现在是 {query.start.replaceAll("-", ".")} – {query.end.replaceAll("-", ".")}，点一个月份换成整月
+              </p>
+            ) : null}
+            <MonthPickerGrid
+              value={selectedMonth}
+              counts={monthCounts ?? EMPTY_COUNTS}
+              minMonth={minMonth}
+              maxMonth={currentMonth}
+              requireEntries={Boolean(monthCounts && monthCounts.size > 0)}
+              disabled={disabled}
+              onSelect={(key) => onQueryChange({ ...query, ...monthDateRange(key) })}
+            />
           </div>
         ) : null}
 
