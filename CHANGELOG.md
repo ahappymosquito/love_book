@@ -4,6 +4,8 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-15
+
 ### Added
 
 - 周期邮件提醒：在 `/cycle` 开启后，预测经期开始前 1-7 天（默认 3 天）的早上 9 点发一封温和的提醒邮件，默认发给对方，也可发给自己；每个预测周期只发一次。
