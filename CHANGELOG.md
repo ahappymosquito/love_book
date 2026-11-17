@@ -4,6 +4,8 @@ Love Book follows Semantic Versioning. Git tags are the source of truth for rele
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-17
+
 ### Added
 
 - `/todo` 改成「约会计划」（底边栏「约会」）：参考 Notion 日历，见面的每一天排成时间网格，点空白处加一件事，拖动卡片换日子和时间、拖底边改结束时间；事项新增 `scheduled_on` / `start_minute` / `end_minute` 排期字段。
