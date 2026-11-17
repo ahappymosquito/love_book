@@ -1,26 +1,36 @@
 "use client";
 
-// 首页唯一的手账本：每月一页，默认翻到本月（同一会话内记住上次翻到的月份，也可用 ?month=YYYY-MM 打开）。
-// 左右滑动 / 触控板横扫 / ← → 键 / 底部和工具条的箭头翻页，上下滑动就是这一页按天排好的小事列表；工具条的月份按钮弹出选月网格，点一下直接翻到那个月。
-// 手机是单页，书页绕左侧装订线翻起；lg 以上是左右对开（左页月历、照片墙、当月见面与导出入口，右页小事），翻页时右页先翻过书脊、再落成左页。
+// 首页唯一的手账本：每个月是一本小册，默认翻到本月（同一会话内记住上次翻到的月份，也可用 ?month=YYYY-MM 打开）。
+// 书页保持固定比例（高度贴合视口），页内不滚动：隐藏的测量副本量出每张卡片的真实高度，packSheets 把当月小事装进一张张纸，记录多就多翻几页。
+// 左右滑动 / 触控板横扫 / ← → 键 / 底部按钮逐页翻，翻到月末继续翻进下一个月（往回翻落在上个月最后一页）；工具条的箭头和月份网格按月跳。
+// 手机是单页（第一页带月份标题和月历），书页绕左侧装订线翻起；lg 以上是左右对开（第一个对开左页是月历、见面票根、照片和导出入口），翻页时右页先翻过书脊、再落成左页。
 // 翻页只动 transform / opacity，跟手拖动只做轻微掀起，减弱动效时改为淡入淡出；纸张是实体内容层，不用 backdrop-filter。
 // 触屏首次显示“左右滑翻页”提示，只有真正滑动翻过一页才记住不再提示（按钮和键盘翻页不算）。
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode, WheelEvent as ReactWheelEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode, Ref, WheelEvent as ReactWheelEvent } from "react";
 import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion } from "framer-motion";
 import type { PanInfo, Variants } from "framer-motion";
 import { BookOpen, CalendarDays, CalendarHeart, ChevronDown, ChevronLeft, ChevronRight, Plus, Undo2 } from "lucide-react";
 import { MonthPickerGrid } from "@/components/month-picker";
 import { PolaroidFrame } from "@/components/scrapbook-decor";
 import { TimelineEntry } from "@/components/timeline-entry";
-import { EventImagePreview } from "@/components/event-image-preview";
+import { EventImagePreview, MeasuringContext } from "@/components/event-image-preview";
 import { cn } from "@/lib/cn";
 import { shanghaiDateKey, shanghaiMonthKey } from "@/lib/dates";
 import { cardTilt, paperPatternFor } from "@/lib/gift-scrapbook";
-import { buildBookMonths, monthCalendar, monthDateRange, neighborIndex } from "@/lib/journal-book";
-import type { BookMonth } from "@/lib/journal-book";
+import {
+  buildBookMonths,
+  monthCalendar,
+  monthDateRange,
+  neighborIndex,
+  packSheets,
+  sheetPage,
+  spreadCount,
+  spreadSheets,
+} from "@/lib/journal-book";
+import type { BookMonth, BookSheet, SheetDay } from "@/lib/journal-book";
 import { MOTION_EASE, MOTION_TRANSITIONS } from "@/lib/motion";
 import { useMediaQuery } from "@/lib/use-media-query";
 import type { EventSummary, MeetingSessionOut } from "@/lib/types";
@@ -37,6 +47,11 @@ const SWIPE_VELOCITY = 420;
 const FLIP_COOLDOWN_MS = 240;
 const STICKY_OFFSET_PX = 148;
 const WEEKDAY_HEADERS = ["一", "二", "三", "四", "五", "六", "日"];
+// 与 SheetEntries 里的 mt-3 / space-y-4 / space-y-7 和首页标题区的 mb-6 一一对应。
+const SHEET_METRICS = { stampGap: 12, entryGap: 16, dayGap: 28 };
+const HEAD_GAP = 24;
+const ESTIMATED_ENTRY = 150;
+const ESTIMATED_CAPACITY = 520;
 
 type Direction = 1 | -1;
 type LeafSide = "single" | "left" | "right";
@@ -63,14 +78,19 @@ export interface JournalBookState {
   counts: ReadonlyMap<string, number>;
   hasPrev: boolean;
   hasNext: boolean;
+  /** 当月第几页；-1 表示最后一页（从下个月往回翻时落在这里）。 */
+  page: number;
   goTo: (monthKey: string) => void;
   flip: (direction: Direction) => boolean;
+  turnPage: (direction: Direction, current: number, count: number) => boolean;
+  showPage: (page: number, current: number) => void;
 }
 
 export function useJournalBook(events: EventSummary[] | null): JournalBookState {
   const currentMonth = useMemo(() => shanghaiMonthKey(), []);
   const months = useMemo(() => buildBookMonths(events ?? [], currentMonth), [events, currentMonth]);
   const [activeKey, setActiveKey] = useState(() => readInitialMonth(currentMonth));
+  const [page, setPage] = useState(0);
   const [direction, setDirection] = useState<Direction>(1);
   const lastFlipAt = useRef(0);
   const found = months.findIndex((item) => item.key === activeKey);
@@ -86,6 +106,13 @@ export function useJournalBook(events: EventSummary[] | null): JournalBookState 
     }
   }, [events, month.key]);
 
+  const coolingDown = useCallback(() => {
+    const now = Date.now();
+    if (now - lastFlipAt.current < FLIP_COOLDOWN_MS) return true;
+    lastFlipAt.current = now;
+    return false;
+  }, []);
+
   const goTo = useCallback(
     (monthKey: string) => {
       const target = months.findIndex((item) => item.key === monthKey);
@@ -93,23 +120,45 @@ export function useJournalBook(events: EventSummary[] | null): JournalBookState 
       lastFlipAt.current = Date.now();
       setDirection(target > index ? 1 : -1);
       setActiveKey(monthKey);
+      setPage(0);
     },
     [index, months],
   );
 
-  const flip = useCallback(
-    (nextDirection: Direction) => {
+  const flipMonth = useCallback(
+    (nextDirection: Direction, land: "first" | "last") => {
       const target = neighborIndex(months.length, index, nextDirection);
-      if (target === null) return false;
-      const now = Date.now();
-      if (now - lastFlipAt.current < FLIP_COOLDOWN_MS) return false;
-      lastFlipAt.current = now;
+      if (target === null || coolingDown()) return false;
       setDirection(nextDirection);
       setActiveKey(months[target].key);
+      setPage(land === "last" ? -1 : 0);
       return true;
     },
-    [index, months],
+    [coolingDown, index, months],
   );
+
+  const flip = useCallback((nextDirection: Direction) => flipMonth(nextDirection, "first"), [flipMonth]);
+
+  const turnPage = useCallback(
+    (nextDirection: Direction, current: number, count: number) => {
+      const target = current + nextDirection;
+      if (target >= 0 && target < count) {
+        if (coolingDown()) return false;
+        setDirection(nextDirection);
+        setPage(target);
+        return true;
+      }
+      return flipMonth(nextDirection, nextDirection < 0 ? "last" : "first");
+    },
+    [coolingDown, flipMonth],
+  );
+
+  const showPage = useCallback((target: number, current: number) => {
+    if (target === current) return;
+    lastFlipAt.current = Date.now();
+    setDirection(target > current ? 1 : -1);
+    setPage(target);
+  }, []);
 
   const counts = useMemo(() => new Map(months.map((item) => [item.key, item.stats.entries])), [months]);
 
@@ -122,13 +171,16 @@ export function useJournalBook(events: EventSummary[] | null): JournalBookState 
     counts,
     hasPrev: index > 0,
     hasNext: index < months.length - 1,
+    page,
     goTo,
     flip,
+    turnPage,
+    showPage,
   };
 }
 
 /* ------------------------------------------------------------------ */
-/* 工具条：上一页 / 选月 / 下一页                                       */
+/* 工具条：上一个月 / 选月 / 下一个月                                   */
 /* ------------------------------------------------------------------ */
 
 export function BookMonthNav({ book }: { book: JournalBookState }) {
@@ -166,7 +218,7 @@ export function BookMonthNav({ book }: { book: JournalBookState }) {
           disabled={!book.hasPrev}
           className="grid h-9 w-9 place-items-center rounded-full text-ink-soft transition hover:bg-rose/10 hover:text-rose-deep disabled:opacity-30 focus-ring"
           aria-label="翻到上一个月"
-          title="上一个月（←）"
+          title="上一个月"
         >
           <ChevronLeft className="h-[18px] w-[18px]" />
         </button>
@@ -198,7 +250,7 @@ export function BookMonthNav({ book }: { book: JournalBookState }) {
           disabled={!book.hasNext}
           className="grid h-9 w-9 place-items-center rounded-full text-ink-soft transition hover:bg-rose/10 hover:text-rose-deep disabled:opacity-30 focus-ring"
           aria-label="翻到下一个月"
-          title="下一个月（→）"
+          title="下一个月"
         >
           <ChevronRight className="h-[18px] w-[18px]" />
         </button>
@@ -372,6 +424,20 @@ function useSwipeHint(): [boolean, () => void] {
   return [coarse && !seen, dismiss];
 }
 
+interface SheetMeasure {
+  capacity: number;
+  head: number;
+  stamp: number;
+  heights: ReadonlyMap<number, number>;
+}
+
+function sameMeasure(left: SheetMeasure | null, right: SheetMeasure): boolean {
+  if (!left || left.capacity !== right.capacity || left.head !== right.head || left.stamp !== right.stamp) return false;
+  if (left.heights.size !== right.heights.size) return false;
+  for (const [id, height] of right.heights) if (left.heights.get(id) !== height) return false;
+  return true;
+}
+
 export function JournalBook({
   book,
   meetingSessions,
@@ -385,8 +451,9 @@ export function JournalBook({
 }) {
   const reducedMotion = useReducedMotion() ?? false;
   const spread = useMediaQuery("(min-width: 1024px)");
-  const { month, direction, index, months, flip } = book;
+  const { month, direction, index, months } = book;
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const measureRef = useRef<HTMLDivElement | null>(null);
   const tilt = useMotionValue(0);
   const shift = useMotionValue(0);
   const panRef = useRef<{ width: number } | null>(null);
@@ -394,8 +461,56 @@ export function JournalBook({
   const wheelRef = useRef({ total: 0, lockedUntil: 0, resetTimer: 0 });
   const firstRenderRef = useRef(true);
   const [showHint, dismissHint] = useSwipeHint();
+  const [measure, setMeasure] = useState<SheetMeasure | null>(null);
+  const [flashKey, setFlashKey] = useState<{ dateKey: string; at: number } | null>(null);
   const today = shanghaiDateKey();
   const pattern = paperPatternFor(month.key);
+
+  // 相邻月份也一起量，翻进去时页数已经是准的（往回翻要直接落在最后一页）。
+  const measureEvents = useMemo(
+    () => [months[index - 1], month, months[index + 1]].filter(Boolean).flatMap((item) => item.days.flatMap((day) => day.events)),
+    [index, month, months],
+  );
+
+  const remeasure = useCallback(() => {
+    const root = measureRef.current;
+    if (!root) return;
+    const slot = root.querySelector<HTMLElement>("[data-measure-slot]");
+    const head = root.querySelector<HTMLElement>("[data-measure-head]");
+    const stamp = root.querySelector<HTMLElement>("[data-measure-stamp]");
+    if (!slot || !stamp) return;
+    const heights = new Map<number, number>();
+    root.querySelectorAll<HTMLElement>("[data-measure-id]").forEach((node) => heights.set(Number(node.dataset.measureId), node.offsetHeight));
+    const next = { capacity: slot.clientHeight, head: head ? head.offsetHeight + HEAD_GAP : 0, stamp: stamp.offsetHeight, heights };
+    setMeasure((previous) => (sameMeasure(previous, next) ? previous : next));
+  }, []);
+
+  useLayoutEffect(() => {
+    remeasure();
+  }, [remeasure, measureEvents, spread]);
+
+  useEffect(() => {
+    const root = measureRef.current;
+    if (!root || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => remeasure());
+    root.querySelectorAll("[data-measure-slot], [data-measure-list], [data-measure-head]").forEach((node) => observer.observe(node));
+    return () => observer.disconnect();
+  }, [remeasure, measureEvents, spread]);
+
+  const sheets = useMemo(() => {
+    const capacity = measure?.capacity || ESTIMATED_CAPACITY;
+    const metrics = { ...SHEET_METRICS, stamp: measure?.stamp ?? 34 };
+    return packSheets(
+      month.days,
+      (id) => measure?.heights.get(id) ?? ESTIMATED_ENTRY,
+      (sheet) => (!spread && sheet === 0 ? capacity - (measure?.head ?? 0) : capacity),
+      metrics,
+    );
+  }, [measure, month.days, spread]);
+
+  const pageCount = spread ? spreadCount(sheets.length) : sheets.length;
+  const page = book.page < 0 ? pageCount - 1 : Math.min(book.page, pageCount - 1);
+  const turn = useCallback((dir: Direction) => book.turnPage(dir, page, pageCount), [book, page, pageCount]);
 
   useEffect(() => {
     if (firstRenderRef.current) {
@@ -408,7 +523,7 @@ export function JournalBook({
     if (top < STICKY_OFFSET_PX - 8) {
       window.scrollTo({ top: window.scrollY + top - STICKY_OFFSET_PX, behavior: reducedMotion ? "auto" : "smooth" });
     }
-  }, [month.key, reducedMotion]);
+  }, [month.key, page, reducedMotion]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -417,17 +532,32 @@ export function JournalBook({
       const target = event.target;
       if (target instanceof Element && target.closest("input, textarea, select, [contenteditable='true'], [role='slider'], [role='tablist']")) return;
       if (document.querySelector("[aria-modal='true']")) return;
-      if (flip(event.key === "ArrowRight" ? 1 : -1)) event.preventDefault();
+      if (turn(event.key === "ArrowRight" ? 1 : -1)) event.preventDefault();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [flip]);
+  }, [turn]);
+
+  useEffect(() => {
+    if (!flashKey) return;
+    const timer = window.setTimeout(() => {
+      stageRef.current?.querySelectorAll<HTMLElement>(`.journal-leaf [data-book-day="${flashKey.dateKey}"]`).forEach((target) => {
+        target.classList.remove("is-flash");
+        void target.offsetWidth;
+        target.classList.add("is-flash");
+      });
+    }, flashKey.at);
+    return () => window.clearTimeout(timer);
+  }, [flashKey]);
 
   function settleDrag() {
     const spring = reducedMotion ? MOTION_TRANSITIONS.reduced : { type: "spring" as const, stiffness: 340, damping: 32 };
     void animate(tilt, 0, spring);
     void animate(shift, 0, spring);
   }
+
+  const canTurnPrev = page > 0 || book.hasPrev;
+  const canTurnNext = page < pageCount - 1 || book.hasNext;
 
   function handlePanStart(event: PointerEvent | MouseEvent | TouchEvent, info: PanInfo) {
     const pointerType = "pointerType" in event ? event.pointerType : "touch";
@@ -443,7 +573,7 @@ export function JournalBook({
     if (!pan) return;
     const offset = info.offset.x;
     if (Math.abs(offset) > 8) suppressClickRef.current = true;
-    const canTurn = offset < 0 ? book.hasNext : book.hasPrev;
+    const canTurn = offset < 0 ? canTurnNext : canTurnPrev;
     const effective = canTurn ? offset : offset * 0.22;
     if (reducedMotion) return;
     if (spread) {
@@ -462,8 +592,8 @@ export function JournalBook({
     const { x } = info.offset;
     const vx = info.velocity.x;
     let turned = false;
-    if (x < -SWIPE_DISTANCE || vx < -SWIPE_VELOCITY) turned = flip(1);
-    else if (x > SWIPE_DISTANCE || vx > SWIPE_VELOCITY) turned = flip(-1);
+    if (x < -SWIPE_DISTANCE || vx < -SWIPE_VELOCITY) turned = turn(1);
+    else if (x > SWIPE_DISTANCE || vx > SWIPE_VELOCITY) turned = turn(-1);
     if (turned) dismissHint();
   }
 
@@ -484,33 +614,33 @@ export function JournalBook({
     if (Date.now() < state.lockedUntil) return;
     state.total += event.deltaX;
     if (Math.abs(state.total) < 70) return;
-    flip(state.total > 0 ? 1 : -1);
+    turn(state.total > 0 ? 1 : -1);
     state.total = 0;
     state.lockedUntil = Date.now() + 700;
   }
 
   const jumpToDay = useCallback(
     (dateKey: string) => {
-      const target = stageRef.current?.querySelector<HTMLElement>(`[data-book-day="${dateKey}"]`);
-      if (!target) return;
-      const top = target.getBoundingClientRect().top + window.scrollY - STICKY_OFFSET_PX - 8;
-      window.scrollTo({ top, behavior: reducedMotion ? "auto" : "smooth" });
-      target.classList.remove("is-flash");
-      void target.offsetWidth;
-      target.classList.add("is-flash");
+      const sheetIndex = sheets.findIndex((sheet) => sheet.days.some((day) => day.dateKey === dateKey));
+      if (sheetIndex < 0) return;
+      const target = sheetPage(sheetIndex, spread);
+      book.showPage(target, page);
+      setFlashKey({ dateKey, at: target === page || reducedMotion ? 0 : 520 });
     },
-    [reducedMotion],
+    [book, page, reducedMotion, sheets, spread],
   );
 
-  const pageNumber = index + 1;
   const prevMonth = book.hasPrev ? months[index - 1] : null;
   const nextMonth = book.hasNext ? months[index + 1] : null;
+  const leafKey = `${month.key}:${page}`;
+  const entriesProps = { month, onChanged, onCreate, isCurrent: month.key === book.currentMonth };
+  const pair = spreadSheets(page);
 
   return (
-    <section className="journal-book" aria-roledescription="手账本" aria-label={`${month.year} 年 ${month.month} 月这一页`}>
+    <section className="journal-book" aria-roledescription="手账本" aria-label={`${month.year} 年 ${month.month} 月，第 ${page + 1} 页`}>
       <motion.div
         ref={stageRef}
-        className={cn("journal-book-stage", spread && "is-spread", book.hasPrev && "has-prev", book.hasNext && "has-next")}
+        className={cn("journal-book-stage", spread && "is-spread", canTurnPrev && "has-prev", canTurnNext && "has-next")}
         style={{ touchAction: "pan-y" } as CSSProperties}
         onPanStart={handlePanStart}
         onPan={handlePan}
@@ -529,43 +659,46 @@ export function JournalBook({
             <div className="journal-book-spread">
               <div className="journal-book-column">
                 <AnimatePresence initial={false} custom={direction}>
-                  <BookLeaf key={month.key} side="left" direction={direction} pattern="dots">
-                    <OverviewPage
-                      month={month}
-                      today={today}
-                      meetingSessions={meetingSessions}
-                      pageNumber={pageNumber * 2 - 1}
-                      onPickDay={jumpToDay}
-                    />
+                  <BookLeaf key={leafKey} side="left" direction={direction} pattern={page === 0 ? "dots" : pattern}>
+                    {pair.left === null ? (
+                      <OverviewPage month={month} today={today} meetingSessions={meetingSessions} pageNumber={1} onPickDay={jumpToDay} />
+                    ) : (
+                      <SheetPage sheet={sheets[pair.left]} sheetIndex={pair.left} pageNumber={page * 2 + 1} align="left" {...entriesProps} />
+                    )}
                   </BookLeaf>
                 </AnimatePresence>
               </div>
               <div className="journal-book-spine" aria-hidden="true" />
               <div className="journal-book-column">
                 <AnimatePresence initial={false} custom={direction}>
-                  <BookLeaf key={month.key} side="right" direction={direction} pattern={pattern}>
-                    <div className="journal-leaf-body">
-                      <EntriesPage month={month} isCurrent={month.key === book.currentMonth} onChanged={onChanged} onCreate={onCreate} />
-                      <PageNumber value={pageNumber * 2} align="right" />
-                    </div>
+                  <BookLeaf key={leafKey} side="right" direction={direction} pattern={pattern}>
+                    <SheetPage sheet={sheets[pair.right]} sheetIndex={pair.right} pageNumber={page * 2 + 2} align="right" {...entriesProps} />
                   </BookLeaf>
                 </AnimatePresence>
+                <SheetMeasurer ref={measureRef} side="right" events={measureEvents} onChanged={onChanged} />
               </div>
             </div>
           ) : (
             <div className="journal-book-column journal-book-column-single">
               <AnimatePresence initial={false} custom={direction}>
-                <BookLeaf key={month.key} side="single" direction={direction} pattern={pattern}>
-                  <div className="journal-leaf-body">
-                    <MonthHeading month={month} size="md" action={<ExportMonthLink monthKey={month.key} compact />} />
-                    <BookCalendar month={month} today={today} onPickDay={jumpToDay} className="mt-4" />
-                    <div className="mt-6">
-                      <EntriesPage month={month} isCurrent={month.key === book.currentMonth} onChanged={onChanged} onCreate={onCreate} />
-                    </div>
-                    <PageNumber value={pageNumber} align="right" />
-                  </div>
+                <BookLeaf key={leafKey} side="single" direction={direction} pattern={pattern}>
+                  <SheetPage
+                    sheet={sheets[page]}
+                    sheetIndex={page}
+                    pageNumber={page + 1}
+                    align="right"
+                    head={page === 0 ? <FirstPageHead month={month} today={today} onPickDay={jumpToDay} /> : undefined}
+                    {...entriesProps}
+                  />
                 </BookLeaf>
               </AnimatePresence>
+              <SheetMeasurer
+                ref={measureRef}
+                side="single"
+                events={measureEvents}
+                onChanged={onChanged}
+                head={<FirstPageHead month={month} today={today} onPickDay={() => undefined} />}
+              />
             </div>
           )}
         </motion.div>
@@ -573,24 +706,23 @@ export function JournalBook({
 
       <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-1">
         <div>
-          {prevMonth && (
+          {canTurnPrev && (
             <button
               type="button"
-              onClick={() => flip(-1)}
+              onClick={() => turn(-1)}
               className="inline-flex min-h-11 items-center gap-1 rounded-full px-3 font-sc text-sm text-ink-soft transition hover:bg-rose/10 hover:text-rose-deep focus-ring"
             >
               <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-              {prevMonth.year !== month.year ? `${prevMonth.year} 年 ` : ""}
-              {prevMonth.month} 月
+              {page > 0 ? "上一页" : prevMonth ? `${prevMonth.year !== month.year ? `${prevMonth.year} 年 ` : ""}${prevMonth.month} 月` : ""}
             </button>
           )}
         </div>
         <div className="flex flex-col items-center text-center">
           <span className="font-sc text-xs text-ink-muted">
-            第 {pageNumber} / {months.length} 页
+            {month.month} 月 · 第 {page + 1} / {pageCount} 页
           </span>
           <AnimatePresence initial={false}>
-            {showHint && months.length > 1 && (
+            {showHint && (pageCount > 1 || months.length > 1) && (
               <motion.span
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -598,26 +730,70 @@ export function JournalBook({
                 transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.state}
                 className="mt-1 font-sc text-[11px] text-rose-deep/80"
               >
-                左右滑翻页，上下滑看这个月
+                左右滑翻页
               </motion.span>
             )}
           </AnimatePresence>
         </div>
         <div className="flex justify-end">
-          {nextMonth && (
+          {canTurnNext && (
             <button
               type="button"
-              onClick={() => flip(1)}
+              onClick={() => turn(1)}
               className="inline-flex min-h-11 items-center gap-1 rounded-full px-3 font-sc text-sm text-ink-soft transition hover:bg-rose/10 hover:text-rose-deep focus-ring"
             >
-              {nextMonth.year !== month.year ? `${nextMonth.year} 年 ` : ""}
-              {nextMonth.month} 月
+              {page < pageCount - 1 ? "下一页" : nextMonth ? `${nextMonth.year !== month.year ? `${nextMonth.year} 年 ` : ""}${nextMonth.month} 月` : ""}
               <ChevronRight className="h-4 w-4" aria-hidden="true" />
             </button>
           )}
         </div>
       </div>
     </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 测量副本：和真实纸页同宽同高，隐藏渲染所有要排版的卡片                  */
+/* ------------------------------------------------------------------ */
+
+function SheetMeasurer({
+  ref,
+  side,
+  events,
+  head,
+  onChanged,
+}: {
+  ref: Ref<HTMLDivElement>;
+  side: "single" | "right";
+  events: EventSummary[];
+  head?: ReactNode;
+  onChanged: () => Promise<void>;
+}) {
+  return (
+    <MeasuringContext.Provider value={true}>
+      <div ref={ref} className={cn("journal-leaf journal-measure", `journal-leaf-${side}`)} aria-hidden="true" inert>
+        <div className="journal-leaf-body journal-sheet">
+          <div className="journal-sheet-slot" data-measure-slot>
+            {head && (
+              <div className="absolute inset-x-0 top-0" data-measure-head>
+                {head}
+              </div>
+            )}
+            <div className="absolute inset-x-0 top-0" data-measure-list>
+              <div data-measure-stamp>
+                <DayStamp day={{ dateKey: "2026-01-01", day: 28, weekday: "周三", events: [], continued: false }} />
+              </div>
+              {events.map((event) => (
+                <div key={event.id} data-measure-id={event.id}>
+                  <TimelineEntry event={event} onChanged={onChanged} />
+                </div>
+              ))}
+            </div>
+          </div>
+          <PageNumber value={0} align="right" />
+        </div>
+      </div>
+    </MeasuringContext.Provider>
   );
 }
 
@@ -643,7 +819,7 @@ function MonthHeading({ month, size, action }: { month: BookMonth; size: "md" | 
     <header className="flex items-end justify-between gap-3">
       <div className="min-w-0">
         <p className="font-sc text-xs font-medium tracking-wide text-ink-muted">{month.year}</p>
-        <h2 className={cn("scrapbook-hand font-semibold leading-none text-ink", size === "lg" ? "mt-1 text-[3.25rem]" : "mt-0.5 text-[2.35rem]")}>
+        <h2 className={cn("scrapbook-hand font-semibold leading-none text-ink", size === "lg" ? "mt-1 text-[3rem]" : "mt-0.5 text-[2.2rem]")}>
           {month.month}
           <span className={cn("ml-1 align-baseline", size === "lg" ? "text-2xl" : "text-xl")}>月</span>
         </h2>
@@ -651,6 +827,15 @@ function MonthHeading({ month, size, action }: { month: BookMonth; size: "md" | 
       </div>
       {action}
     </header>
+  );
+}
+
+function FirstPageHead({ month, today, onPickDay }: { month: BookMonth; today: string; onPickDay: (dateKey: string) => void }) {
+  return (
+    <div>
+      <MonthHeading month={month} size="md" action={<ExportMonthLink monthKey={month.key} compact />} />
+      <BookCalendar month={month} today={today} onPickDay={onPickDay} className="mt-3" />
+    </div>
   );
 }
 
@@ -746,7 +931,7 @@ function OverviewPage({
   onPickDay: (dateKey: string) => void;
 }) {
   const photos = useMemo(
-    () => month.days.flatMap((day) => day.events).filter((event) => event.preview_image && !event.gift_masked).slice(0, 8),
+    () => month.days.flatMap((day) => day.events).filter((event) => event.preview_image && !event.gift_masked).slice(0, 4),
     [month.days],
   );
   const range = monthDateRange(month.key);
@@ -759,51 +944,49 @@ function OverviewPage({
   );
 
   return (
-    <div className="journal-leaf-body">
-      <MonthHeading month={month} size="lg" />
-      <BookCalendar month={month} today={today} onPickDay={onPickDay} className="mt-6" />
+    <div className="journal-leaf-body journal-sheet">
+      <MonthHeading month={month} size="lg" action={<ExportMonthLink monthKey={month.key} />} />
+      <BookCalendar month={month} today={today} onPickDay={onPickDay} className="mt-5 flex-none" />
 
-      {photos.length > 0 && (
-        <section className="mt-7" aria-label="这个月的照片">
-          <h3 className="scrapbook-hand text-base font-semibold text-ink-soft">贴上去的照片</h3>
-          <div className="mt-3 grid grid-cols-4 gap-3">
-            {photos.map((event) => (
-              <Link key={event.id} href={`/timeline/${event.id}`} className="scrapbook-entry block rounded focus-ring" aria-label={`打开「${event.title}」`}>
-                <PolaroidFrame tilt={cardTilt(event.id + 3) * 2}>
-                  <EventImagePreview imageId={event.preview_image!.id} alt={`${event.title}的照片`} className="aspect-square w-full" />
-                </PolaroidFrame>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
+      <div className="journal-sheet-slot journal-overview-rest mt-5">
+        {meetings.length > 0 && (
+          <section aria-label="这个月的见面">
+            <h3 className="scrapbook-hand text-base font-semibold text-ink-soft">见面的日子</h3>
+            <ul className="mt-2 grid gap-2 xl:grid-cols-2">
+              {meetings.map((session) => (
+                <li key={session.id}>
+                  <Link
+                    href={`/journal?scope=meeting&meeting_id=${session.id}`}
+                    className="scrapbook-ticket !py-2 transition hover:-translate-y-0.5 focus-ring"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="scrapbook-hand block truncate text-base font-semibold text-ink">{session.title}</span>
+                      <span className="block font-sc text-xs text-ink-muted">{meetingRangeLabel(session)}</span>
+                    </span>
+                    <span className="scrapbook-ticket-stamp !h-9 !w-9" aria-hidden="true">
+                      <CalendarHeart className="h-4 w-4" />
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
-      {meetings.length > 0 && (
-        <section className="mt-7" aria-label="这个月的见面">
-          <h3 className="scrapbook-hand text-base font-semibold text-ink-soft">见面的日子</h3>
-          <ul className="mt-3 space-y-2.5">
-            {meetings.map((session) => (
-              <li key={session.id}>
-                <Link
-                  href={`/journal?scope=meeting&meeting_id=${session.id}`}
-                  className="scrapbook-ticket transition hover:-translate-y-0.5 focus-ring"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="scrapbook-hand block truncate text-base font-semibold text-ink">{session.title}</span>
-                    <span className="block font-sc text-xs text-ink-muted">{meetingRangeLabel(session)}</span>
-                  </span>
-                  <span className="scrapbook-ticket-stamp !h-10 !w-10" aria-hidden="true">
-                    <CalendarHeart className="h-4 w-4" />
-                  </span>
+        {photos.length > 0 && (
+          <section className={meetings.length ? "mt-4" : undefined} aria-label="这个月的照片">
+            <h3 className="scrapbook-hand text-base font-semibold text-ink-soft">贴上去的照片</h3>
+            <div className="mt-2 grid grid-cols-4 gap-3">
+              {photos.map((event) => (
+                <Link key={event.id} href={`/timeline/${event.id}`} className="scrapbook-entry block rounded focus-ring" aria-label={`打开「${event.title}」`}>
+                  <PolaroidFrame tilt={cardTilt(event.id + 3) * 2}>
+                    <EventImagePreview imageId={event.preview_image!.id} alt={`${event.title}的照片`} className="aspect-square w-full" />
+                  </PolaroidFrame>
                 </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      <div className="mt-7">
-        <ExportMonthLink monthKey={month.key} />
+              ))}
+            </div>
+          </section>
+        )}
       </div>
       <PageNumber value={pageNumber} align="left" />
     </div>
@@ -815,53 +998,82 @@ function meetingRangeLabel(session: Pick<MeetingSessionOut, "started_on" | "ende
   return session.started_on === session.ended_on ? format(session.started_on) : `${format(session.started_on)} – ${format(session.ended_on)}`;
 }
 
-function EntriesPage({
+function SheetPage({
+  sheet,
+  sheetIndex,
+  pageNumber,
+  align,
+  head,
   month,
   isCurrent,
   onChanged,
   onCreate,
 }: {
+  sheet: BookSheet | undefined;
+  sheetIndex: number;
+  pageNumber: number;
+  align: "left" | "right";
+  head?: ReactNode;
   month: BookMonth;
   isCurrent: boolean;
   onChanged: () => Promise<void>;
   onCreate: () => void;
 }) {
-  if (month.days.length === 0) {
-    return (
-      <div className="flex min-h-[18rem] flex-col items-center justify-center px-2 py-10 text-center">
-        <span className="grid h-14 w-14 place-items-center rounded-2xl bg-peach/22 text-rose-deep">
-          <CalendarHeart className="h-7 w-7" aria-hidden="true" />
-        </span>
-        <h3 className="scrapbook-hand mt-4 text-xl font-semibold text-ink">{isCurrent ? "这个月的第一笔，等你来写" : "这一页还空着"}</h3>
-        <p className="mx-auto mt-2 max-w-xs font-sc text-sm leading-6 text-ink-soft">记下一顿饭、一句想说的话，或一次临时决定的小约会。</p>
-        <button type="button" onClick={onCreate} className="btn-primary mt-5 inline-flex min-h-12 items-center gap-2 rounded-full px-5 font-sc text-sm font-medium focus-ring">
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          记一笔
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <ol className="space-y-7">
-      {month.days.map((day) => (
-        <li key={day.dateKey} data-book-day={day.dateKey} className="book-day">
-          <div className="book-day-stamp">
-            <span className="scrapbook-hand text-[1.7rem] font-semibold leading-none text-ink">{day.day}</span>
-            <span className="font-sc text-xs text-ink-muted">
-              {month.month} 月 · {day.weekday}
-            </span>
-            <span className="book-day-rule" aria-hidden="true" />
-          </div>
-          <ul className="mt-3 space-y-4">
-            {day.events.map((event) => (
-              <li key={event.id}>
-                <TimelineEntry event={event} onChanged={onChanged} />
+    <div className="journal-leaf-body journal-sheet">
+      {head && <div className="mb-6 flex-none">{head}</div>}
+      <div className="journal-sheet-slot">
+        {sheet && sheet.days.length > 0 ? (
+          <ol className="space-y-7">
+            {sheet.days.map((day) => (
+              <li key={day.dateKey} data-book-day={day.dateKey} className="book-day">
+                <DayStamp day={day} monthNumber={month.month} />
+                <ul className="mt-3 space-y-4">
+                  {day.events.map((event) => (
+                    <li key={event.id}>
+                      <TimelineEntry event={event} onChanged={onChanged} />
+                    </li>
+                  ))}
+                </ul>
               </li>
             ))}
-          </ul>
-        </li>
-      ))}
-    </ol>
+          </ol>
+        ) : sheetIndex === 0 && month.days.length === 0 ? (
+          <EmptyMonth isCurrent={isCurrent} onCreate={onCreate} />
+        ) : (
+          <p className="journal-blank-note" aria-hidden="true">· 留白 ·</p>
+        )}
+      </div>
+      <PageNumber value={pageNumber} align={align} />
+    </div>
+  );
+}
+
+function DayStamp({ day, monthNumber }: { day: SheetDay; monthNumber?: number }) {
+  return (
+    <div className="book-day-stamp">
+      <span className="scrapbook-hand text-[1.7rem] font-semibold leading-none text-ink">{day.day}</span>
+      <span className="font-sc text-xs text-ink-muted">
+        {monthNumber ?? Number(day.dateKey.slice(5, 7))} 月 · {day.weekday}
+        {day.continued && " · 接上页"}
+      </span>
+      <span className="book-day-rule" aria-hidden="true" />
+    </div>
+  );
+}
+
+function EmptyMonth({ isCurrent, onCreate }: { isCurrent: boolean; onCreate: () => void }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center px-2 py-4 text-center">
+      <span className="grid h-12 w-12 place-items-center rounded-2xl bg-peach/22 text-rose-deep">
+        <CalendarHeart className="h-6 w-6" aria-hidden="true" />
+      </span>
+      <h3 className="scrapbook-hand mt-3 text-xl font-semibold text-ink">{isCurrent ? "这个月的第一笔，等你来写" : "这一页还空着"}</h3>
+      <p className="mx-auto mt-1.5 max-w-xs font-sc text-sm leading-6 text-ink-soft">记下一顿饭、一句想说的话，或一次临时决定的小约会。</p>
+      <button type="button" onClick={onCreate} className="btn-primary mt-4 inline-flex min-h-11 items-center gap-2 rounded-full px-5 font-sc text-sm font-medium focus-ring">
+        <Plus className="h-4 w-4" aria-hidden="true" />
+        记一笔
+      </button>
+    </div>
   );
 }

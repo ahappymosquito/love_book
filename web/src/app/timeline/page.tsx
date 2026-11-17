@@ -1,6 +1,6 @@
 "use client";
 
-// Timeline home: a queued relationship quote, then a sticky toolbar (手账 / 见面 segmented control plus month navigation with a one-tap month grid) above a single scrapbook book (JournalBook) that opens on the current month and turns pages left/right while each page scrolls vertically as that month's day-grouped list; the 见面 view keeps ticket-styled meeting groups (two columns on xl) with an export link, and gift cards keep the unwrap overlay. A header 手账 button links to /journal. Months and "today" follow the Asia/Shanghai calendar, and only events inside a meeting range count as 见面.
+// Timeline home: a queued relationship quote, then a sticky toolbar (手账 / 见面 segmented control plus month navigation with a one-tap month grid) above a single scrapbook book (JournalBook) that opens on the current month with fixed-height pages sized to the viewport, flowing a busy month's day-grouped entries across several sheets that turn left/right instead of scrolling; the 见面 view keeps ticket-styled meeting groups (two columns on xl) with an export link, and gift cards keep the unwrap overlay. A header 手账 button links to /journal. Months and "today" follow the Asia/Shanghai calendar, and only events inside a meeting range count as 见面.
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

@@ -1,7 +1,7 @@
 "use client";
 
 // Responsive shared editor for a meeting title and inclusive Beijing date range, with merge preview and cancellation.
-// With `createDefaults` and no session it plans a new (possibly future) meeting instead; overlaps still merge into the earlier one.
+// With `createDefaults` and no session it plans a new (possibly future) meeting instead (the backend emails the partner an invite to plan it); overlaps still merge into the earlier one.
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { AlertTriangle, Loader2, Trash2, X } from "lucide-react";
@@ -109,7 +109,7 @@ export function MeetingEditorDialog({ open, session, createDefaults, onOpenChang
           <div className="flex items-start justify-between gap-4">
             <div><h2 id="meeting-editor-title" className="font-display text-xl font-semibold text-ink">{creating ? "定下一次见面" : "编辑这次见面"}</h2>
               <p className="mt-1 font-sc text-sm leading-6 text-ink-soft">
-                {creating ? "定好日子，就可以一起把想做的事放进来。" : "日期范围内的小事会自动收进这次见面。"}
+                {creating ? "定好日子会发邮件告诉 TA，一起把每天想做的事排进来。" : "日期范围内的小事会自动收进这次见面。"}
               </p></div>
             <button className="focus-ring grid size-11 shrink-0 place-items-center rounded-full text-ink-soft hover:bg-rose-soft/60"
               onClick={() => onOpenChange(false)} disabled={saving} aria-label="关闭"><X className="size-5" /></button>
@@ -142,7 +142,7 @@ export function MeetingEditorDialog({ open, session, createDefaults, onOpenChang
       </motion.div>}
     </AnimatePresence>
     <ConfirmDialog open={confirmDelete} title="取消这次见面？"
-      description="这个日期范围会被删除，其中的小事会按剩余见面范围重新归类，清单里的准备会回到心愿池。"
+      description="这个日期范围会被删除，其中的小事会按剩余见面范围重新归类，约会计划里的事项会取下日程，留在“没赶上的”里。"
       confirmLabel="确认取消" destructive loading={deleting} onConfirm={remove}
       onCancel={() => !deleting && setConfirmDelete(false)} />
   </>;

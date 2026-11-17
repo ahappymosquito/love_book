@@ -1,4 +1,5 @@
-"""Todo routes for the pair's date plan: items attached to a meeting or left in the wish pool, one-tap completion,
+"""Todo routes for the pair's meeting plan: 吃/玩/住/准备 items attached to a meeting (optionally placed on one of its
+days with a start/end minute, Notion-calendar style), one-tap completion,
 "write into the journal" (todo -> timeline event with note, comments and copied photos), comments, and private images.
 
 Todo operations never send email. Every write commits before responding. Image reads fall back to the configured
@@ -54,6 +55,39 @@ LATE_JOURNAL_TIME = time(20, 0)
 
 def _aware(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def _apply_schedule(db: Session, item: TodoItem, data: dict, *, meeting_changed: bool) -> None:
+    """Set day/time from `data`, clearing the slot when the day is cleared or the item moves to another meeting.
+
+    A slot needs a day inside the item's meeting; a start without an end lasts one hour (capped at midnight).
+    """
+    if meeting_changed and "scheduled_on" not in data:
+        item.scheduled_on = item.start_minute = item.end_minute = None
+        return
+    if "scheduled_on" in data:
+        item.scheduled_on = data["scheduled_on"]
+    if "start_minute" in data:
+        item.start_minute = data["start_minute"]
+        if "end_minute" not in data:
+            item.end_minute = None
+    if "end_minute" in data:
+        item.end_minute = data["end_minute"]
+    if item.scheduled_on is None:
+        item.start_minute = item.end_minute = None
+        return
+    meeting = db.get(MeetingSession, item.meeting_session_id) if item.meeting_session_id is not None else None
+    if meeting is None or meeting.started_on is None or meeting.ended_on is None:
+        raise HTTPException(status_code=422, detail="先放进一次见面，再排到某一天")
+    if not meeting.started_on <= item.scheduled_on <= meeting.ended_on:
+        raise HTTPException(status_code=422, detail="这一天不在这次见面里")
+    if item.start_minute is None:
+        item.end_minute = None
+        return
+    if item.end_minute is None:
+        item.end_minute = min(item.start_minute + 60, 1440)
+    if item.end_minute <= item.start_minute:
+        raise HTTPException(status_code=422, detail="结束时间要晚于开始时间")
 
 
 def _ensure_pair_item(db: Session, item_id: int, pair: Pair) -> TodoItem:
@@ -174,6 +208,7 @@ def create_item(payload: TodoItemCreate, current_user: User = Depends(get_curren
         note=payload.note,
         meeting_session_id=payload.meeting_session_id,
     )
+    _apply_schedule(db, item, payload.model_dump(include={"scheduled_on", "start_minute", "end_minute"}, exclude_none=True), meeting_changed=False)
     db.add(item)
     db.commit()
     db.refresh(item)
@@ -193,11 +228,15 @@ def update_item(
     for field in ("title", "note", "category", "is_archived"):
         if field in data and (data[field] is not None or field == "note"):
             setattr(item, field, data[field])
+    meeting_changed = False
     if "meeting_session_id" in data:
         meeting_id = data["meeting_session_id"]
         if meeting_id is not None:
             ensure_pair_meeting_session(db, meeting_id, pair)
+        meeting_changed = meeting_id != item.meeting_session_id
         item.meeting_session_id = meeting_id
+    if meeting_changed or data.keys() & {"scheduled_on", "start_minute", "end_minute"}:
+        _apply_schedule(db, item, data, meeting_changed=meeting_changed)
     if data.get("completed") is True and item.completed_at is None:
         item.completed_at = utc_now()
         item.completed_by_id = current_user.id
@@ -227,6 +266,10 @@ def delete_item(item_id: int, current_user: User = Depends(get_current_user), db
 
 def _journal_occurred_at(db: Session, item: TodoItem, pair: Pair) -> datetime:
     completed_at = _aware(item.completed_at or utc_now())
+    if item.scheduled_on is not None and item.start_minute is not None:
+        slot = datetime.combine(item.scheduled_on, time(item.start_minute // 60, item.start_minute % 60), MEETING_TZ)
+        if slot.astimezone(timezone.utc) <= completed_at:
+            return slot.astimezone(timezone.utc)
     meeting = db.get(MeetingSession, item.meeting_session_id) if item.meeting_session_id is not None else None
     if meeting is None or meeting.pair_id != pair.id or meeting.ended_on is None:
         return completed_at

@@ -1,4 +1,4 @@
-"""Pydantic 契约：pair 功能、包装礼物（拆礼物状态/遮罩/收礼回应）、手账导出、合上手账、见面清单 Todo（挂见面/单方完成/写进手账）、周期邮件提醒设置、安全密码会话、跑酷成绩、媒体和管理端接口；周期统计在没有经期锚点时预测字段为 null。"""
+"""Pydantic 契约：pair 功能、包装礼物（拆礼物状态/遮罩/收礼回应）、手账导出、合上手账、见面计划 Todo（吃/玩/住/准备、挂见面、排到某天某个时段、单方完成、写进手账）、周期邮件提醒设置、安全密码会话、跑酷成绩、媒体和管理端接口；周期统计在没有经期锚点时预测字段为 null。"""
 
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -770,6 +770,9 @@ class TodoItemOut(APIModel):
     completed_at: datetime | None = None
     completed_by_id: int | None = None
     journal_event_id: int | None = None
+    scheduled_on: date | None = None
+    start_minute: int | None = None
+    end_minute: int | None = None
     comments_count: int = 0
     images_count: int = 0
     created_at: datetime
@@ -790,6 +793,9 @@ class TodoItemCreate(APIModel):
     title: str = Field(min_length=1, max_length=200)
     note: str | None = Field(default=None, max_length=2000)
     meeting_session_id: int | None = None
+    scheduled_on: date | None = None
+    start_minute: int | None = Field(default=None, ge=0, le=1439)
+    end_minute: int | None = Field(default=None, ge=1, le=1440)
 
     @field_validator("title")
     @classmethod
@@ -798,12 +804,15 @@ class TodoItemCreate(APIModel):
 
 
 class TodoItemUpdate(APIModel):
-    """Partial update; send `meeting_session_id: null` explicitly to move an item back to the wish pool."""
+    """Partial update; `meeting_session_id: null` detaches the item, `scheduled_on: null` takes it off the agenda (times too)."""
 
     title: str | None = Field(default=None, min_length=1, max_length=200)
     note: str | None = Field(default=None, max_length=2000)
     category: TodoCategory | None = None
     meeting_session_id: int | None = None
+    scheduled_on: date | None = None
+    start_minute: int | None = Field(default=None, ge=0, le=1439)
+    end_minute: int | None = Field(default=None, ge=1, le=1440)
     completed: bool | None = None
     is_archived: bool | None = None
 

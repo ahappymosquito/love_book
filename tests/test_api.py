@@ -232,7 +232,7 @@ def test_legacy_love_receipt_migration_is_idempotent_and_copies_media(
 
 
 def test_todo_category_enum_migration_sql_targets_mysql_only() -> None:
-    expected = ["ALTER TABLE todo_items MODIFY category ENUM('food','play','stay','prep','wish') NOT NULL"]
+    expected = ["ALTER TABLE todo_items MODIFY category ENUM('food','play','stay','prep') NOT NULL"]
 
     assert database._todo_category_enum_migration_sql("mysql") == expected
     assert database._todo_category_enum_migration_sql("mariadb") == expected

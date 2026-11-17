@@ -17,7 +17,7 @@
 - 两位用户都可以创建事件、提交评论、上传图片，并对可见留言添加点赞 / 倒赞 reaction。
 - 线下见面使用内部 `meeting_sessions` 作为真实见面次数统计单位，并以 `started_on / ended_on` 保存包含首尾整天的北京时间范围；范围内双方事件自动归类，标记范围外事件时自动建立同名单日见面。双方点击见面标题可同时编辑标题与日期范围，重叠范围自动合并并保留较早标题，也可取消整个见面；不再提供加号或手动归入流程，事件内容权限保持不变。
 - 任意一方可给对方包一份礼物：选包装纸、写小提示和藏在里面的话、放最多 6 张照片，可设拆开时间。拆开前收礼人只看到礼盒、小提示和送礼人；拆开后收礼人可留下感受、印章评分和反馈。
-- 见面清单按 pair 共享：事项分为准备 / 吃 / 玩 / 住 / 心愿，可挂到某次（包括未来的）见面或留在心愿池；任意一方点一下即完成，完成后一键写进手账生成时间线事件。
+- 约会计划按 pair 共享：定好见面日子后发邮件请对方一起排，事项分为吃 / 玩 / 住 / 准备，可排到见面里某一天的某个时段；任意一方点一下即完成，完成后一键写进手账生成时间线事件。
 - 周期页可开启邮件提醒：由开启的人选择发给对方或自己、提前几天，每个预测周期只在早上发一封。
 - 双方可通过 `GET /journal` 取得全部、日期范围或某次见面的手账数据，前端据此在线翻看或导出 HTML / PDF / 长图。
 - 事件、内容和留言 reaction 写接口会在响应返回前完成数据库提交，前端创建、评论或点 reaction 后可以立即刷新详情。
@@ -55,7 +55,7 @@ app/
       contents.py         评论、留言 reaction、图片和内容接口
       habits.py           每日习惯接口
       cycles.py           周期日历与邮件提醒设置接口
-      todos.py            见面清单、写进手账与图片接口
+      todos.py            约会计划、写进手账与图片接口
       love_receipts.py    旧回执只读接口
       users.py            私有头像下载
     image_uploads.py      图片上传落盘与提交失败时的文件清理
@@ -151,7 +151,7 @@ npm run dev
 - `/timeline/[id]` 事件详情（创建者可原地编辑标题、描述、发生时间和可见方式；日历爱心可创建见面或打开所属见面编辑窗口；评论 / 图片混排，底部输入栏支持文字和相册）
 - `/me` 我的页面（当前用户头像、用户名、邮箱、共享语录和安全密码管理）
 - `/create` 新建事件
-- `/todo` 见面清单（下一次见面倒计时与准备进度、按准备 / 吃 / 玩 / 住 / 心愿分组的事项、心愿池与“抽一个”、一起做过的折叠列表；点一下完成，完成后“写进手账”直接跳到新事件；详情可改标题、分类、所属见面、描述、留言和照片）
+- `/todo` 约会计划（下一次见面倒计时与准备进度、按天排的时间网格日程、还没排时间的吃 / 玩 / 住、出发前要准备、上次没赶上的、一起做过的折叠列表；点一下完成，完成后“写进手账”直接跳到新事件；详情可改标题、分类、所属见面、哪一天几点、描述、留言和照片）
 - `/cycle` 周期日历 Dashboard（月 / 周 / 列表视图、筛选、首页提醒天数、邮件提醒设置和移动端详情面板）
 
 ## 前端设计上下文
@@ -263,7 +263,7 @@ Authorization: Bearer <token>
 | journal | GET | `/journal` | `Bearer` | 手账导出数据（`scope` / `start` / `end` / `meeting_id`） |
 | events | DELETE | `/events/{event_id}` | `Bearer` | 删除事件，仅创建者 |
 | meeting-sessions | GET | `/meeting-sessions` | `Bearer` | 当前 pair 的见面列表 |
-| meeting-sessions | POST | `/meeting-sessions` | `Bearer` | 创建见面日期范围，重叠时自动合并 |
+| meeting-sessions | POST | `/meeting-sessions` | `Bearer` | 创建见面日期范围，重叠时自动合并；新建且未结束的见面会邮件请对方一起排计划 |
 | meeting-sessions | PATCH | `/meeting-sessions/{session_id}` | `Bearer` | 修改见面标题与日期范围，双方可编辑 |
 | meeting-sessions | DELETE | `/meeting-sessions/{session_id}` | `Bearer` | 取消整个见面并重新归类事件 |
 | contents | POST | `/events/{event_id}/comments` | `Bearer` | 提交评论 |
@@ -284,10 +284,10 @@ Authorization: Bearer <token>
 | cycles | DELETE | `/cycles/logs/{day}` | `Bearer` | 删除单日记录 |
 | cycles | GET | `/cycles/reminder` | `Bearer` | 读取 pair 共享的周期邮件提醒设置和下一封预计日期 |
 | cycles | PUT | `/cycles/reminder` | `Bearer` | 开关提醒、选择收件人（pair 双方之一）和提前天数（1-7） |
-| todos | GET | `/todos/plan` | `Bearer` | 见面清单：今天、焦点见面、相关见面和全部未归档事项 |
-| todos | POST | `/todos/items` | `Bearer` | 新建事项，可直接挂到某次见面（不传则进心愿池） |
+| todos | GET | `/todos/plan` | `Bearer` | 约会计划：今天、焦点见面、相关见面和全部未归档事项 |
+| todos | POST | `/todos/items` | `Bearer` | 新建事项，可直接挂到某次见面并排到某天某个时段 |
 | todos | GET | `/todos/items/{item_id}` | `Bearer` | 事项详情（留言、照片） |
-| todos | PATCH | `/todos/items/{item_id}` | `Bearer` | 修改标题、描述、分类、所属见面（显式 `null` 放回心愿池）、完成状态 |
+| todos | PATCH | `/todos/items/{item_id}` | `Bearer` | 修改标题、描述、分类、所属见面（显式 `null` 解除）、排期、完成状态 |
 | todos | DELETE | `/todos/items/{item_id}` | `Bearer` | 删除事项并清理照片文件 |
 | todos | POST | `/todos/items/{item_id}/journal` | `Bearer` | 把已完成事项写进手账，幂等；未完成返回 409 |
 | todos | POST | `/todos/items/{item_id}/comments` | `Bearer` | 留言（不影响完成状态） |
@@ -884,8 +884,8 @@ python -m pytest tests -q
 
 - 创建 pair 时可设置 `love_started_on` 情侣日期；旧数据未设置时回退到 pair 创建日期。
 - 登录后的 `/timeline` 会调用 `GET /auth/anniversary`，展示“双方昵称在一起第 N 天”、520/1314/整月纪念、固定恋爱节日、中国大陆节假日/调休信息和普通日本地语录。
-- `/timeline` 把事件按发生时间 `occurred_at` 所在月份（北京时间）排成一本手账，没有发生时间时回退创建时间 `created_at`；默认翻开当前月份，左右划或月份选择器切换到其他月份。前端一次性读取 `GET /events`，不按月分页请求。
-- 登录后的用户页面显示固定底边栏：首页 `/timeline`、周期 `/cycle`、中间加号“记一笔”、清单 `/todo`、习惯 `/habits`；详情页归属 Timeline，`/me` 通过顶部头像进入。
+- `/timeline` 把事件按发生时间 `occurred_at` 所在月份（北京时间）排成一本手账，没有发生时间时回退创建时间 `created_at`；默认翻开当前月份；书页高度固定贴合屏幕，一个月记录多时分成多页往后翻，左右划、前后按钮或月份选择器切换。前端一次性读取 `GET /events`，不按月分页请求。
+- 登录后的用户页面显示固定底边栏：首页 `/timeline`、周期 `/cycle`、中间加号“记一笔”、约会 `/todo`、习惯 `/habits`；详情页归属 Timeline，`/me` 通过顶部头像进入。
 - 首页标题区不放 `/cycle`、`/todo` 快捷图标，入口统一走底边栏。
 - 首页不再常驻展示周期入口；仅在预计月经开始前本机配置的 N 天到预计当天、且今日尚未记录时弹出周期记录提醒，可进入 `/cycle?quickLog=today` 填写或选择当天暂时不写。
 - 一言模块已弃用；非特殊日后端从当前 pair 的 `quotes` 数据库语录库和 `default_quotes` 全站共享兜底语录表合并后的随机池中取一句。
@@ -906,16 +906,18 @@ python -m pytest tests -q
 - 页面文案保持“记录和预测仅供参考”，不提供医疗诊断或避孕建议。
 - 周期邮件提醒保存在 `cycle_reminder_settings`（每个 pair 一行）：`enabled`、`days_before`（默认 3，1-7）、`recipient_user_id`（默认对方，必须是 pair 双方之一，否则 422）。`GET /cycles/reminder` 额外返回 `recipient_has_email`、`next_period_start` 和 `next_send_on`。后端 lifespan 里的后台任务每天服务器本地时间 9:00 扫描：预测下次经期开始日减去提前天数 ≤ 今天 < 开始日时，给收件人发一封带入口 token 的 `/cycle` 邮件；已合上的 pair、收件人没有邮箱、没有预测时跳过。`cycle_reminder_runs` 按 `pair_id + period_start` 去重，同一个预测周期只发一次，每发成功一封立即提交。
 
-## 见面清单（/todo）
+## 约会计划（/todo）
 
-- `/todo` 是“见面前的准备”：登录后从底边栏“清单”进入，复用 Bearer token 鉴权，数据按 pair 双方共享。礼物已由“包礼物 + 拆礼物”承担，不在清单里重复。
-- 页面顶部是“下一次见面”：标题（点击打开共享见面编辑窗口）、日期范围、倒计时（N 天后 / 明天 / 今天正在见面第几天）和准备进度条；有多次未来见面时可切换，也可“再定一次”。还没有未来见面时显示“定下一次见面”，默认填下一个周六到周日，重叠时提示会合并进较早的见面。
-- 事项分类为 `prep` 准备、`food` 吃、`play` 玩、`stay` 住、`wish` 心愿。挂在当前见面的事项按“出发前要准备 / 想一起吃 / 想一起玩 / 住在哪里 / 小心愿”分组，已完成的收在“已经做到啦”；没挂见面（或所属见面已经过去但还没做）的事项在“心愿池”，每条都可一键“放进这次见面”，事项多于一条时可“抽一个”。心愿池为空时给出“唱歌、台球、看电影、拼乐高”等一键添加的建议，后端不再自动种子数据。
-- 任意一方点一下圆圈即完成，再点取消；留言和照片都是可选记录，不参与完成判定。完成后行内出现“写进手账”：`POST /todos/items/{id}/journal` 用事项标题、描述和留言（`作者：内容`）生成一条公开时间线事件，复制本地可读的照片，时间取完成时间（所属见面已结束时取见面最后一天 20:00，北京时间），并按日期自动归入见面；接口幂等，已写过时返回原事件，前端随即跳到 `/timeline/{id}`，之后显示“去手账看看”。手账事件被删除后可重新写入。
-- 详情面板（手机为覆盖底边栏的底部弹窗，`lg` 以上为右侧粘性栏）可改标题、分类、所属见面（含“心愿池”）、描述，写留言、传照片、删除事项；页面每 8 秒后台刷新，页面隐藏时暂停，失败保留上次数据只提示一次。
-- 取消见面时其事项回到心愿池；见面合并时事项跟随保留下来的见面。Todo 操作不发邮件。
+- `/todo` 页面标题为“约会计划”：登录后从底边栏“约会”进入，复用 Bearer token 鉴权，数据按 pair 双方共享。礼物已由“包礼物 + 拆礼物”承担，不在这里重复。
+- 页面顶部是“下一次见面”：标题（点击打开共享见面编辑窗口）、日期范围、倒计时（N 天后 / 明天 / 今天正在见面第几天）和准备进度条；有多次未来见面时可切换，也可“再定一次”。还没有未来见面时显示“定下一次见面”，默认填下一个周六到周日，重叠时提示会合并进较早的见面。`/todo?meeting=ID` 直接打开那次见面。
+- 新建一次见面（`POST /meeting-sessions`）且结束日不早于北京时间今天、没有被合并进已有见面时，后端给对方发一封“{名字} 定好了下次见面”的邮件，按钮“一起排计划”带对方的入口 token 指向 `/todo?meeting=ID`；合并、修改、取消和过去的见面都不发。
+- 事项分类只有 `food` 吃、`play` 玩、`stay` 住、`prep` 准备。主体参考 Notion 日历：见面的每一天是一列（手机一列加日期切换，平板两列，桌面最多四列），上方“全天”行放排了日子但没定时间的事，下方是 15 分钟吸附的时间网格；点空白处就地加一件事（选分类、微调时间），拖动卡片换日子和时间，拖底边改结束时间，重叠的事并排显示，今天显示当前时间线。右侧“还没排时间”放挂在这次见面但没排日子的吃 / 玩 / 住，“出发前要准备”是准备清单，“上次没赶上的”是没挂见面或所属见面已过去还没做的事（可一键“放进这次”），“一起做过的”折叠已完成历史。
+- 事项排期字段：`scheduled_on`（见面里的某一天）、`start_minute`（0-1439）、`end_minute`（1-1440）。排期必须先挂到见面且日期在见面范围内，否则 422；只给开始时间时默认 1 小时（不超过当天结束）；结束不晚于开始返回 422；`scheduled_on=null` 同时清空时间；换到别的见面且没给新排期时清空排期。
+- 任意一方点一下圆圈即完成，再点取消；留言和照片都是可选记录，不参与完成判定。完成后行内出现“写进手账”：`POST /todos/items/{id}/journal` 用事项标题、描述和留言（`作者：内容`）生成一条公开时间线事件，复制本地可读的照片，时间取排好的时段（不晚于完成时间时），否则取完成时间（所属见面已结束时取见面最后一天 20:00，北京时间），并按日期自动归入见面；接口幂等，已写过时返回原事件，前端随即跳到 `/timeline/{id}`，之后显示“去手账看看”。手账事件被删除后可重新写入。
+- 详情面板（手机为覆盖底边栏的底部弹窗，`lg` 以上为右侧抽屉）可改标题、分类、所属见面（含“先不放进见面”）、哪一天和几点（或全天）、描述，写留言、传照片、删除事项；页面每 8 秒后台刷新，页面隐藏时暂停，失败保留上次数据只提示一次。
+- 取消见面时其事项解除所属见面并清空排期；见面合并时事项跟随保留下来的见面。事项操作本身不发邮件。
 - Todo 图片写入 `MEDIA_ROOT/todo/images/...`，数据库只保存 `todo_images.storage_key` / `todo_images.thumb_storage_key`，下载接口为 `/todo-images/{image_id}/file` 和 `/todo-images/{image_id}/thumb`；同 pair 双方可通过 `DELETE /todo-images/{image_id}` 删除图片，后端删除记录并尽力清理文件。
-- 升级时 `init_db()` 为 `todo_items` 补 `meeting_session_id`、`completed_at`、`completed_by_id`、`journal_event_id` 四列，并一次性回填：旧数据里双方都评论过的事项记为已完成，旧安排日期落在某次见面内的事项挂到该见面。MySQL / MariaDB 会把 `todo_items.category` 修复为 `food/play/stay/prep/wish`。旧的 `todo_candidates`、`todo_schedules`、`todo_restaurants`、`ai_settings` 表和 `users.location_*` 列只作为不可达备份保留，不再读写，也不会自动删除；删除事项时会顺带删掉它在旧表里的行。
+- 升级时 `init_db()` 为 `todo_items` 补 `meeting_session_id`、`completed_at`、`completed_by_id`、`journal_event_id`、`scheduled_on`、`start_minute`、`end_minute` 列，并一次性回填：旧数据里双方都评论过的事项记为已完成，旧安排日期落在某次见面内的事项挂到该见面。旧的 `wish` 心愿事项连同它们的照片（记录和文件）、留言和旧表行在每次启动时删除，然后 MySQL / MariaDB 把 `todo_items.category` 修复为 `food/play/stay/prep`。旧的 `todo_candidates`、`todo_schedules`、`todo_restaurants`、`ai_settings` 表和 `users.location_*` 列只作为不可达备份保留，不再读写，也不会自动删除；删除事项时会顺带删掉它在旧表里的行。
 - 高德 MCP、LLM 分类、管理端 AI 配置、常用位置、天气和抽奖已全部移除，后端镜像不再安装 Node.js；`AMAP_MAPS_API_KEY`、`LLM_*` 环境变量不再读取，可以从服务器 `.env` 删掉。
 
 ## 习惯页与每日提醒

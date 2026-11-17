@@ -1,4 +1,4 @@
-"""SMTP helpers for privacy-aware timeline event/comment notifications, content-free gift wrap/open notices, daily habit reminders, and gentle pre-period cycle reminders (todo never emails)."""
+"""SMTP helpers for privacy-aware timeline event/comment notifications, content-free gift wrap/open notices, daily habit reminders, gentle pre-period cycle reminders, and the "meeting date is set, come plan it" invite (plan items themselves never email)."""
 from __future__ import annotations
 
 from html import escape
@@ -145,6 +145,57 @@ def _cycle_link(recipient_token: str | None = None) -> str:
 
         return f"{base}/?token={quote(recipient_token, safe='')}&next={quote(target, safe='/')}"
     return f"{base}{target}"
+
+
+def _plan_link(meeting_id: int, recipient_token: str | None = None) -> str:
+    base = (get_settings().app_web_url or "").rstrip("/")
+    target = f"/todo?meeting={meeting_id}"
+    if not base:
+        return target
+    if recipient_token:
+        from urllib.parse import quote
+
+        return f"{base}/?token={quote(recipient_token, safe='')}&next={quote(target, safe='/?=&')}"
+    return f"{base}{target}"
+
+
+def _day_label(value: date) -> str:
+    return f"{value.month}月{value.day}日"
+
+
+def notify_meeting_planned(
+    *,
+    recipient_email: str | None,
+    recipient_name: str,
+    recipient_token: str | None,
+    actor_name: str,
+    meeting_id: int,
+    meeting_title: str,
+    started_on: date,
+    ended_on: date,
+) -> bool:
+    """Tell the partner a meeting date is set and invite them to fill in what to eat / play / where to stay."""
+    if not recipient_email:
+        return False
+    link = _plan_link(meeting_id, recipient_token)
+    days = (ended_on - started_on).days + 1
+    when = _day_label(started_on) if days == 1 else f"{_day_label(started_on)} – {_day_label(ended_on)}（{days} 天）"
+    subject = f"【我们之间的小事】{actor_name} 定好了下次见面：{when}"
+    line = f"{actor_name} 把「{meeting_title}」定在了 {when}。"
+    invite = "想吃什么、去哪儿玩、住在哪里、出发前要准备什么，一起排进每一天吧。"
+    text_body = f"{recipient_name}，你好：\n\n{line}\n{invite}\n\n一起排计划：{link}\n\n—— 我们之间的小事"
+    html_body = f"""
+    <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;line-height:1.6;color:#2b2522;max-width:560px;margin:0 auto;padding:24px;">
+      <p>{escape(recipient_name)}，你好：</p>
+      <p>{escape(line)}</p>
+      <div style="background:#fdf6f1;border:1px solid #e9ddd3;border-radius:12px;padding:16px 18px;margin:12px 0;color:#6b605a;">
+        {escape(invite)}
+      </div>
+      <p><a href="{escape(link, quote=True)}" style="display:inline-block;background:#d76679;color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;">一起排计划</a></p>
+      <p style="color:#a09489;font-size:12px;margin-top:24px;">—— 我们之间的小事</p>
+    </div>
+    """
+    return send_email(recipient_email, subject, text_body, html_body)
 
 
 def notify_cycle_reminder(

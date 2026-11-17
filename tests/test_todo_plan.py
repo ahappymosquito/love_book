@@ -88,7 +88,7 @@ def test_items_attach_to_the_next_meeting_and_move_back_to_the_pool(client: Test
     upcoming = create_meeting(client, token, "下次", today + timedelta(days=3), today + timedelta(days=4))
 
     prep = create_item(client, token, title="订高铁票", category="prep", meeting_session_id=upcoming["id"])
-    wish = create_item(client, token, title="去看海", category="wish")
+    wish = create_item(client, token, title="去看海", category="play")
     plan = client.get("/todos/plan", headers=auth(token)).json()
 
     assert plan["focus_meeting_id"] == upcoming["id"]
@@ -209,6 +209,85 @@ def test_cancelling_a_meeting_returns_items_to_the_pool_and_merging_keeps_them(c
 
     assert client.delete(f"/meeting-sessions/{first['id']}", headers=auth(token)).status_code == 204
     assert client.get(f"/todos/items/{moved['id']}", headers=auth(token)).json()["meeting_session_id"] is None
+
+
+def test_items_can_be_placed_on_a_meeting_day_and_time_slot(client: TestClient, pair_tokens: dict) -> None:
+    token = str(pair_tokens["user_a_token"])
+    today = beijing_today()
+    meeting = create_meeting(client, token, "三天两晚", today + timedelta(days=5), today + timedelta(days=7))
+    second_day = (today + timedelta(days=6)).isoformat()
+
+    placed = create_item(
+        client, token, title="火锅", meeting_session_id=meeting["id"], scheduled_on=second_day, start_minute=18 * 60 + 30
+    )
+    assert (placed["scheduled_on"], placed["start_minute"], placed["end_minute"]) == (second_day, 1110, 1170)
+
+    moved = client.patch(f"/todos/items/{placed['id']}", headers=auth(token), json={"start_minute": 12 * 60, "end_minute": 13 * 60 + 30})
+    assert (moved.json()["start_minute"], moved.json()["end_minute"]) == (720, 810)
+
+    all_day = client.patch(f"/todos/items/{placed['id']}", headers=auth(token), json={"start_minute": None})
+    assert all_day.json()["scheduled_on"] == second_day
+    assert (all_day.json()["start_minute"], all_day.json()["end_minute"]) == (None, None)
+
+    outside = client.patch(f"/todos/items/{placed['id']}", headers=auth(token), json={"scheduled_on": today.isoformat()})
+    backwards = client.patch(
+        f"/todos/items/{placed['id']}", headers=auth(token), json={"start_minute": 600, "end_minute": 540}
+    )
+    no_meeting = client.post(
+        "/todos/items", headers=auth(token), json={"category": "food", "title": "飘着", "scheduled_on": second_day}
+    )
+    assert outside.status_code == backwards.status_code == no_meeting.status_code == 422
+
+    client.patch(f"/todos/items/{placed['id']}", headers=auth(token), json={"start_minute": 600})
+    unplaced = client.patch(f"/todos/items/{placed['id']}", headers=auth(token), json={"scheduled_on": None})
+    assert (unplaced.json()["scheduled_on"], unplaced.json()["start_minute"], unplaced.json()["end_minute"]) == (None, None, None)
+
+    client.patch(f"/todos/items/{placed['id']}", headers=auth(token), json={"scheduled_on": second_day, "start_minute": 600})
+    assert client.delete(f"/meeting-sessions/{meeting['id']}", headers=auth(token)).status_code == 204
+    detached = client.get(f"/todos/items/{placed['id']}", headers=auth(token)).json()
+    assert (detached["meeting_session_id"], detached["scheduled_on"], detached["start_minute"]) == (None, None, None)
+
+
+def test_wish_category_is_gone_and_old_wishes_are_purged(client: TestClient, pair_tokens: dict, db_session: Session) -> None:
+    token = str(pair_tokens["user_a_token"])
+    assert client.post("/todos/items", headers=auth(token), json={"category": "wish", "title": "去看海"}).status_code == 422
+    kept = create_item(client, token, title="吃面", category="food")
+    old = create_item(client, token, title="旧心愿", category="play")
+    client.post(f"/todos/items/{old['id']}/comments", headers=auth(token), json={"text": "好想去"})
+    photo = client.post(f"/todos/items/{old['id']}/images", headers=auth(token), files={"file": ("a.png", png_bytes(), "image/png")}).json()
+    photo_path = media_path(db_session.get(TodoImage, photo["id"]).storage_key)
+    db_session.execute(text("UPDATE todo_items SET category = 'wish' WHERE id = :id"), {"id": old["id"]})
+    db_session.commit()
+
+    assert database._purge_wish_todos(db_session.get_bind()) == 1
+    db_session.expire_all()
+
+    assert db_session.get(TodoItem, old["id"]) is None
+    assert db_session.get(TodoItem, kept["id"]) is not None
+    assert db_session.execute(text("SELECT COUNT(*) FROM todo_comments WHERE item_id = :id"), {"id": old["id"]}).scalar_one() == 0
+    assert not photo_path.exists()
+    assert database._purge_wish_todos(db_session.get_bind()) == 0
+
+
+def test_new_future_meeting_invites_the_partner_by_email(client: TestClient, monkeypatch) -> None:
+    sent: list[dict] = []
+    monkeypatch.setattr("app.emailer.send_email", lambda to, subject, text_body, html_body=None: sent.append({"to": to, "subject": subject, "text": text_body}) or True)
+    pair = client.post(
+        "/admin/pairs",
+        headers={"X-Admin-Key": "test-admin-key"},
+        json={"user_a_display_name": "小A", "user_b_display_name": "小B", "user_a_email": "a@example.com", "user_b_email": "b@example.com"},
+    ).json()
+    today = beijing_today()
+
+    created = create_meeting(client, pair["user_a_token"], "周末见", today + timedelta(days=3), today + timedelta(days=5))
+    create_meeting(client, pair["user_b_token"], "补上的旧见面", today - timedelta(days=40), today - timedelta(days=39))
+    create_meeting(client, pair["user_b_token"], "重叠的", today + timedelta(days=4), today + timedelta(days=6))
+
+    assert len(sent) == 1
+    assert sent[0]["to"] == "b@example.com"
+    assert "小A 定好了下次见面" in sent[0]["subject"]
+    assert "3 天" in sent[0]["subject"]
+    assert f"/todo?meeting={created['id']}" in sent[0]["text"]
 
 
 def test_todo_images_are_shared_by_the_pair_and_removed_with_the_item(

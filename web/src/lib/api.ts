@@ -357,8 +357,15 @@ export const api = {
 
   // Todo plan
   getTodoPlan: (options?: { silent?: boolean }) => apiRequest<TodoPlanOut>("/todos/plan", { silent: options?.silent }),
-  createTodoItem: (payload: { category: TodoCategory; title: string; note?: string | null; meeting_session_id?: number | null }) =>
-    apiRequest<TodoItemOut>("/todos/items", { method: "POST", json: payload }),
+  createTodoItem: (payload: {
+    category: TodoCategory;
+    title: string;
+    note?: string | null;
+    meeting_session_id?: number | null;
+    scheduled_on?: string | null;
+    start_minute?: number | null;
+    end_minute?: number | null;
+  }) => apiRequest<TodoItemOut>("/todos/items", { method: "POST", json: payload }),
   updateTodoItem: (
     id: number,
     payload: {
@@ -366,6 +373,9 @@ export const api = {
       note?: string | null;
       category?: TodoCategory;
       meeting_session_id?: number | null;
+      scheduled_on?: string | null;
+      start_minute?: number | null;
+      end_minute?: number | null;
       completed?: boolean;
       is_archived?: boolean;
     },

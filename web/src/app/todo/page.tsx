@@ -1,9 +1,10 @@
 "use client";
 
-// Pair-shared meeting checklist: a hero for the next meeting (countdown, dates, progress), its items grouped as 准备 / 吃 / 玩 / 住 / 心愿 with one-tap completion,
-// a wish pool that can be moved into the meeting, a picker for "随便抽一个", and a done list where any completed item can be written into the journal in one tap.
-// The detail panel (mobile bottom sheet over the nav, desktop sticky column) edits title, category, meeting, note, optional comments and photos.
-// Background polling every 8s skips hidden tabs, keeps the last good data on failure, and drops stale responses with a request sequence number.
+// 约会计划（/todo，底栏“约会”）：顶部是下一次见面（标题点开共享编辑、日期、倒计时、准备进度，多次见面可切换，“再定一次”新建，新建后后端发邮件请 TA 一起排）。
+// 主体参考 Notion 日历：MeetingDayPlanner 把见面的每一天排成时间网格，点空白格就地加一件事，拖动卡片换时间；右侧是“还没排时间”的吃/玩/住、
+// “出发前要准备”清单、上次没赶上的事（可一键放进这次见面）和“一起做过的”（可写进手账）。分类只有吃 / 玩 / 住 / 准备。
+// 详情面板（手机底部弹窗盖住底边栏，桌面右侧抽屉）可改标题、分类、所属见面、哪一天几点、描述，写留言、传照片。
+// 每 8 秒后台刷新：页面隐藏时跳过、失败保留上次数据并只提示一次，用请求序号丢弃过期响应；?meeting=ID（邮件链接）直接打开那次见面。
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -12,11 +13,11 @@ import {
   Backpack,
   BedDouble,
   BookHeart,
+  CalendarClock,
   CalendarHeart,
   Check,
   ChevronRight,
   CloudOff,
-  Dices,
   ImageIcon,
   ImagePlus,
   Loader2,
@@ -24,7 +25,6 @@ import {
   Pencil,
   Plus,
   RotateCcw,
-  Star,
   Ticket,
   Trash2,
   Utensils,
@@ -33,33 +33,34 @@ import {
 import { toast } from "sonner";
 import { AppHeader } from "@/components/app-header";
 import { AuthGate } from "@/components/auth-gate";
+import { MeetingDayPlanner } from "@/components/meeting-day-planner";
+import type { SlotDraft } from "@/components/meeting-day-planner";
 import { MeetingEditorDialog } from "@/components/meeting-editor-dialog";
 import { MotionCollapse } from "@/components/ui/motion-collapse";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { shanghaiDateKey } from "@/lib/dates";
 import { formatRelative } from "@/lib/format";
+import { DEFAULT_DURATION, meetingDays, minuteLabel, parseMinute } from "@/lib/meeting-plan";
 import { MOTION_TRANSITIONS } from "@/lib/motion";
 import { PAGE_MAIN_WIDTH_CLASS } from "@/lib/page-width";
 import { useAppStore } from "@/lib/store";
 import { useAuthedBlobUrl } from "@/lib/use-authed-blob-url";
 import type { TodoCategory, TodoImageOut, TodoItemDetail, TodoItemOut, TodoMeetingOut, TodoPlanOut } from "@/lib/types";
 
-const CATEGORY_META: Record<TodoCategory, { label: string; group: string; icon: ReactNode; tone: string }> = {
-  prep: { label: "准备", group: "出发前要准备", icon: <Backpack className="h-4 w-4" />, tone: "bg-sage/26 text-ink-soft" },
-  food: { label: "吃", group: "想一起吃", icon: <Utensils className="h-4 w-4" />, tone: "bg-peach/34 text-peach-deep" },
-  play: { label: "玩", group: "想一起玩", icon: <Ticket className="h-4 w-4" />, tone: "bg-rose/20 text-rose-deep" },
-  stay: { label: "住", group: "住在哪里", icon: <BedDouble className="h-4 w-4" />, tone: "bg-sage/20 text-ink-soft" },
-  wish: { label: "心愿", group: "小心愿", icon: <Star className="h-4 w-4" />, tone: "bg-surface-raised text-rose-deep ring-1 ring-rose/24" },
+const CATEGORY_META: Record<TodoCategory, { label: string; icon: ReactNode; tone: string }> = {
+  food: { label: "吃", icon: <Utensils className="h-4 w-4" />, tone: "bg-peach/34 text-peach-deep" },
+  play: { label: "玩", icon: <Ticket className="h-4 w-4" />, tone: "bg-rose/20 text-rose-deep" },
+  stay: { label: "住", icon: <BedDouble className="h-4 w-4" />, tone: "bg-sage/24 text-ink-soft" },
+  prep: { label: "准备", icon: <Backpack className="h-4 w-4" />, tone: "bg-line/40 text-ink-soft" },
 };
-const CATEGORY_ORDER: TodoCategory[] = ["prep", "food", "play", "stay", "wish"];
-const STARTER_IDEAS: Array<{ title: string; category: TodoCategory }> = [
+const CATEGORY_ORDER: TodoCategory[] = ["food", "play", "stay", "prep"];
+const PREP_IDEAS = ["订车票", "带充电宝", "带身份证", "订住的地方"];
+const TRAY_IDEAS: Array<{ title: string; category: TodoCategory }> = [
   { title: "唱歌", category: "play" },
-  { title: "台球", category: "play" },
   { title: "看电影", category: "play" },
   { title: "拼乐高", category: "play" },
   { title: "一起做顿饭", category: "food" },
-  { title: "拍一组合照", category: "wish" },
 ];
 const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 
@@ -81,7 +82,7 @@ function formatRange(meeting: TodoMeetingOut): string {
 function countdown(meeting: TodoMeetingOut, today: string): { big: string; small: string } {
   const toStart = dayNumber(meeting.started_on) - dayNumber(today);
   const length = dayNumber(meeting.ended_on) - dayNumber(meeting.started_on) + 1;
-  if (toStart > 1) return { big: `${toStart}`, small: "天后见面" };
+  if (toStart > 1) return { big: `${toStart}`, small: length > 1 ? `天后见面 · 一起 ${length} 天` : "天后见面" };
   if (toStart === 1) return { big: "明天", small: "就要见面啦" };
   if (dayNumber(today) <= dayNumber(meeting.ended_on)) {
     const day = dayNumber(today) - dayNumber(meeting.started_on) + 1;
@@ -100,6 +101,10 @@ function defaultMeetingDates(today: string): { title: string; started_on: string
   return { title: "下一次见面", started_on: key(start), ended_on: key(end) };
 }
 
+function isPlaced(item: TodoItemOut, meeting: TodoMeetingOut): boolean {
+  return Boolean(item.scheduled_on && item.scheduled_on >= meeting.started_on && item.scheduled_on <= meeting.ended_on);
+}
+
 export default function TodoPage() {
   return (
     <AuthGate>
@@ -115,7 +120,11 @@ function TodoInner() {
   const [plan, setPlan] = useState<TodoPlanOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [selectedMeetingId, setSelectedMeetingId] = useState<number | null>(null);
+  const [selectedMeetingId, setSelectedMeetingId] = useState<number | null>(() => {
+    if (typeof window === "undefined") return null;
+    const fromUrl = Number(new URLSearchParams(window.location.search).get("meeting"));
+    return Number.isInteger(fromUrl) && fromUrl > 0 ? fromUrl : null;
+  });
   const [detailId, setDetailId] = useState<number | null>(null);
   const [meetingDialog, setMeetingDialog] = useState<"create" | "edit" | null>(null);
   const [busyIds, setBusyIds] = useState<Set<number>>(() => new Set());
@@ -149,7 +158,7 @@ function TodoInner() {
       setLoadFailed(true);
       if (!failureNotifiedRef.current) {
         failureNotifiedRef.current = true;
-        toast.error("清单暂时没同步上，稍后会自动再试");
+        toast.error("计划暂时没同步上，稍后会自动再试");
       }
     } finally {
       if (inFlightSeqRef.current === seq) inFlightSeqRef.current = 0;
@@ -192,13 +201,16 @@ function TodoInner() {
     () => (meeting ? items.filter((item) => item.meeting_session_id === meeting.id) : []),
     [items, meeting],
   );
-  const meetingOpen = meetingItems.filter((item) => !item.completed_at);
   const meetingDone = meetingItems.filter((item) => item.completed_at);
-  const groupedOpen = useMemo(
-    () => CATEGORY_ORDER.map((category) => ({ category, items: meetingOpen.filter((item) => item.category === category) })).filter((group) => group.items.length),
-    [meetingOpen],
+  const tray = useMemo(
+    () => (meeting ? meetingItems.filter((item) => item.category !== "prep" && !isPlaced(item, meeting)) : []),
+    [meeting, meetingItems],
   );
-  const pool = useMemo(
+  const prepItems = useMemo(
+    () => (meeting ? meetingItems.filter((item) => item.category === "prep" && !isPlaced(item, meeting)) : []),
+    [meeting, meetingItems],
+  );
+  const leftovers = useMemo(
     () =>
       items
         .filter((item) => {
@@ -232,15 +244,33 @@ function TodoInner() {
     });
   }
 
-  async function addItem(title: string, category: TodoCategory, meetingId: number | null): Promise<boolean> {
+  async function addItem(title: string, category: TodoCategory, slot?: SlotDraft): Promise<boolean> {
+    if (!meeting) return false;
     try {
-      const created = await api.createTodoItem({ title, category, meeting_session_id: meetingId });
+      const created = await api.createTodoItem({
+        title,
+        category,
+        meeting_session_id: meeting.id,
+        ...(slot ? { scheduled_on: slot.day, start_minute: slot.start, end_minute: slot.end } : {}),
+      });
       markLocalChange();
       setPlan((current) => (current ? { ...current, items: [...current.items, created] } : current));
       setHighlightId(created.id);
       return true;
     } catch {
       return false;
+    }
+  }
+
+  async function reschedule(item: TodoItemOut, slot: SlotDraft) {
+    markLocalChange();
+    replaceItem({ ...item, scheduled_on: slot.day, start_minute: slot.start, end_minute: slot.end });
+    try {
+      const next = await api.updateTodoItem(item.id, { scheduled_on: slot.day, start_minute: slot.start, end_minute: slot.end });
+      markLocalChange();
+      replaceItem(next);
+    } catch {
+      replaceItem(item);
     }
   }
 
@@ -254,8 +284,8 @@ function TodoInner() {
       const next = await api.updateTodoItem(item.id, { completed: completing });
       markLocalChange();
       replaceItem(next);
-      if (completing && meeting && item.meeting_session_id === meeting.id && meetingOpen.length === 1 && meetingOpen[0].id === item.id) {
-        toast.success("这次见面要做的都完成啦");
+      if (completing && meeting && item.meeting_session_id === meeting.id && meetingDone.length + 1 === meetingItems.length) {
+        toast.success("这次见面想做的都做到啦");
       }
     } catch {
       replaceItem(item);
@@ -273,7 +303,7 @@ function TodoInner() {
       replaceItem(next);
       setHighlightId(item.id);
       const target = meetingId != null ? meetingsById.get(meetingId) : null;
-      toast.success(target ? `放进「${target.title}」啦` : "放回心愿池啦");
+      toast.success(target ? `放进「${target.title}」啦` : "先从见面里拿出来了");
     } catch {
       return;
     } finally {
@@ -299,206 +329,174 @@ function TodoInner() {
     }
   }
 
-  function drawFromPool() {
-    if (!pool.length) return;
-    const picked = pool[Math.floor(Math.random() * pool.length)];
-    setHighlightId(picked.id);
-    document.getElementById(`todo-item-${picked.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-    toast(`抽到了：${picked.title}`, meeting ? { action: { label: "放进这次见面", onClick: () => void moveItem(picked, meeting.id) } } : undefined);
-  }
-
-  const columns = detailId != null ? "2xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]" : "lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]";
+  const rowProps = (item: TodoItemOut) => ({
+    item,
+    busy: busyIds.has(item.id),
+    highlighted: highlightId === item.id,
+    onToggle: () => void toggleComplete(item),
+    onOpen: () => setDetailId(item.id),
+  });
 
   return (
     <div className="viewport-guard min-h-dvh pb-[calc(env(safe-area-inset-bottom,0px)+9rem)] text-ink">
-      <AppHeader title="见面清单" subtitle="下一次见面，想一起做的事" />
+      <AppHeader title="约会计划" subtitle="定好日子，一起排每一天" />
 
-      <div className={cn("mx-auto flex w-full min-w-0 items-start gap-4 px-4 pt-4 sm:px-6 sm:pt-5", PAGE_MAIN_WIDTH_CLASS["7xl"])}>
-        <main className="min-w-0 flex-1">
-          {loading && !plan ? (
-            <PlanSkeleton />
-          ) : !plan ? (
-            <LoadFailed onRetry={() => void load()} />
-          ) : (
-            <>
-              <MeetingHero
-                meeting={meeting}
-                upcoming={upcomingMeetings}
-                today={today}
-                total={meetingItems.length}
-                done={meetingDone.length}
-                onSelect={setSelectedMeetingId}
-                onCreate={() => setMeetingDialog("create")}
-                onEdit={() => setMeetingDialog("edit")}
-              />
-              {loadFailed && <p className="mt-3 px-1 font-sc text-xs text-ink-muted">暂时没连上，显示的是上次同步的清单。</p>}
+      <main className={cn("mx-auto w-full min-w-0 px-4 pt-4 sm:px-6 sm:pt-5", PAGE_MAIN_WIDTH_CLASS["7xl"])}>
+        {loading && !plan ? (
+          <PlanSkeleton />
+        ) : !plan ? (
+          <LoadFailed onRetry={() => void load()} />
+        ) : (
+          <>
+            <MeetingHero
+              meeting={meeting}
+              upcoming={upcomingMeetings}
+              today={today}
+              total={meetingItems.length}
+              done={meetingDone.length}
+              onSelect={setSelectedMeetingId}
+              onCreate={() => setMeetingDialog("create")}
+              onEdit={() => setMeetingDialog("edit")}
+            />
+            {loadFailed && <p className="mt-3 px-1 font-sc text-xs text-ink-muted">暂时没连上，显示的是上次同步的计划。</p>}
 
-              <div className={cn("mt-4 grid gap-4", columns)}>
-                <section className="content-surface min-w-0 p-4 sm:p-5" aria-labelledby="meeting-list-title">
-                  <h2 id="meeting-list-title" className="font-display text-lg font-semibold text-ink">
-                    {meeting ? "这次见面要做的" : "先定个日子吧"}
-                  </h2>
-                  {meeting ? (
-                    <>
-                      <QuickAdd
-                        key={`meeting-${meeting.id}`}
-                        className="mt-3"
-                        categories={["prep", "food", "play", "stay"]}
-                        defaultCategory="prep"
-                        placeholder="比如：带上充电宝、订餐厅"
-                        onAdd={(title, category) => addItem(title, category, meeting.id)}
-                      />
-                      {meetingItems.length === 0 ? (
-                        <p className="mt-4 rounded-2xl border border-dashed border-line/70 bg-peach/8 px-4 py-6 text-center font-sc text-sm leading-relaxed text-ink-muted">
-                          还没放进任何事。可以从右边的心愿池挑几件，也可以直接写下来。
-                        </p>
-                      ) : (
-                        <div className="mt-4 space-y-5">
-                          {groupedOpen.map((group) => (
-                            <div key={group.category}>
-                              <h3 className="mb-2 flex items-center gap-2 px-1 font-sc text-sm font-medium text-ink-soft">
-                                <span className={cn("grid h-6 w-6 place-items-center rounded-lg", CATEGORY_META[group.category].tone)}>{CATEGORY_META[group.category].icon}</span>
-                                {CATEGORY_META[group.category].group}
-                                <span className="text-xs text-ink-muted">{group.items.length}</span>
-                              </h3>
-                              <ul className="space-y-2">
-                                <AnimatePresence initial={false}>
-                                  {group.items.map((item) => (
-                                    <ItemRow key={item.id} item={item} busy={busyIds.has(item.id)} highlighted={highlightId === item.id}
-                                      onToggle={() => void toggleComplete(item)} onOpen={() => setDetailId(item.id)} />
-                                  ))}
-                                </AnimatePresence>
-                              </ul>
-                            </div>
-                          ))}
-                          {meetingDone.length > 0 && (
-                            <div>
-                              <h3 className="mb-2 flex items-center gap-2 px-1 font-sc text-sm font-medium text-ink-soft">
-                                <span className="grid h-6 w-6 place-items-center rounded-lg bg-sage/30 text-ink-soft"><Check className="h-4 w-4" /></span>
-                                已经做到啦
-                                <span className="text-xs text-ink-muted">{meetingDone.length}</span>
-                              </h3>
-                              <ul className="space-y-2">
-                                <AnimatePresence initial={false}>
-                                  {meetingDone.map((item) => (
-                                    <ItemRow key={item.id} item={item} busy={busyIds.has(item.id)} highlighted={highlightId === item.id}
-                                      onToggle={() => void toggleComplete(item)} onOpen={() => setDetailId(item.id)} onJournal={() => void writeJournal(item)} />
-                                  ))}
-                                </AnimatePresence>
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="mt-3 rounded-2xl border border-dashed border-line/70 bg-peach/8 px-4 py-6 text-center">
-                      <CalendarHeart className="mx-auto h-7 w-7 text-rose-deep" />
-                      <p className="mt-2 font-sc text-sm leading-relaxed text-ink-soft">定下见面的日子，再把想吃、想玩、要准备的事放进来。</p>
-                      <button type="button" onClick={() => setMeetingDialog("create")} className="btn-primary mt-4 inline-flex min-h-11 items-center gap-2 rounded-full px-5 font-sc text-sm font-medium focus-ring">
-                        <Plus className="h-4 w-4" />定下一次见面
-                      </button>
-                    </div>
-                  )}
-                </section>
+            <div className="mt-4 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_21rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]">
+              {meeting ? (
+                <MeetingDayPlanner
+                  meeting={meeting}
+                  items={meetingItems}
+                  today={today}
+                  highlightId={highlightId}
+                  onOpen={setDetailId}
+                  onToggle={(item) => void toggleComplete(item)}
+                  onCreate={addItem}
+                  onReschedule={reschedule}
+                />
+              ) : (
+                <NoMeetingYet onCreate={() => setMeetingDialog("create")} />
+              )}
 
-                <div className="min-w-0 space-y-4">
-                  <section className="content-surface p-4 sm:p-5" aria-labelledby="wish-pool-title">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <h2 id="wish-pool-title" className="font-display text-lg font-semibold text-ink">心愿池</h2>
-                        <p className="mt-0.5 font-sc text-xs text-ink-muted">想到就先记下，见面前再挑</p>
-                      </div>
-                      {pool.length > 1 && (
-                        <button type="button" onClick={drawFromPool} className="btn-ghost inline-flex min-h-10 flex-none items-center gap-1.5 rounded-full px-3 font-sc text-sm focus-ring">
-                          <Dices className="h-4 w-4" />抽一个
-                        </button>
-                      )}
-                    </div>
+              <div className="min-w-0 space-y-4">
+                {meeting && (
+                  <PlanSection
+                    id="plan-tray"
+                    title="还没排时间"
+                    hint="先记下想吃想玩的，再挑个时间排进去"
+                    count={tray.length}
+                  >
                     <QuickAdd
-                      className="mt-3"
-                      categories={["wish", "food", "play", "stay", "prep"]}
-                      defaultCategory="wish"
-                      placeholder="比如：想去吃那家火锅"
-                      onAdd={(title, category) => addItem(title, category, null)}
+                      key={`tray-${meeting.id}`}
+                      categories={["food", "play", "stay"]}
+                      defaultCategory="play"
+                      placeholder="比如：想去那家火锅"
+                      onAdd={(title, category) => addItem(title, category)}
                     />
-                    {pool.length === 0 ? (
-                      <div className="mt-4 rounded-2xl border border-dashed border-line/70 bg-peach/8 p-4">
-                        <p className="font-sc text-sm text-ink-muted">心愿池空空的，先挑几个放进来？</p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {STARTER_IDEAS.map((idea) => (
-                            <button key={idea.title} type="button" onClick={() => void addItem(idea.title, idea.category, null)}
-                              className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-line/70 bg-surface-raised px-3 font-sc text-sm text-ink-soft transition hover:border-rose/40 hover:text-rose-deep focus-ring">
-                              <Plus className="h-3.5 w-3.5" />{idea.title}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                    {tray.length === 0 ? (
+                      meetingItems.length === 0 ? (
+                        <IdeaChips ideas={TRAY_IDEAS} onPick={(idea) => void addItem(idea.title, idea.category)} />
+                      ) : (
+                        <p className="mt-3 px-1 font-sc text-xs text-ink-muted">想做的都排好时间啦。</p>
+                      )
                     ) : (
-                      <ul className="mt-4 space-y-2">
+                      <ul className="mt-3 space-y-2">
                         <AnimatePresence initial={false}>
-                          {pool.map((item) => (
-                            <ItemRow key={item.id} item={item} showCategory busy={busyIds.has(item.id)} highlighted={highlightId === item.id}
-                              onToggle={() => void toggleComplete(item)} onOpen={() => setDetailId(item.id)}
-                              onMove={meeting ? () => void moveItem(item, meeting.id) : undefined} />
+                          {tray.map((item) => (
+                            <ItemRow key={item.id} {...rowProps(item)} showCategory actionLabel="排时间" onAction={() => setDetailId(item.id)} />
                           ))}
                         </AnimatePresence>
                       </ul>
                     )}
-                  </section>
+                  </PlanSection>
+                )}
 
-                  {history.length > 0 && (
-                    <section className="content-surface p-2 sm:p-3">
-                      <button type="button" onClick={() => setHistoryOpen((value) => !value)} aria-expanded={historyOpen}
-                        className="flex min-h-12 w-full items-center justify-between rounded-2xl px-3 text-left hover:bg-peach/8 focus-ring">
-                        <span>
-                          <span className="block font-display text-base font-semibold text-ink">一起做过的</span>
-                          <span className="block font-sc text-xs text-ink-muted">{history.length} 件，可以随时写进手账</span>
-                        </span>
-                        <ChevronRight className={cn("h-4 w-4 text-ink-muted transition", historyOpen && "rotate-90")} />
-                      </button>
-                      <MotionCollapse open={historyOpen}>
-                        <ul className="space-y-2 p-2 pt-1">
-                          {history.slice(0, 60).map((item) => (
-                            <ItemRow key={item.id} item={item} showCategory busy={busyIds.has(item.id)} highlighted={false}
-                              doneBy={item.completed_by_id != null ? names.get(item.completed_by_id) : undefined}
-                              onToggle={() => void toggleComplete(item)} onOpen={() => setDetailId(item.id)} onJournal={() => void writeJournal(item)} />
+                {meeting && (
+                  <PlanSection id="plan-prep" title="出发前要准备" hint="谁做好了谁就点一下" count={prepItems.filter((item) => !item.completed_at).length}>
+                    <QuickAdd
+                      key={`prep-${meeting.id}`}
+                      categories={["prep"]}
+                      defaultCategory="prep"
+                      placeholder="比如：带上充电宝"
+                      onAdd={(title, category) => addItem(title, category)}
+                    />
+                    {prepItems.length === 0 ? (
+                      <IdeaChips ideas={PREP_IDEAS.map((title) => ({ title, category: "prep" as const }))} onPick={(idea) => void addItem(idea.title, idea.category)} />
+                    ) : (
+                      <ul className="mt-3 space-y-2">
+                        <AnimatePresence initial={false}>
+                          {prepItems.map((item) => (
+                            <ItemRow key={item.id} {...rowProps(item)} />
                           ))}
-                        </ul>
-                      </MotionCollapse>
-                    </section>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-        </main>
+                        </AnimatePresence>
+                      </ul>
+                    )}
+                  </PlanSection>
+                )}
 
-        <AnimatePresence>
-          {detailId != null && plan && (
-            <TodoDetailPanel
-              key={detailId}
-              itemId={detailId}
-              item={detailItem}
-              meetings={upcomingMeetings}
-              meetingsById={meetingsById}
-              names={names}
-              onClose={() => setDetailId(null)}
-              onChanged={(next) => {
-                markLocalChange();
-                replaceItem(next);
-              }}
-              onToggle={(item) => toggleComplete(item)}
-              onJournal={(item) => writeJournal(item)}
-              onDeleted={(id) => {
-                markLocalChange();
-                setPlan((current) => (current ? { ...current, items: current.items.filter((item) => item.id !== id) } : current));
-                setDetailId(null);
-              }}
-            />
-          )}
-        </AnimatePresence>
-      </div>
+                {leftovers.length > 0 && (
+                  <PlanSection id="plan-leftovers" title="上次没赶上的" hint={meeting ? "可以放进这次见面" : "定下见面后可以放进去"} count={leftovers.length}>
+                    <ul className="space-y-2">
+                      <AnimatePresence initial={false}>
+                        {leftovers.map((item) => (
+                          <ItemRow key={item.id} {...rowProps(item)} showCategory
+                            actionLabel={meeting ? "放进这次" : undefined}
+                            onAction={meeting ? () => void moveItem(item, meeting.id) : undefined} />
+                        ))}
+                      </AnimatePresence>
+                    </ul>
+                  </PlanSection>
+                )}
+
+                {history.length > 0 && (
+                  <section className="content-surface p-2 sm:p-3">
+                    <button type="button" onClick={() => setHistoryOpen((value) => !value)} aria-expanded={historyOpen}
+                      className="flex min-h-12 w-full items-center justify-between rounded-2xl px-3 text-left hover:bg-peach/8 focus-ring">
+                      <span>
+                        <span className="block font-display text-base font-semibold text-ink">一起做过的</span>
+                        <span className="block font-sc text-xs text-ink-muted">{history.length} 件，可以随时写进手账</span>
+                      </span>
+                      <ChevronRight className={cn("h-4 w-4 text-ink-muted transition", historyOpen && "rotate-90")} />
+                    </button>
+                    <MotionCollapse open={historyOpen}>
+                      <ul className="space-y-2 p-2 pt-1">
+                        {history.slice(0, 60).map((item) => (
+                          <ItemRow key={item.id} {...rowProps(item)} highlighted={false} showCategory
+                            doneBy={item.completed_by_id != null ? names.get(item.completed_by_id) : undefined}
+                            onJournal={() => void writeJournal(item)} />
+                        ))}
+                      </ul>
+                    </MotionCollapse>
+                  </section>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </main>
+
+      <AnimatePresence>
+        {detailId != null && plan && (
+          <TodoDetailPanel
+            key={detailId}
+            itemId={detailId}
+            item={detailItem}
+            meetings={upcomingMeetings}
+            meetingsById={meetingsById}
+            names={names}
+            onClose={() => setDetailId(null)}
+            onChanged={(next) => {
+              markLocalChange();
+              replaceItem(next);
+            }}
+            onToggle={(item) => toggleComplete(item)}
+            onJournal={(item) => writeJournal(item)}
+            onDeleted={(id) => {
+              markLocalChange();
+              setPlan((current) => (current ? { ...current, items: current.items.filter((item) => item.id !== id) } : current));
+              setDetailId(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
 
       <MeetingEditorDialog
         open={meetingDialog !== null}
@@ -515,6 +513,51 @@ function TodoInner() {
         }}
       />
     </div>
+  );
+}
+
+function PlanSection({ id, title, hint, count, children }: { id: string; title: string; hint: string; count: number; children: ReactNode }) {
+  return (
+    <section className="content-surface p-4" aria-labelledby={`${id}-title`}>
+      <div className="mb-3 flex items-baseline justify-between gap-2">
+        <h2 id={`${id}-title`} className="font-display text-base font-semibold text-ink">{title}</h2>
+        {count > 0 && <span className="font-sc text-xs text-ink-muted">{count} 件</span>}
+      </div>
+      <p className="-mt-2 mb-3 font-sc text-xs text-ink-muted">{hint}</p>
+      {children}
+    </section>
+  );
+}
+
+function IdeaChips({ ideas, onPick }: { ideas: Array<{ title: string; category: TodoCategory }>; onPick: (idea: { title: string; category: TodoCategory }) => void }) {
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {ideas.map((idea) => (
+        <button key={idea.title} type="button" onClick={() => onPick(idea)}
+          className="inline-flex min-h-9 items-center gap-1 rounded-full border border-dashed border-line/80 px-3 font-sc text-xs text-ink-soft transition hover:border-rose/40 hover:text-rose-deep focus-ring">
+          <Plus className="h-3.5 w-3.5" />{idea.title}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function NoMeetingYet({ onCreate }: { onCreate: () => void }) {
+  return (
+    <section className="content-surface grid min-h-[22rem] place-items-center p-6 text-center">
+      <div className="max-w-sm">
+        <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-rose/10 text-rose-deep">
+          <CalendarClock className="h-7 w-7" />
+        </span>
+        <h2 className="mt-4 font-display text-xl font-semibold text-ink">先定下见面的日子</h2>
+        <p className="mt-2 font-sc text-sm leading-relaxed text-ink-soft">
+          定好后会发邮件告诉 TA。见面的每一天会排成一张日程表，吃什么、玩什么、住哪里，一起往里填。
+        </p>
+        <button type="button" onClick={onCreate} className="btn-primary mt-5 inline-flex min-h-11 items-center gap-2 rounded-full px-5 font-sc text-sm font-medium focus-ring">
+          <CalendarHeart className="h-4 w-4" />定下一次见面
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -538,47 +581,30 @@ function MeetingHero({
   onEdit: () => void;
 }) {
   const reducedMotion = useReducedMotion();
-  if (!meeting) {
-    return (
-      <section className="content-surface relative overflow-hidden p-5 sm:p-6">
-        <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-rose/12" aria-hidden="true" />
-        <p className="font-sc text-sm text-ink-muted">下一次见面</p>
-        <h2 className="mt-1 font-display text-2xl font-semibold text-ink">还没定日子</h2>
-        <p className="mt-2 max-w-md font-sc text-sm leading-relaxed text-ink-soft">先把日子定下来，想做的事就有地方放了。</p>
-        <button type="button" onClick={onCreate} className="btn-primary mt-4 inline-flex min-h-11 items-center gap-2 rounded-full px-5 font-sc text-sm font-medium focus-ring">
-          <CalendarHeart className="h-4 w-4" />定下一次见面
-        </button>
-      </section>
-    );
-  }
+  if (!meeting) return null;
 
   const { big, small } = countdown(meeting, today);
   const percent = total ? Math.round((done / total) * 100) : 0;
   return (
-    <section className="content-surface relative overflow-hidden p-5 sm:p-6" aria-label="下一次见面">
-      <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-rose/12" aria-hidden="true" />
-      <div className="pointer-events-none absolute -bottom-20 right-24 h-40 w-40 rounded-full bg-peach/16" aria-hidden="true" />
-      <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+    <section className="content-surface relative overflow-hidden px-5 py-4 sm:px-6" aria-label="下一次见面">
+      <div className="pointer-events-none absolute -right-12 -top-16 h-44 w-44 rounded-full bg-rose/12" aria-hidden="true" />
+      <div className="relative flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div className="min-w-0">
-          <p className="font-sc text-sm text-ink-muted">下一次见面</p>
-          <button type="button" onClick={onEdit} className="group mt-1 inline-flex max-w-full items-center gap-2 rounded-lg text-left focus-ring" aria-label={`编辑见面：${meeting.title}`}>
-            <h2 className="truncate font-display text-2xl font-semibold text-ink sm:text-3xl">{meeting.title}</h2>
+          <p className="font-sc text-xs text-ink-muted">下一次见面</p>
+          <button type="button" onClick={onEdit} className="group mt-0.5 inline-flex max-w-full items-center gap-2 rounded-lg text-left focus-ring" aria-label={`编辑见面：${meeting.title}`}>
+            <h2 className="truncate font-display text-xl font-semibold text-ink sm:text-2xl">{meeting.title}</h2>
             <Pencil className="h-4 w-4 flex-none text-ink-muted transition group-hover:text-rose-deep" />
           </button>
-          <p className="mt-1 font-sc text-sm text-ink-soft">{formatRange(meeting)}</p>
+          <p className="font-sc text-sm text-ink-soft">{formatRange(meeting)}</p>
         </div>
-        <div className="flex items-baseline gap-2 sm:flex-col sm:items-end sm:gap-0">
-          <span className="font-display text-4xl font-semibold leading-none text-rose-deep sm:text-5xl">{big}</span>
+        <div className="flex items-baseline gap-2">
+          <span className="font-display text-3xl font-semibold leading-none text-rose-deep sm:text-4xl">{big}</span>
           <span className="font-sc text-sm text-ink-soft">{small}</span>
         </div>
       </div>
 
-      <div className="relative mt-5">
-        <div className="flex items-center justify-between font-sc text-xs text-ink-muted">
-          <span>{total ? `准备好 ${done} / ${total}` : "还没放进要做的事"}</span>
-          {total > 0 && <span>{percent}%</span>}
-        </div>
-        <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-line/45" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-label="准备进度">
+      <div className="relative mt-3 flex items-center gap-3">
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-line/45" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-label="准备进度">
           <motion.div
             className="h-full rounded-full bg-sage"
             initial={false}
@@ -586,27 +612,26 @@ function MeetingHero({
             transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.emphasis}
           />
         </div>
+        <span className="flex-none font-sc text-xs text-ink-muted">{total ? `做到 ${done} / ${total}` : "还没排进事情"}</span>
       </div>
 
-      {upcoming.length > 0 && (
-        <div className="local-x-scroll relative -mx-1 mt-4 overflow-x-auto overscroll-x-contain px-1">
-          <div className="flex w-max gap-2" role="group" aria-label="切换见面">
-            {upcoming.length > 1 &&
-              upcoming.map((entry) => (
-                <button key={entry.id} type="button" onClick={() => onSelect(entry.id)} aria-pressed={entry.id === meeting.id}
-                  className={cn(
-                    "min-h-9 rounded-full border px-3 font-sc text-xs transition focus-ring",
-                    entry.id === meeting.id ? "border-rose/40 bg-rose/12 text-rose-deep" : "border-line/70 bg-surface-raised text-ink-soft hover:border-rose/30",
-                  )}>
-                  {entry.title} · {entry.started_on.slice(5).replace("-", "/")}
-                </button>
-              ))}
-            <button type="button" onClick={onCreate} className="inline-flex min-h-9 items-center gap-1 rounded-full border border-dashed border-line/80 px-3 font-sc text-xs text-ink-soft hover:border-rose/40 hover:text-rose-deep focus-ring">
-              <Plus className="h-3.5 w-3.5" />再定一次
-            </button>
-          </div>
+      <div className="local-x-scroll relative -mx-1 mt-3 overflow-x-auto overscroll-x-contain px-1">
+        <div className="flex w-max gap-2" role="group" aria-label="切换见面">
+          {upcoming.length > 1 &&
+            upcoming.map((entry) => (
+              <button key={entry.id} type="button" onClick={() => onSelect(entry.id)} aria-pressed={entry.id === meeting.id}
+                className={cn(
+                  "min-h-9 rounded-full border px-3 font-sc text-xs transition focus-ring",
+                  entry.id === meeting.id ? "border-rose/40 bg-rose/12 text-rose-deep" : "border-line/70 bg-surface-raised text-ink-soft hover:border-rose/30",
+                )}>
+                {entry.title} · {entry.started_on.slice(5).replace("-", "/")}
+              </button>
+            ))}
+          <button type="button" onClick={onCreate} className="inline-flex min-h-9 items-center gap-1 rounded-full border border-dashed border-line/80 px-3 font-sc text-xs text-ink-soft hover:border-rose/40 hover:text-rose-deep focus-ring">
+            <Plus className="h-3.5 w-3.5" />再定一次
+          </button>
         </div>
-      )}
+      </div>
     </section>
   );
 }
@@ -639,7 +664,7 @@ function QuickAdd({
   }
 
   return (
-    <form onSubmit={submit} className={cn("rounded-2xl border border-line/70 bg-surface-raised/90 p-2 focus-within:border-rose/50", className)}>
+    <form onSubmit={submit} className={cn("rounded-2xl border border-line/70 bg-surface-raised/90 p-1.5 focus-within:border-rose/50", className)}>
       <div className="flex items-center gap-2">
         <input
           value={title}
@@ -647,23 +672,25 @@ function QuickAdd({
           maxLength={200}
           placeholder={placeholder}
           aria-label="写下一件事"
-          className="min-h-11 min-w-0 flex-1 bg-transparent px-2 font-sc text-sm text-ink outline-none placeholder:text-ink-muted"
+          className="min-h-10 min-w-0 flex-1 bg-transparent px-2 font-sc text-sm text-ink outline-none placeholder:text-ink-muted"
         />
-        <button type="submit" disabled={saving || !title.trim()} className="btn-primary grid h-11 w-11 flex-none place-items-center rounded-xl disabled:opacity-50 focus-ring" aria-label="加进去">
+        <button type="submit" disabled={saving || !title.trim()} className="btn-primary grid h-10 w-10 flex-none place-items-center rounded-xl disabled:opacity-50 focus-ring" aria-label="加进去">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
         </button>
       </div>
-      <div className="mt-1 flex flex-wrap gap-1.5 px-1 pb-1" role="radiogroup" aria-label="分类">
-        {categories.map((option) => (
-          <button key={option} type="button" role="radio" aria-checked={category === option} onClick={() => setCategory(option)}
-            className={cn(
-              "inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 font-sc text-xs transition focus-ring",
-              category === option ? "bg-rose/14 text-rose-deep ring-1 ring-rose/30" : "text-ink-soft hover:bg-peach/14",
-            )}>
-            {CATEGORY_META[option].label}
-          </button>
-        ))}
-      </div>
+      {categories.length > 1 && (
+        <div className="mt-1 flex flex-wrap gap-1.5 px-1 pb-0.5" role="radiogroup" aria-label="分类">
+          {categories.map((option) => (
+            <button key={option} type="button" role="radio" aria-checked={category === option} onClick={() => setCategory(option)}
+              className={cn(
+                "inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 font-sc text-xs transition focus-ring",
+                category === option ? "bg-rose/14 text-rose-deep ring-1 ring-rose/30" : "text-ink-soft hover:bg-peach/14",
+              )}>
+              {CATEGORY_META[option].label}
+            </button>
+          ))}
+        </div>
+      )}
     </form>
   );
 }
@@ -674,9 +701,10 @@ function ItemRow({
   highlighted,
   showCategory,
   doneBy,
+  actionLabel,
   onToggle,
   onOpen,
-  onMove,
+  onAction,
   onJournal,
 }: {
   item: TodoItemOut;
@@ -684,9 +712,10 @@ function ItemRow({
   highlighted: boolean;
   showCategory?: boolean;
   doneBy?: string;
+  actionLabel?: string;
   onToggle: () => void;
   onOpen: () => void;
-  onMove?: () => void;
+  onAction?: () => void;
   onJournal?: () => void;
 }) {
   const reducedMotion = useReducedMotion();
@@ -701,44 +730,44 @@ function ItemRow({
       exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98 }}
       transition={reducedMotion ? MOTION_TRANSITIONS.reduced : MOTION_TRANSITIONS.state}
       className={cn(
-        "relative flex items-center gap-2 rounded-2xl border px-2 py-1.5 transition-colors",
+        "relative flex items-center gap-1.5 rounded-2xl border px-1.5 py-1 transition-colors",
         done ? "border-sage/30 bg-sage/10" : "border-line/60 bg-surface-raised hover:border-rose/26",
         highlighted && "ring-2 ring-peach/70",
       )}
     >
       <button type="button" onClick={onToggle} disabled={busy} aria-pressed={done} aria-label={done ? `取消完成：${item.title}` : `完成：${item.title}`}
-        className="grid h-11 w-11 flex-none place-items-center rounded-full focus-ring">
+        className="grid h-10 w-10 flex-none place-items-center rounded-full focus-ring">
         <motion.span
-          className={cn("grid h-6 w-6 place-items-center rounded-full border-2 transition-colors", done ? "border-sage bg-sage text-white" : "border-rose/45 bg-surface")}
+          className={cn("grid h-[22px] w-[22px] place-items-center rounded-full border-2 transition-colors", done ? "border-sage bg-sage text-white" : "border-rose/45 bg-surface")}
           animate={done && !reducedMotion ? { scale: [1, 1.18, 1] } : { scale: 1 }}
           transition={MOTION_TRANSITIONS.emphasis}
         >
           {done && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
         </motion.span>
       </button>
-      <button type="button" onClick={onOpen} className="min-w-0 flex-1 rounded-lg py-1.5 text-left focus-ring">
-        <span className={cn("block truncate font-sc text-[15px]", done ? "text-ink-soft" : "text-ink")}>{item.title}</span>
+      <button type="button" onClick={onOpen} className="min-w-0 flex-1 rounded-lg py-1 text-left focus-ring">
+        <span className={cn("block truncate font-sc text-sm", done ? "text-ink-soft line-through decoration-ink-muted/50" : "text-ink")}>{item.title}</span>
         {(showCategory || item.comments_count > 0 || item.images_count > 0 || item.note || doneBy) && (
           <span className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 font-sc text-[11px] text-ink-muted">
             {showCategory && <span className={cn("rounded-full px-1.5 py-px", meta.tone)}>{meta.label}</span>}
             {doneBy && item.completed_at && <span>{doneBy} · {formatRelative(item.completed_at)}</span>}
-            {item.note && <span className="max-w-[12rem] truncate">{item.note}</span>}
+            {item.note && <span className="max-w-[10rem] truncate">{item.note}</span>}
             {item.comments_count > 0 && <span className="inline-flex items-center gap-0.5"><MessageCircle className="h-3 w-3" />{item.comments_count}</span>}
             {item.images_count > 0 && <span className="inline-flex items-center gap-0.5"><ImageIcon className="h-3 w-3" />{item.images_count}</span>}
           </span>
         )}
       </button>
-      {onMove && !done && (
-        <button type="button" onClick={onMove} disabled={busy}
-          className="inline-flex min-h-10 flex-none items-center gap-1 rounded-full bg-rose/10 px-3 font-sc text-xs text-rose-deep transition hover:bg-rose/16 disabled:opacity-60 focus-ring">
-          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarHeart className="h-3.5 w-3.5" />}
-          <span className="hidden sm:inline">放进这次见面</span><span className="sm:hidden">放进去</span>
+      {onAction && actionLabel && !done && (
+        <button type="button" onClick={onAction} disabled={busy}
+          className="inline-flex min-h-9 flex-none items-center gap-1 rounded-full bg-rose/10 px-3 font-sc text-xs text-rose-deep transition hover:bg-rose/16 disabled:opacity-60 focus-ring">
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarClock className="h-3.5 w-3.5" />}
+          {actionLabel}
         </button>
       )}
       {onJournal && done && (
         <button type="button" onClick={onJournal} disabled={busy}
           className={cn(
-            "inline-flex min-h-10 flex-none items-center gap-1 rounded-full px-3 font-sc text-xs transition disabled:opacity-60 focus-ring",
+            "inline-flex min-h-9 flex-none items-center gap-1 rounded-full px-3 font-sc text-xs transition disabled:opacity-60 focus-ring",
             item.journal_event_id ? "text-ink-soft hover:bg-peach/14" : "bg-peach/26 text-rose-deep hover:bg-peach/36",
           )}>
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookHeart className="h-3.5 w-3.5" />}
@@ -752,9 +781,9 @@ function ItemRow({
 function PlanSkeleton() {
   return (
     <div className="space-y-4" aria-hidden="true">
-      <div className="content-surface h-48 animate-pulse motion-reduce:animate-none" />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="content-surface h-72 animate-pulse motion-reduce:animate-none" />
+      <div className="content-surface h-36 animate-pulse motion-reduce:animate-none" />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_21rem]">
+        <div className="content-surface h-[28rem] animate-pulse motion-reduce:animate-none" />
         <div className="content-surface h-72 animate-pulse motion-reduce:animate-none" />
       </div>
     </div>
@@ -768,7 +797,7 @@ function LoadFailed({ onRetry }: { onRetry: () => void }) {
         <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-peach/24 text-rose-deep">
           <CloudOff className="h-6 w-6" />
         </span>
-        <p className="mt-3 font-sc text-sm text-ink-soft">清单暂时没打开</p>
+        <p className="mt-3 font-sc text-sm text-ink-soft">计划暂时没打开</p>
         <button type="button" onClick={onRetry} className="btn-ghost mt-3 inline-flex min-h-11 items-center gap-2 rounded-full px-4 font-sc text-sm focus-ring">
           <RotateCcw className="h-4 w-4" />再试一次
         </button>
@@ -930,7 +959,7 @@ function TodoDetailPanel({
     <>
       <motion.button
         type="button"
-        className="fixed inset-0 z-[70] bg-ink/30 lg:hidden"
+        className="fixed inset-0 z-[70] bg-ink/30 lg:bg-ink/12"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -940,7 +969,7 @@ function TodoDetailPanel({
       />
       <motion.aside
         {...panelMotion}
-        className="fixed inset-x-0 bottom-0 z-[80] box-border flex max-h-[min(92dvh,100%)] w-full max-w-full flex-col overflow-hidden rounded-t-[1.35rem] border border-line/70 bg-surface text-ink shadow-[0_-24px_52px_-36px_rgb(var(--ink)/0.55)] lg:sticky lg:inset-auto lg:top-[calc(var(--lb-header-clearance)+0.25rem)] lg:z-auto lg:h-[calc(100dvh-var(--lb-header-clearance)-var(--lb-nav-clearance)-0.5rem)] lg:max-h-none lg:w-[360px] lg:flex-none lg:rounded-[20px] lg:shadow-[0_2px_8px_rgb(var(--ink)/0.07)]"
+        className="fixed inset-x-0 bottom-0 z-[80] box-border flex max-h-[min(92dvh,100%)] w-full max-w-full flex-col overflow-hidden rounded-t-[1.35rem] border border-line/70 bg-surface text-ink shadow-[0_-24px_52px_-36px_rgb(var(--ink)/0.55)] lg:inset-auto lg:bottom-6 lg:right-6 lg:top-[calc(var(--lb-header-clearance)+0.5rem)] lg:max-h-none lg:w-[380px] lg:rounded-[20px] lg:shadow-[0_24px_60px_-30px_rgb(var(--ink)/0.45)]"
         role="dialog"
         aria-modal="true"
         aria-label={current?.title ? `详情：${current.title}` : "详情"}
@@ -1018,6 +1047,10 @@ function TodoDetailPanel({
                 )}
               </section>
 
+              {ownerMeeting && (
+                <ScheduleEditor key={`${current.id}-${current.scheduled_on}-${current.start_minute}-${current.end_minute}`} item={current} meeting={ownerMeeting} saving={saving} onPatch={patch} />
+              )}
+
               <section>
                 <h3 className="mb-2 font-sc text-sm font-medium text-ink">放在哪次见面</h3>
                 <select
@@ -1027,7 +1060,7 @@ function TodoDetailPanel({
                   aria-label="放在哪次见面"
                   className="input-field min-h-11 w-full rounded-xl text-sm"
                 >
-                  <option value="">心愿池（还没定）</option>
+                  <option value="">先不放进见面</option>
                   {meetingOptions.map((meeting) => (
                     <option key={meeting.id} value={meeting.id}>{meeting.title} · {formatRange(meeting)}</option>
                   ))}
@@ -1171,6 +1204,77 @@ function TodoDetailPanel({
   );
 }
 
+function ScheduleEditor({
+  item,
+  meeting,
+  saving,
+  onPatch,
+}: {
+  item: TodoItemOut;
+  meeting: TodoMeetingOut;
+  saving: boolean;
+  onPatch: (payload: Parameters<typeof api.updateTodoItem>[1]) => Promise<boolean>;
+}) {
+  const days = useMemo(() => meetingDays(meeting.started_on, meeting.ended_on), [meeting.ended_on, meeting.started_on]);
+  const placedDay = item.scheduled_on && days.some((day) => day.key === item.scheduled_on) ? item.scheduled_on : null;
+  const [startText, setStartText] = useState(item.start_minute != null ? minuteLabel(item.start_minute) : "");
+  const [endText, setEndText] = useState(item.end_minute != null ? minuteLabel(item.end_minute) : "");
+
+  function commitTimes(nextStart: string, nextEnd: string) {
+    const start = parseMinute(nextStart);
+    if (start == null) return;
+    const parsedEnd = parseMinute(nextEnd);
+    const end = parsedEnd != null && parsedEnd > start ? parsedEnd : Math.min(start + DEFAULT_DURATION, 1440);
+    if (start === item.start_minute && end === item.end_minute) return;
+    void onPatch({ start_minute: start, end_minute: end });
+  }
+
+  return (
+    <section>
+      <h3 className="mb-2 font-sc text-sm font-medium text-ink">排在哪天</h3>
+      <div className="local-x-scroll -mx-1 overflow-x-auto overscroll-x-contain px-1 pb-1">
+        <div className="flex w-max gap-1.5" role="radiogroup" aria-label="排在哪天">
+          <button type="button" role="radio" aria-checked={!placedDay} disabled={saving}
+            onClick={() => placedDay && void onPatch({ scheduled_on: null })}
+            className={cn("min-h-10 rounded-full border px-3 font-sc text-xs transition focus-ring", !placedDay ? "border-rose/40 bg-rose/12 text-rose-deep" : "border-line/70 text-ink-soft hover:border-rose/30")}>
+            还没排
+          </button>
+          {days.map((day) => (
+            <button key={day.key} type="button" role="radio" aria-checked={placedDay === day.key} disabled={saving}
+              onClick={() => placedDay !== day.key && void onPatch({ scheduled_on: day.key, start_minute: item.start_minute, end_minute: item.end_minute })}
+              className={cn("min-h-10 rounded-full border px-3 font-sc text-xs transition focus-ring", placedDay === day.key ? "border-rose/40 bg-rose/12 text-rose-deep" : "border-line/70 text-ink-soft hover:border-rose/30")}>
+              {day.month}/{day.day} {day.weekday}
+            </button>
+          ))}
+        </div>
+      </div>
+      {placedDay && (
+        <div className="mt-2 rounded-2xl border border-line/58 bg-surface-raised/66 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" disabled={saving}
+              onClick={() => (item.start_minute == null ? void onPatch({ start_minute: 10 * 60, end_minute: 11 * 60 }) : void onPatch({ start_minute: null }))}
+              className={cn("min-h-9 rounded-full px-3 font-sc text-xs transition focus-ring", item.start_minute == null ? "bg-rose/12 text-rose-deep ring-1 ring-rose/30" : "text-ink-soft hover:bg-peach/14")}
+              aria-pressed={item.start_minute == null}>
+              全天
+            </button>
+            {item.start_minute != null && (
+              <span className="flex items-center gap-1.5 font-sc text-sm text-ink">
+                <input type="time" step={900} value={startText} disabled={saving} aria-label="开始时间"
+                  onChange={(event) => setStartText(event.target.value)} onBlur={() => commitTimes(startText, endText)}
+                  className="input-field min-h-9 w-[6.5rem] rounded-xl px-2 text-sm tabular-nums" />
+                –
+                <input type="time" step={900} value={endText} disabled={saving} aria-label="结束时间"
+                  onChange={(event) => setEndText(event.target.value)} onBlur={() => commitTimes(startText, endText)}
+                  className="input-field min-h-9 w-[6.5rem] rounded-xl px-2 text-sm tabular-nums" />
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function TodoImageThumb({ image, onOpen }: { image: TodoImageOut; onOpen: () => void }) {
   const { url: src, status } = useAuthedBlobUrl({ kind: "todo-thumb", id: image.id });
   if (src) {
@@ -1235,3 +1339,4 @@ function TodoImagePreview({ image, onClose, onDelete }: { image: TodoImageOut; o
     </motion.div>
   );
 }
+

@@ -1,4 +1,4 @@
-"""SQLAlchemy models for pair features, wrapped gifts (sender/receiver, wrap style, teaser, unwrap gate, receiver response), meeting plan todos, cycle mail reminders, private media, password sessions, and game scores.
+"""SQLAlchemy models for pair features, wrapped gifts (sender/receiver, wrap style, teaser, unwrap gate, receiver response), meeting plan todos (吃/玩/住/准备 with optional day + time slot), cycle mail reminders, private media, password sessions, and game scores.
 
 Retired tables (todo_restaurants, todo_candidates, todo_schedules, ai_settings, users.location_*) stay in existing
 databases untouched but no longer have models; see app.core.database for the legacy-row cleanup on todo delete.
@@ -119,7 +119,6 @@ class TodoCategory(StrEnum):
     play = "play"
     stay = "stay"
     prep = "prep"
-    wish = "wish"
 
 
 class CervicalMucus(StrEnum):
@@ -342,6 +341,10 @@ class TodoItem(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     completed_by_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     journal_event_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Beijing-calendar day inside the meeting plus optional minutes since midnight; null day means "not on the agenda yet".
+    scheduled_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    start_minute: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    end_minute: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 

@@ -43,6 +43,7 @@
     --lb-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
     --lb-header-clearance: calc(env(safe-area-inset-top, 0px) + 4.75rem);
     --lb-nav-clearance: calc(env(safe-area-inset-bottom, 0px) + 5.6rem);
+    --lb-book-chrome: calc(env(safe-area-inset-bottom, 0px) + 5.6rem);
     --lb-scene-paper: 0.985 0.014 48;
     --lb-scene-paper-shade: 0.93 0.028 42;
     --lb-scene-cover: 0.63 0.13 12;
@@ -407,7 +408,9 @@
     border-color: oklch(var(--lb-sage) / 0.42);
   }
 
+  /* 弹窗挂在 body 下，会吃到全局 body > div 的 min-height: 100%，这里按内容高度收回。 */
   .create-event-window {
+    min-height: 0 !important;
     max-height: 92dvh !important;
   }
 
@@ -507,14 +510,22 @@
       oklch(var(--lb-surface-solid));
   }
 
+  /* sm 以上创建窗口居中浮起：选择一步只按内容高度，进入表单后放宽并在 86dvh 内滚动。 */
   @media (min-width: 640px) {
     .create-event-window {
       left: 50% !important;
       right: auto !important;
+      top: 50% !important;
+      bottom: auto !important;
       width: min(672px, calc(100vw - 2rem)) !important;
       max-height: 86dvh !important;
-      translate: -50% 0;
-      border-radius: 1.5rem 1.5rem 0 0;
+      translate: -50% -50%;
+      border-radius: 1.5rem !important;
+      padding-bottom: 1.5rem !important;
+    }
+
+    .create-event-window.is-choosing {
+      width: min(600px, calc(100vw - 2rem)) !important;
     }
   }
 
@@ -893,6 +904,11 @@
 
   .nav-clearance-bottom {
     bottom: var(--lb-nav-clearance);
+    transition: bottom var(--lb-motion-layout) var(--lb-ease-out);
+  }
+
+  :root[data-nav-hidden="true"] {
+    --lb-nav-clearance: calc(env(safe-area-inset-bottom, 0px) + 0.75rem);
   }
 }
 
@@ -1442,7 +1458,12 @@
   background-size: 100% 100%, 100% 28px;
 }
 
-/* 首页手账本：单页（手机）/ 对开（lg+）、书页厚度、翻页阴影、月历和选月网格 */
+/* 首页手账本：单页（手机）/ 对开（lg+）、书页厚度、翻页阴影、月历和选月网格。
+   书页高度固定贴合视口（扣掉顶栏、吸顶工具条、翻页按钮和底栏），页内不滚动，内容多就分到下一页。 */
+.journal-book {
+  --lb-book-page-h: clamp(26rem, calc(100dvh - var(--lb-header-clearance) - var(--lb-book-chrome) - 8rem), 58rem);
+}
+
 .journal-book-stage {
   position: relative;
   padding-inline: 0.375rem;
@@ -1515,6 +1536,8 @@
 .journal-leaf {
   position: relative;
   min-width: 0;
+  height: var(--lb-book-page-h, 36rem);
+  overflow: hidden;
   border: 1px solid oklch(var(--lb-paper-edge));
   background-color: oklch(var(--lb-paper));
   color: oklch(var(--lb-ink));
@@ -1545,7 +1568,6 @@
 }
 
 .journal-leaf-left {
-  min-height: 38rem;
   border-right: 0;
   border-radius: 22px 3px 3px 22px;
   box-shadow:
@@ -1554,7 +1576,6 @@
 }
 
 .journal-leaf-right {
-  min-height: 38rem;
   border-left: 0;
   border-radius: 3px 22px 22px 3px;
   box-shadow:
@@ -1596,10 +1617,43 @@
 }
 
 .journal-page-number {
-  margin-top: 2rem;
+  flex: none;
+  margin-top: 0.6rem;
   font-family: var(--lb-hand-font);
   font-size: 0.8rem;
   color: oklch(var(--lb-ink-muted));
+}
+
+.journal-sheet {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.journal-sheet-slot {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.journal-overview-rest {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.25rem), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.25rem), transparent);
+}
+
+.journal-measure {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.journal-blank-note {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  font-family: var(--lb-hand-font);
+  font-size: 0.85rem;
+  color: oklch(var(--lb-ink-muted) / 0.6);
 }
 
 .book-calendar {
@@ -1622,7 +1676,7 @@
 }
 
 .journal-leaf-left .book-calendar { padding: 1rem 1rem 1.1rem; }
-.journal-leaf-left .book-calendar-day { height: 2.75rem; border-radius: 12px; font-size: 0.875rem; }
+.journal-leaf-left .book-calendar-day { height: 2.35rem; border-radius: 12px; font-size: 0.875rem; }
 
 .book-calendar-day.has-entry {
   background: oklch(var(--lb-rose) / 0.13);

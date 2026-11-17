@@ -5,10 +5,14 @@ ENUM is repaired to include `gift` next to the legacy `gift_received`.
 
 Legacy voice rows are only removed together with their hard-deleted event (FK requirement), never at startup.
 
-Todo meeting-plan columns (meeting, completion, journal event) are added to `todo_items` and backfilled once from
-the old two-comment completion rule and old schedule dates. Retired todo/AI tables are never dropped; only a
-deleted todo's own legacy rows are removed so its FK-guarded delete succeeds.
+Todo meeting-plan columns (meeting, completion, journal event, day + time slot) are added to `todo_items` and
+backfilled once from the old two-comment completion rule and old schedule dates. Old `wish` items (the wish list
+became gifts) are deleted at startup together with their comments, images and image files, before the MySQL ENUM
+shrinks to `food/play/stay/prep`. Retired todo/AI tables are never dropped; only a deleted todo's own legacy rows
+are removed so its FK-guarded delete succeeds.
 """
+
+import logging
 
 from collections.abc import Generator
 
@@ -17,6 +21,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -266,6 +272,9 @@ _LIGHTWEIGHT_COLUMNS: list[tuple[str, str, dict[str, str]]] = [
     ),
     ("todo_items", "completed_by_id", {"default": "INTEGER NULL", "mysql": "INT NULL", "mariadb": "INT NULL"}),
     ("todo_items", "journal_event_id", {"default": "INTEGER NULL", "mysql": "INT NULL", "mariadb": "INT NULL"}),
+    ("todo_items", "scheduled_on", {"default": "DATE NULL"}),
+    ("todo_items", "start_minute", {"default": "INTEGER NULL", "mysql": "INT NULL", "mariadb": "INT NULL"}),
+    ("todo_items", "end_minute", {"default": "INTEGER NULL", "mysql": "INT NULL", "mariadb": "INT NULL"}),
 ]
 
 # Rows in retired todo tables reference todo_items through FKs without ON DELETE.
@@ -283,7 +292,39 @@ def delete_legacy_todo_rows(db: Session, item_id: int) -> None:
 def _todo_category_enum_migration_sql(dialect_name: str) -> list[str]:
     if dialect_name not in {"mysql", "mariadb"}:
         return []
-    return ["ALTER TABLE todo_items MODIFY category ENUM('food','play','stay','prep','wish') NOT NULL"]
+    return ["ALTER TABLE todo_items MODIFY category ENUM('food','play','stay','prep') NOT NULL"]
+
+
+def _purge_wish_todos(target_engine: Engine) -> int:
+    """Delete retired `wish` items with their comments, images, legacy rows and media files; returns the item count."""
+    from app.storage import MediaStorageError, delete_media_file
+
+    tables = set(inspect(target_engine).get_table_names())
+    if "todo_items" not in tables:
+        return 0
+    storage_keys: list[str] = []
+    with target_engine.begin() as connection:
+        item_ids = list(connection.execute(text("SELECT id FROM todo_items WHERE category = 'wish'")).scalars())
+        if not item_ids:
+            return 0
+        for item_id in item_ids:
+            params = {"item_id": item_id}
+            if "todo_images" in tables:
+                for storage_key, thumb_key in connection.execute(
+                    text("SELECT storage_key, thumb_storage_key FROM todo_images WHERE item_id = :item_id"), params
+                ):
+                    storage_keys.extend(key for key in (storage_key, thumb_key) if key)
+                connection.execute(text("DELETE FROM todo_images WHERE item_id = :item_id"), params)
+            for child_table in ("todo_comments", *_LEGACY_TODO_CHILD_TABLES):
+                if child_table in tables:
+                    connection.execute(text(f"DELETE FROM {child_table} WHERE item_id = :item_id"), params)
+            connection.execute(text("DELETE FROM todo_items WHERE id = :item_id"), params)
+    for storage_key in storage_keys:
+        try:
+            delete_media_file(storage_key)
+        except MediaStorageError:
+            logger.exception("Wish todo image file deletion failed", extra={"storage_key": storage_key})
+    return len(item_ids)
 
 
 def _love_receipt_mood_enum_migration_sql(dialect_name: str) -> list[str]:
@@ -620,6 +661,7 @@ def init_db() -> None:
     added_columns = _ensure_columns(engine)
     _backfill_todo_plan(engine, added_columns)
     _ensure_security_indexes(engine)
+    _purge_wish_todos(engine)
     _ensure_todo_category_enum(engine)
     _ensure_love_receipt_mood_enum(engine)
     _ensure_received_gift_schema(engine)

@@ -1,6 +1,7 @@
 "use client";
 
 // Three-way creation chooser shared by the global create Sheet and direct /create page: a memory, a meeting, or "送一份礼物" which opens the gift wrapping form.
+// 选择一步按内容高度排版：手机是三行紧凑列表，sm 以上是三张并排小卡；onStepChange 让外层窗口在“选择”和“填写”两种尺寸间切换。
 
 import { useState } from "react";
 import { ArrowLeft, CalendarHeart, Gift, Sparkles } from "lucide-react";
@@ -10,8 +11,43 @@ import type { EventDetail } from "@/lib/types";
 
 type CreateKind = "memory" | "offline_meeting" | "gift";
 
-export function CreateFlow({ onCreated }: { onCreated: (event: EventDetail) => void }) {
-  const [kind, setKind] = useState<CreateKind | null>(null);
+const OPTIONS = [
+  {
+    value: "memory" as const,
+    icon: Sparkles,
+    title: "记一件小事",
+    description: "日常、想法和想留住的瞬间",
+    tone: "bg-rose/10 text-rose-deep",
+  },
+  {
+    value: "offline_meeting" as const,
+    icon: CalendarHeart,
+    title: "记一次见面",
+    description: "把一起度过的日子收进来",
+    tone: "bg-sage/16 text-ink-soft",
+  },
+  {
+    value: "gift" as const,
+    icon: Gift,
+    title: "送一份礼物",
+    description: "包好藏起来，等 TA 亲手拆开",
+    tone: "bg-peach/24 text-peach-deep",
+  },
+];
+
+export function CreateFlow({
+  onCreated,
+  onStepChange,
+}: {
+  onCreated: (event: EventDetail) => void;
+  onStepChange?: (step: "choose" | "form") => void;
+}) {
+  const [kind, setKindState] = useState<CreateKind | null>(null);
+
+  function setKind(next: CreateKind | null) {
+    setKindState(next);
+    onStepChange?.(next ? "form" : "choose");
+  }
 
   if (kind === "gift") {
     return <FlowStep onBack={() => setKind(null)}><GiftWrapForm onCreated={onCreated} /></FlowStep>;
@@ -20,51 +56,28 @@ export function CreateFlow({ onCreated }: { onCreated: (event: EventDetail) => v
     return <FlowStep onBack={() => setKind(null)}><CreateEventForm eventKind={kind} onCreated={onCreated} /></FlowStep>;
   }
 
-  const options = [
-    {
-      value: "memory" as const,
-      icon: Sparkles,
-      title: "记一件小事",
-      description: "日常、想法和值得留住的瞬间。",
-      tone: "bg-rose/10 text-rose-deep",
-    },
-    {
-      value: "offline_meeting" as const,
-      icon: CalendarHeart,
-      title: "记一次见面",
-      description: "把一起度过的日期收进见面时间河流。",
-      tone: "bg-sage/14 text-ink-soft",
-    },
-    {
-      value: "gift" as const,
-      icon: Gift,
-      title: "送一份礼物",
-      description: "包好藏进手账，等 TA 亲手拆开。",
-      tone: "bg-peach/22 text-ink",
-    },
-  ];
-
   return (
     <section aria-labelledby="create-kind-title">
-      <p className="font-sc text-xs font-semibold text-rose-deep">今天想留下什么</p>
-      <h1 id="create-kind-title" className="mt-1 font-display text-2xl font-bold text-ink">记下这一笔</h1>
-      <p className="mt-2 font-sc text-sm leading-relaxed text-ink-soft">先选一种记录，下一步只填写真正需要的内容。</p>
-      <div className="mt-6 divide-y divide-line/55 overflow-hidden rounded-2xl bg-surface-raised/88 hairline">
-        {options.map((option) => {
+      <div className="pr-12">
+        <h1 id="create-kind-title" className="font-display text-xl font-bold text-ink sm:text-2xl">记下这一笔</h1>
+        <p className="mt-1 font-sc text-xs text-ink-muted sm:text-sm">今天想留下什么？</p>
+      </div>
+      <div className="mt-4 grid gap-2 sm:mt-5 sm:grid-cols-3 sm:gap-3">
+        {OPTIONS.map((option) => {
           const Icon = option.icon;
           return (
             <button
               key={option.value}
               type="button"
               onClick={() => setKind(option.value)}
-              className="flex min-h-[88px] w-full items-center gap-4 px-4 py-4 text-left transition hover:bg-peach/10 focus-ring sm:px-5"
+              className="group flex min-h-[60px] w-full items-center gap-3 rounded-2xl border border-line/60 bg-surface-raised/88 px-3 py-2.5 text-left transition hover:border-rose/35 hover:bg-peach/10 active:scale-[0.99] focus-ring sm:min-h-[128px] sm:flex-col sm:items-start sm:justify-between sm:gap-3 sm:p-4"
             >
-              <span className={`grid h-11 w-11 flex-none place-items-center rounded-xl ${option.tone}`}>
+              <span className={`grid h-10 w-10 flex-none place-items-center rounded-xl transition group-hover:scale-105 ${option.tone}`}>
                 <Icon className="h-5 w-5" />
               </span>
               <span className="min-w-0">
-                <span className="block font-display text-base font-semibold text-ink">{option.title}</span>
-                <span className="mt-1 block font-sc text-xs leading-relaxed text-ink-muted">{option.description}</span>
+                <span className="block font-display text-[15px] font-semibold text-ink">{option.title}</span>
+                <span className="mt-0.5 block font-sc text-xs leading-snug text-ink-muted">{option.description}</span>
               </span>
             </button>
           );

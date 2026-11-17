@@ -5,7 +5,11 @@ import {
   monthDateRange,
   monthKeyForRange,
   neighborIndex,
+  packSheets,
+  sheetPage,
   shiftMonthKey,
+  spreadCount,
+  spreadSheets,
   weekdayLabel,
   yearMonthCells,
 } from "./journal-book";
@@ -99,5 +103,48 @@ describe("month helpers", () => {
     expect(state[12]).toBe(true);
     const loose = yearMonthCells(2026, counts, { minMonth: "2026-02", maxMonth: "2026-11", requireEntries: false });
     expect(loose.find((cell) => cell.month === 4)?.disabled).toBe(false);
+  });
+});
+
+describe("packSheets", () => {
+  const metrics = { stamp: 30, stampGap: 10, entryGap: 10, dayGap: 20 };
+  const month = buildBookMonths(
+    [
+      event(1, "2026-11-05T03:00:00Z"),
+      event(2, "2026-11-05T02:00:00Z"),
+      event(3, "2026-11-05T01:00:00Z"),
+      event(4, "2026-11-02T03:00:00Z"),
+    ],
+    "2026-11",
+  )[0];
+
+  it("fills fixed-height sheets and repeats the day stamp on continued pages", () => {
+    const sheets = packSheets(month.days, () => 100, () => 260, metrics);
+    expect(sheets.map((sheet) => sheet.days.map((day) => [day.dateKey, day.events.map((item) => item.id), day.continued]))).toEqual([
+      [["2026-11-05", [1, 2], false]],
+      [
+        ["2026-11-05", [3], true],
+      ],
+      [["2026-11-02", [4], false]],
+    ]);
+  });
+
+  it("uses a smaller first sheet, keeps oversized entries alone and never returns zero sheets", () => {
+    const first = packSheets(month.days, () => 100, (index) => (index === 0 ? 150 : 1000), metrics);
+    expect(first[0].days[0].events.map((item) => item.id)).toEqual([1]);
+    expect(first).toHaveLength(2);
+    const oversized = packSheets(month.days, (id) => (id === 2 ? 900 : 50), () => 300, metrics);
+    expect(oversized[1].days[0].events.map((item) => item.id)).toEqual([2]);
+    expect(packSheets([], () => 0, () => 100, metrics)).toEqual([{ days: [] }]);
+  });
+
+  it("maps sheets onto spreads with the month overview first", () => {
+    expect(spreadCount(1)).toBe(1);
+    expect(spreadCount(2)).toBe(2);
+    expect(spreadCount(4)).toBe(3);
+    expect(spreadSheets(0)).toEqual({ left: null, right: 0 });
+    expect(spreadSheets(2)).toEqual({ left: 3, right: 4 });
+    expect(sheetPage(3, true)).toBe(2);
+    expect(sheetPage(3, false)).toBe(3);
   });
 });

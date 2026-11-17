@@ -17,7 +17,7 @@ export type GiftFeeling =
   | "not_my_style"
   | "upset"
   | "complicated";
-export type TodoCategory = "food" | "play" | "stay" | "prep" | "wish";
+export type TodoCategory = "food" | "play" | "stay" | "prep";
 
 export interface UserOut {
   id: number;
@@ -441,6 +441,9 @@ export interface TodoItemOut {
   completed_at: string | null;
   completed_by_id: number | null;
   journal_event_id: number | null;
+  scheduled_on: string | null;
+  start_minute: number | null;
+  end_minute: number | null;
   comments_count: number;
   images_count: number;
   created_at: string;

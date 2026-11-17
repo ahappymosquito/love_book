@@ -229,7 +229,7 @@ docker compose down
 
 应用启动时 `app.core.database.init_db()` 会自动建表，并对老库做轻量补列。新上传图片写入 `MEDIA_ROOT`，数据库只保存相对 storage key；旧 BLOB 记录仍可回退读取。
 
-迁移服务器时必须同时备份数据库和 `love_book_media` volume。语音能力已经移除；已有部署中的 `voices` 表和文件会作为不可达备份保留。旧 Todo 的 `todo_candidates`、`todo_schedules`、`todo_restaurants`、`ai_settings` 表和 `users.location_*` 列同样只作为备份保留，启动时不会删除；升级后第一次启动会给 `todo_items` 补见面清单需要的列并回填一次。周期邮件提醒新增 `cycle_reminder_settings` 和 `cycle_reminder_runs` 两张表，由 `init_db()` 自动创建。
+迁移服务器时必须同时备份数据库和 `love_book_media` volume。语音能力已经移除；已有部署中的 `voices` 表和文件会作为不可达备份保留。旧 Todo 的 `todo_candidates`、`todo_schedules`、`todo_restaurants`、`ai_settings` 表和 `users.location_*` 列同样只作为备份保留，启动时不会删除；升级后第一次启动会给 `todo_items` 补约会计划需要的列（含排期 `scheduled_on` / `start_minute` / `end_minute`）并回填一次；旧的 `wish` 心愿事项及其照片、留言会在启动时删除。周期邮件提醒新增 `cycle_reminder_settings` 和 `cycle_reminder_runs` 两张表，由 `init_db()` 自动创建。
 
 后端镜像不再安装 Node.js，图片缩略图依赖 Pillow。
 

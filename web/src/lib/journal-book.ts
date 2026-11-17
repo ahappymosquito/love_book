@@ -1,4 +1,5 @@
-// 首页手账本的纯函数：按北京时间把事件收成「每月一页」（当月即使空着也有一页，书页按时间从旧到新排），页内按天分组且最新的一天在最上；
+// 首页手账本的纯函数：按北京时间把事件收成「每月一本」（当月即使空着也有，按时间从旧到新排），月内按天分组且最新的一天在最上；
+// packSheets 按实测高度把一个月装进固定高度的纸页（记录多就多翻几页，不在页内滚动），spread* 把纸页映射成对开；
 // 另外提供周一开头的月历格、选月网格的可选范围、相邻页查找和整月起止日期（给 /journal 导出用）。
 
 import { shanghaiDateKey, shanghaiMonthKey } from "./dates";
@@ -108,6 +109,71 @@ export function buildBookMonths(events: EventSummary[], currentMonth: string = s
         },
       };
     });
+}
+
+export interface SheetDay extends BookDay {
+  /** 这一天在前一页已经开头，这页是接着写的。 */
+  continued: boolean;
+}
+
+export interface BookSheet {
+  days: SheetDay[];
+}
+
+export interface SheetMetrics {
+  stamp: number;
+  stampGap: number;
+  entryGap: number;
+  dayGap: number;
+}
+
+/**
+ * 把一个月按天分组的小事装进固定高度的纸页：逐条累加“日期戳 + 卡片 + 间距”的实测高度，放不下就翻到新的一页，
+ * 跨页的那一天在新页重新盖日期戳并标记 continued。单条比整页还高时独占一页。至少返回一页（空月份也有一页）。
+ */
+export function packSheets(
+  days: BookDay[],
+  heightOf: (eventId: number) => number,
+  capacityOf: (sheetIndex: number) => number,
+  metrics: SheetMetrics,
+): BookSheet[] {
+  const sheets: BookSheet[] = [{ days: [] }];
+  let used = 0;
+  for (const day of days) {
+    let placedBefore = false;
+    for (const event of day.events) {
+      const height = heightOf(event.id);
+      for (;;) {
+        const sheet = sheets[sheets.length - 1];
+        const last = sheet.days[sheet.days.length - 1];
+        const sameDay = last?.dateKey === day.dateKey;
+        const need = sameDay ? metrics.entryGap + height : (sheet.days.length ? metrics.dayGap : 0) + metrics.stamp + metrics.stampGap + height;
+        if (sheet.days.length === 0 || used + need <= capacityOf(sheets.length - 1)) {
+          if (sameDay) last.events.push(event);
+          else sheet.days.push({ ...day, events: [event], continued: placedBefore });
+          used += need;
+          placedBefore = true;
+          break;
+        }
+        sheets.push({ days: [] });
+        used = 0;
+      }
+    }
+  }
+  return sheets;
+}
+
+/** 对开模式：第 0 个对开是“月份概览 + 第 1 张纸”，之后每个对开左右各一张纸。 */
+export function spreadCount(sheetCount: number): number {
+  return 1 + Math.ceil(Math.max(0, sheetCount - 1) / 2);
+}
+
+export function spreadSheets(spread: number): { left: number | null; right: number } {
+  return spread === 0 ? { left: null, right: 0 } : { left: spread * 2 - 1, right: spread * 2 };
+}
+
+export function sheetPage(sheetIndex: number, spread: boolean): number {
+  return spread ? Math.ceil(sheetIndex / 2) : sheetIndex;
 }
 
 export type CalendarCell = { dateKey: string; day: number } | null;

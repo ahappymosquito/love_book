@@ -1,19 +1,31 @@
 """Meeting route handlers for shared editable date ranges, overlap merging, automatic event classification, and cancellation.
 
-Cancelling a meeting moves its plan todos back to the wish pool; merging moves them onto the surviving meeting.
+Creating a brand-new meeting that has not ended yet emails the partner an invite to plan it (merges into an existing
+meeting do not). Cancelling a meeting detaches its plan todos and clears their day/time; merging moves them onto the
+surviving meeting.
 """
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_pair_for_user
 from app.core.database import get_db
+from app.emailer import notify_meeting_planned
 from app.models import Event, MeetingSession, TodoItem, User
 from app.schemas import MeetingSessionCreate, MeetingSessionOut, MeetingSessionUpdate
-from app.services import ensure_pair_meeting_session, meeting_creation_key, meeting_ranges_overlap, meeting_session_time_range, reconcile_pair_meeting_ranges
+from app.services import (
+    MEETING_TZ,
+    active_token_for_user,
+    counterpart,
+    ensure_pair_meeting_session,
+    meeting_creation_key,
+    meeting_ranges_overlap,
+    meeting_session_time_range,
+    reconcile_pair_meeting_ranges,
+)
 
 router = APIRouter(prefix="/meeting-sessions", tags=["meeting-sessions"])
 
@@ -48,6 +60,7 @@ def list_meeting_sessions(
 @router.post("", response_model=MeetingSessionOut, status_code=status.HTTP_201_CREATED)
 def create_meeting_session(
     payload: MeetingSessionCreate,
+    background: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> MeetingSessionOut:
@@ -66,11 +79,25 @@ def create_meeting_session(
     candidates = db.execute(select(MeetingSession).where(MeetingSession.pair_id == pair.id)).scalars().all()
     overlapping = [candidate for candidate in candidates if meeting_ranges_overlap(candidate, meeting_session)]
     canonical_id = min(overlapping, key=meeting_creation_key).id
+    is_new = canonical_id == meeting_session.id
     reconcile_pair_meeting_ranges(db, pair.id)
     db.commit()
     canonical = db.get(MeetingSession, canonical_id)
     if canonical is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Meeting merge failed")
+    if is_new and canonical.ended_on is not None and canonical.ended_on >= datetime.now(MEETING_TZ).date():
+        partner = counterpart(pair, current_user)
+        background.add_task(
+            notify_meeting_planned,
+            recipient_email=partner.email,
+            recipient_name=partner.display_name,
+            recipient_token=active_token_for_user(db, partner.id),
+            actor_name=current_user.display_name,
+            meeting_id=canonical.id,
+            meeting_title=canonical.title,
+            started_on=canonical.started_on,
+            ended_on=canonical.ended_on,
+        )
     return _meeting_session_out(db, canonical)
 
 
@@ -113,7 +140,7 @@ def delete_meeting_session(
     db.execute(
         TodoItem.__table__.update()
         .where(TodoItem.meeting_session_id == meeting_session.id)
-        .values(meeting_session_id=None)
+        .values(meeting_session_id=None, scheduled_on=None, start_minute=None, end_minute=None)
     )
     db.delete(meeting_session)
     db.flush()
